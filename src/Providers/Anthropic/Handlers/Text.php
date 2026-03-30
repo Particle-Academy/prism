@@ -197,7 +197,7 @@ class Text
     /**
      * @return array<string, mixed>|null
      */
-    private static function resolveThinking(PrismRequest $request): ?array
+    protected static function resolveThinking(PrismRequest $request): ?array
     {
         if ($request->providerOptions('thinking.type') === 'adaptive') {
             return ['type' => 'adaptive'];
