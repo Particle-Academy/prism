@@ -253,7 +253,7 @@ class Media implements Arrayable
             $this->mimeType = (new finfo(FILEINFO_MIME_TYPE))->buffer($content) ?: null;
         }
 
-        $this->mimeType = match (strtolower($this->mimeType)) {
+        $this->mimeType = match ($this->mimeType) {
             'audio/x-wav', 'audio/wave', 'audio/x-pn-wav', 'audio/vnd.wave' => 'audio/wav',
             default => $this->mimeType,
         };
