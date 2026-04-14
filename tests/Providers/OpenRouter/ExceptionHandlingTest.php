@@ -18,12 +18,13 @@ beforeEach(function (): void {
     );
 });
 
-function createMockResponse(int $statusCode, array $json = [], array $headers = []): Response
+function createMockResponse(int $statusCode, array $json = [], array $headers = [], ?string $body = null): Response
 {
     $mockResponse = Mockery::mock(Response::class);
     $mockResponse->shouldReceive('getStatusCode')->andReturn($statusCode);
     $mockResponse->shouldReceive('status')->andReturn($statusCode);
     $mockResponse->shouldReceive('json')->andReturn($json);
+    $mockResponse->shouldReceive('body')->andReturn($body ?? (string) json_encode($json));
     $mockResponse->shouldReceive('toPsrResponse')->andReturn(new PsrResponse($statusCode));
 
     if (isset($headers['retry-after'])) {
@@ -188,6 +189,23 @@ it('falls back to error.message when metadata.raw has no error.message', functio
 
     expect(fn () => $this->provider->handleRequestException('test-model', $exception))
         ->toThrow(PrismException::class, 'OpenRouter Bad Request: Provider returned error');
+});
+
+it('attaches http status and raw response body to the exception on 400', function (): void {
+    $payload = ['error' => ['code' => 400, 'message' => 'Provider returned error']];
+    $mockResponse = createMockResponse(400, $payload);
+    $exception = new RequestException($mockResponse);
+
+    try {
+        $this->provider->handleRequestException('test-model', $exception);
+    } catch (PrismException $e) {
+        expect($e->httpStatus)->toBe(400);
+        expect($e->responseBody)->toContain('Provider returned error');
+
+        return;
+    }
+
+    $this->fail('Expected PrismException was not thrown');
 });
 
 it('falls back to error.message when metadata.raw contains invalid JSON', function (): void {
