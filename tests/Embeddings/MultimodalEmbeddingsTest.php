@@ -7,7 +7,6 @@ namespace Tests\Embeddings;
 use Prism\Prism\Embeddings\Content;
 use Prism\Prism\Embeddings\PendingRequest;
 use Prism\Prism\Embeddings\Request;
-use Prism\Prism\Embeddings\Response;
 use Prism\Prism\Exceptions\PrismException;
 use Prism\Prism\ValueObjects\Media\Audio;
 use Prism\Prism\ValueObjects\Media\Document;
