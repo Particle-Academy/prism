@@ -70,6 +70,6 @@ it('supports multiple grouped multimodal content entries', function () use ($tes
 it('throws exception when no embeddings content is provided', function (): void {
     $pendingRequest = new PendingRequest;
 
-    expect(fn (): Response => $pendingRequest->asEmbeddings())
+    expect($pendingRequest->asEmbeddings(...))
         ->toThrow(PrismException::class, 'Embeddings input is required (text, images, audio, video, documents, or content parts)');
 });
