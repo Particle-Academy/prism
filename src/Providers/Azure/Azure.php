@@ -14,7 +14,10 @@ use Prism\Prism\Enums\Provider as ProviderName;
 use Prism\Prism\Exceptions\PrismException;
 use Prism\Prism\Exceptions\PrismRateLimitedException;
 use Prism\Prism\Exceptions\PrismRequestTooLargeException;
+use Prism\Prism\Images\Request as ImagesRequest;
+use Prism\Prism\Images\Response as ImagesResponse;
 use Prism\Prism\Providers\Azure\Handlers\Embeddings;
+use Prism\Prism\Providers\Azure\Handlers\Images;
 use Prism\Prism\Providers\Azure\Handlers\Stream;
 use Prism\Prism\Providers\Azure\Handlers\Structured;
 use Prism\Prism\Providers\Azure\Handlers\Text;
@@ -87,6 +90,23 @@ class Azure extends Provider
     }
 
     #[\Override]
+    public function images(ImagesRequest $request): ImagesResponse
+    {
+        $builtUrl = $this->buildUrl($request->model());
+
+        $handler = new Images(
+            $this->client(
+                $request->clientOptions(),
+                $request->clientRetry(),
+                $builtUrl
+            ),
+            $this
+        );
+
+        return $handler->handle($request);
+    }
+
+    #[\Override]
     public function stream(TextRequest $request): Generator
     {
         $builtUrl = $this->buildUrl($request->model());
@@ -139,6 +159,7 @@ class Azure extends Provider
     {
         return $this->deploymentName ?: $model;
     }
+
     /**
      * Build the URL for the Azure deployment.
      * Supports both Azure OpenAI and Azure AI Model Inference endpoints.
@@ -146,7 +167,7 @@ class Azure extends Provider
     protected function buildUrl(string $model): string
     {
         // If URL already contains the full path, use it directly
-        if (str_contains($this->url, '/chat/completions') || str_contains($this->url, '/embeddings')) {
+        if (str_contains($this->url, '/chat/completions') || str_contains($this->url, '/embeddings') || str_contains($this->url, '/images/generations')) {
             return $this->url;
         }
 
