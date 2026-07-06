@@ -69,6 +69,7 @@ class Text
             finishReason: FinishReasonMap::map($prediction->status),
             toolCalls: [],
             toolResults: [],
+            providerToolCalls: [],
             usage: new Usage(
                 promptTokens: 0, // Replicate doesn't provide token counts
                 completionTokens: 0,
