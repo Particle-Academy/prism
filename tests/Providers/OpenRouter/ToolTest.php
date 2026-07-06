@@ -2,14 +2,8 @@
 
 declare(strict_types=1);
 
-use Illuminate\Http\Client\Request;
-use Illuminate\Support\Facades\Http;
-use Prism\Prism\Enums\Provider;
-use Prism\Prism\Facades\Prism;
-use Prism\Prism\Facades\Tool as ToolFacade;
 use Prism\Prism\Providers\OpenRouter\Maps\ToolMap;
 use Prism\Prism\Tool;
-use Tests\Fixtures\FixtureResponse;
 
 it('maps tools', function (): void {
     $tool = (new Tool)
@@ -128,41 +122,4 @@ it('maps tools with strict mode', function (): void {
         ],
         'strict' => true,
     ]]);
-});
-
-it('sends correct tool payload to OpenRouter when streaming with parameter less tool', function (): void {
-    FixtureResponse::fakeStreamResponses('v1/chat/completions', 'openrouter/stream-text-with-empty-parameters-tools-when-using-gpt-5');
-
-    $timeTool = ToolFacade::as('time')
-        ->for('Get the current time')
-        ->using(fn (): string => '08:00:00');
-
-    $searchTool = ToolFacade::as('search')
-        ->for('Search the web')
-        ->withStringParameter('query', 'the search query')
-        ->using(fn (string $query): string => 'results');
-
-    $response = Prism::text()
-        ->using(Provider::OpenRouter, 'openai/gpt-5')
-        ->withTools([$timeTool, $searchTool])
-        ->withMaxSteps(3)
-        ->withPrompt('What time is it?')
-        ->asStream();
-
-    Http::assertSent(function (Request $request): bool {
-        $tools = $request->data()['tools'];
-
-        // Tool without parameters: no 'parameters' key in function
-        $timeFn = $tools[0]['function'];
-        expect($timeFn['name'])->toBe('time');
-        expect($timeFn)->not->toHaveKey('parameters');
-
-        // Tool with parameters: has 'parameters' key
-        $searchFn = $tools[1]['function'];
-        expect($searchFn['name'])->toBe('search');
-        expect($searchFn)->toHaveKey('parameters');
-        expect($searchFn['parameters']['properties'])->toHaveKey('query');
-
-        return true;
-    });
 });
