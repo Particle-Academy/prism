@@ -147,7 +147,7 @@ class Text
     protected function mapToolCalls(array $toolCalls): array
     {
         return array_map(function (array $toolCall): ToolCall {
-            $name      = data_get($toolCall, 'function.name', '');
+            $name = data_get($toolCall, 'function.name', '');
             $arguments = data_get($toolCall, 'function.arguments', '{}');
 
             // Some Llama models (e.g. llama-3.3-70b-versatile on Groq) embed
@@ -158,7 +158,7 @@ class Text
             if (is_string($name) && str_contains($name, ',{')) {
                 [$extractedName, $inlineArgs] = explode(',', $name, 2);
                 if (json_decode($inlineArgs) !== null) {
-                    $name      = $extractedName;
+                    $name = $extractedName;
                     $arguments = $inlineArgs;
                 }
             }

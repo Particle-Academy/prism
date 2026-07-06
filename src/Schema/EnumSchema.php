@@ -34,9 +34,6 @@ readonly class EnumSchema implements Schema
         ];
     }
 
-    /**
-     * @return array
-     */
     protected function options(): array
     {
         $options = $this->options;
