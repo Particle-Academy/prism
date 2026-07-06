@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Tests\Providers\Replicate;
 
+use Prism\Prism\Exceptions\PrismException;
 use Prism\Prism\Facades\Prism;
 use Prism\Prism\Streaming\Events\StreamEndEvent;
 use Prism\Prism\Streaming\Events\StreamStartEvent;
@@ -133,6 +134,6 @@ describe('Real-time SSE Streaming for Replicate', function (): void {
             foreach ($response as $event) {
                 // Should throw before we get here
             }
-        })->toThrow(\Prism\Prism\Exceptions\PrismException::class);
+        })->toThrow(PrismException::class);
     })->group('integration', 'sse', 'slow');
 })->group('integration');

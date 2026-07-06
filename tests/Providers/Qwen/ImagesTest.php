@@ -131,7 +131,7 @@ it('sends request to correct dashscope native api endpoint', function (): void {
 
     Http::assertSent(
         // Verify it uses the DashScope native API, not the OpenAI-compatible endpoint
-        fn(Request $request): bool => str_contains($request->url(), '/api/v1/services/aigc/multimodal-generation/generation')
+        fn (Request $request): bool => str_contains($request->url(), '/api/v1/services/aigc/multimodal-generation/generation')
         && ! str_contains($request->url(), '/compatible-mode/'));
 });
 

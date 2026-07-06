@@ -6,6 +6,7 @@ namespace Prism\Prism\Providers\Azure\Handlers;
 
 use Illuminate\Http\Client\PendingRequest;
 use Illuminate\Http\Client\RequestException;
+use Illuminate\Http\Client\Response;
 use Illuminate\Support\Arr;
 use Prism\Prism\Exceptions\PrismException;
 use Prism\Prism\Providers\Azure\Azure;
@@ -55,7 +56,7 @@ class Structured
         $tokenParameter = $this->tokenParameter($request->model());
 
         try {
-            /** @var \Illuminate\Http\Client\Response $response */
+            /** @var Response $response */
             $response = $this->client
                 ->throw()
                 ->post(
@@ -131,6 +132,7 @@ class Structured
             json_encode($request->schema()->toArray(), JSON_PRETTY_PRINT)
         )));
     }
+
     protected function tokenParameter(string $model): string
     {
         return str_contains(mb_strtolower($model), 'gpt-5')

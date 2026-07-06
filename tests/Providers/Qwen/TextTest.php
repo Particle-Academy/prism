@@ -224,7 +224,7 @@ it('routes to text-generation endpoint when no images present', function (): voi
         ->withPrompt('Hello')
         ->generate();
 
-    Http::assertSent(fn(Request $request): bool => str_contains($request->url(), 'text-generation/generation')
+    Http::assertSent(fn (Request $request): bool => str_contains($request->url(), 'text-generation/generation')
         && ! str_contains($request->url(), 'multimodal-generation'));
 });
 

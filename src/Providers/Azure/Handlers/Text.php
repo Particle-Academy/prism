@@ -6,6 +6,7 @@ namespace Prism\Prism\Providers\Azure\Handlers;
 
 use Illuminate\Http\Client\PendingRequest;
 use Illuminate\Http\Client\RequestException;
+use Illuminate\Http\Client\Response;
 use Illuminate\Support\Arr;
 use Prism\Prism\Concerns\CallsTools;
 use Prism\Prism\Enums\FinishReason;
@@ -109,7 +110,7 @@ class Text
         $tokenParameter = $this->tokenParameter($request->model());
 
         try {
-            /** @var \Illuminate\Http\Client\Response $response */
+            /** @var Response $response */
             $response = $this->client
                 ->throw()
                 ->post(
@@ -163,6 +164,7 @@ class Text
             additionalContent: [],
         ));
     }
+
     protected function tokenParameter(string $model): string
     {
         return str_contains(mb_strtolower($model), 'gpt-5')

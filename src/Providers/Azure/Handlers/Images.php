@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Prism\Prism\Providers\Azure\Handlers;
 
 use Illuminate\Http\Client\PendingRequest;
+use Prism\Prism\Exceptions\PrismException;
 use Prism\Prism\Images\Request;
 use Prism\Prism\Images\Response;
 use Prism\Prism\Images\ResponseBuilder;
@@ -31,7 +32,7 @@ class Images
         $data = $response->json();
 
         if (! $data || data_get($data, 'error')) {
-            throw \Prism\Prism\Exceptions\PrismException::providerResponseError(vsprintf(
+            throw PrismException::providerResponseError(vsprintf(
                 'Azure Image Error: [%s] %s',
                 [
                     data_get($data, 'error.code', 'unknown'),
