@@ -196,6 +196,7 @@ class Structured
             ], Arr::whereNotNull([
                 'temperature' => $request->temperature(),
                 'top_p' => $request->topP(),
+                'reasoning_effort' => $request->providerOptions('reasoning_effort'),
                 'tools' => $useTools ? ToolMap::map($request->tools()) : null,
                 'tool_choice' => $useTools ? ToolChoiceMap::map($request->toolChoice()) : null,
                 'response_format' => $useTools ? null : [
