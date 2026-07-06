@@ -76,7 +76,7 @@ class Text
             'model' => $request->model(),
             'system' => MessageMap::mapSystemMessages($request->systemPrompts()) ?: null,
             'messages' => MessageMap::map($request->messages(), $request->providerOptions()),
-'thinking' => static::resolveThinking($request),
+            'thinking' => static::resolveThinking($request),
             'max_tokens' => $request->maxTokens() ?? 64000,
             'temperature' => $request->temperature(),
             'top_p' => $request->topP(),
@@ -89,6 +89,7 @@ class Text
                 : null,
         ]);
     }
+
     /**
      * Anthropic returns stop_reason="pause_turn" when a long-running server-side
      * tool (e.g. web_search, web_fetch) needs the client to continue the turn.

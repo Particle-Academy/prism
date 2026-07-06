@@ -58,7 +58,7 @@ class Fim
                 'max_tokens' => $request->maxTokens(),
                 'temperature' => $request->temperature(),
                 'top_p' => $request->topP(),
-                'stop' => empty($request->stop()) ? null : $request->stop(),
+                'stop' => $request->stop() === [] ? null : $request->stop(),
             ]))
         );
 
