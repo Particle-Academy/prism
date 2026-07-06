@@ -47,8 +47,8 @@ class Structured
 
         return match ($this->mapFinishReason($data)) {
             FinishReason::ToolCalls => $this->handleToolCalls($data, $request),
-            FinishReason::Stop, FinishReason::Length => $this->handleStop($data, $request),
-            default => throw new PrismException('Requesty: unknown finish reason'),
+            // Unknown finish reasons resolve gracefully (prism-php/prism#996).
+            default => $this->handleStop($data, $request),
         };
     }
 
