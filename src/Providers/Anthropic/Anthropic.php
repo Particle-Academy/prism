@@ -67,7 +67,8 @@ class Anthropic extends Provider
         $handler = new Text(
             $this->client(
                 $request->clientOptions(),
-                $request->clientRetry()
+                $request->clientRetry(),
+                betaFeatures: $this->requestBetaFeatures($request)
             ),
             $request
         );
@@ -81,7 +82,8 @@ class Anthropic extends Provider
         $handler = new Structured(
             $this->client(
                 $request->clientOptions(),
-                $request->clientRetry()
+                $request->clientRetry(),
+                betaFeatures: $this->requestBetaFeatures($request)
             ),
             $request
         );
@@ -97,7 +99,8 @@ class Anthropic extends Provider
     {
         $handler = new Stream($this->client(
             $request->clientOptions(),
-            $request->clientRetry()
+            $request->clientRetry(),
+            betaFeatures: $this->requestBetaFeatures($request)
         ));
 
         return $handler->handle($request);
@@ -198,16 +201,35 @@ class Anthropic extends Provider
      * @param  array<string, mixed>  $options
      * @param  array<mixed>  $retry
      */
-    protected function client(array $options = [], array $retry = [], ?string $baseUrl = null): PendingRequest
+    protected function client(array $options = [], array $retry = [], ?string $baseUrl = null, ?string $betaFeatures = null): PendingRequest
     {
         return $this->baseClient()
             ->withHeaders(array_filter([
                 'x-api-key' => $this->apiKey,
                 'anthropic-version' => $this->apiVersion,
-                'anthropic-beta' => $this->betaFeatures,
+                'anthropic-beta' => $betaFeatures ?? $this->betaFeatures,
             ]))
             ->withOptions($options)
             ->when($retry !== [], fn ($client) => $client->retry(...$retry))
             ->baseUrl($baseUrl ?? $this->url);
+    }
+
+    /**
+     * Merge config-level beta features with per-request ones supplied via
+     * withProviderOptions(['anthropic_beta' => 'skills-2025-10-02']) — a
+     * comma-separated string or an array of feature flags.
+     */
+    protected function requestBetaFeatures(TextRequest|StructuredRequest $request): ?string
+    {
+        $requested = $request->providerOptions('anthropic_beta');
+
+        $merged = collect([$this->betaFeatures])
+            ->merge(is_array($requested) ? $requested : [$requested])
+            ->flatMap(fn (mixed $value): array => is_string($value) ? array_map(trim(...), explode(',', $value)) : [])
+            ->filter()
+            ->unique()
+            ->implode(',');
+
+        return $merged === '' ? null : $merged;
     }
 }

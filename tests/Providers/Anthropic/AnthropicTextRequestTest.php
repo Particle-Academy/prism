@@ -457,3 +457,39 @@ it('sends correct mcp_servers', function (): void {
         return true;
     });
 });
+
+it('merges per-request anthropic_beta features with the configured ones', function (): void {
+    config()->set('prism.providers.anthropic.anthropic_beta', 'code-execution-2025-05-22');
+
+    FixtureResponse::fakeResponseSequence('v1/messages', 'anthropic/generate-text-with-a-prompt');
+
+    Prism::text()
+        ->using(Provider::Anthropic, 'claude-3-5-haiku-latest')
+        ->withPrompt('Test')
+        ->withProviderOptions(['anthropic_beta' => ['skills-2025-10-02', 'code-execution-2025-05-22']])
+        ->asText();
+
+    Http::assertSent(function (Request $request): bool {
+        expect($request->header('anthropic-beta')[0])
+            ->toBe('code-execution-2025-05-22,skills-2025-10-02');
+
+        return true;
+    });
+});
+
+it('sends only configured beta features when the request adds none', function (): void {
+    config()->set('prism.providers.anthropic.anthropic_beta', 'code-execution-2025-05-22');
+
+    FixtureResponse::fakeResponseSequence('v1/messages', 'anthropic/generate-text-with-a-prompt');
+
+    Prism::text()
+        ->using(Provider::Anthropic, 'claude-3-5-haiku-latest')
+        ->withPrompt('Test')
+        ->asText();
+
+    Http::assertSent(function (Request $request): bool {
+        expect($request->header('anthropic-beta')[0])->toBe('code-execution-2025-05-22');
+
+        return true;
+    });
+});
