@@ -62,6 +62,10 @@ return [
                 'x_title' => env('OPENROUTER_SITE_X_TITLE', null),
             ],
         ],
+        'qwen' => [
+            'api_key' => env('QWEN_API_KEY', ''),
+            'url' => env('QWEN_URL', 'https://dashscope-intl.aliyuncs.com/api/v1'),
+        ],
         'azure' => [
             'url' => env('AZURE_AI_URL', ''),
             'api_key' => env('AZURE_AI_API_KEY', ''),

@@ -20,6 +20,7 @@ use Prism\Prism\Providers\OpenAI\OpenAI;
 use Prism\Prism\Providers\OpenRouter\OpenRouter;
 use Prism\Prism\Providers\Perplexity\Perplexity;
 use Prism\Prism\Providers\Provider;
+use Prism\Prism\Providers\Qwen\Qwen;
 use Prism\Prism\Providers\Requesty\Requesty;
 use Prism\Prism\Providers\Vertex\Vertex;
 use Prism\Prism\Providers\VoyageAI\VoyageAI;
@@ -256,6 +257,17 @@ class PrismManager
         return new ElevenLabs(
             apiKey: $config['api_key'] ?? '',
             url: $config['url'] ?? 'https://api.elevenlabs.io/v1/',
+        );
+    }
+
+    /**
+     * @param  array<string, string>  $config
+     */
+    protected function createQwenProvider(array $config): Qwen
+    {
+        return new Qwen(
+            apiKey: $config['api_key'] ?? '',
+            url: $config['url'] ?? 'https://dashscope-intl.aliyuncs.com/api/v1',
         );
     }
 

@@ -18,6 +18,7 @@ enum Provider: string
     case Gemini = 'gemini';
     case VoyageAI = 'voyageai';
     case ElevenLabs = 'elevenlabs';
+    case Qwen = 'qwen';
     case Azure = 'azure';
     case Perplexity = 'perplexity';
     case Vertex = 'vertex';
