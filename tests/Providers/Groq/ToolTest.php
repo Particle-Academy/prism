@@ -46,6 +46,23 @@ it('maps tools without parameters to an object properties field', function (): v
         ->and(json_encode($mapped[0]['function']['parameters']['properties']))->toBe('{}');
 });
 
+it('relaxes boolean and number parameter types to also accept strings', function (): void {
+    $tool = (new Tool)
+        ->as('get_transactions')
+        ->for('Fetches transactions')
+        ->withNumberParameter('limit', 'maximum number of results')
+        ->withBooleanParameter('include_pending', 'include pending transactions')
+        ->withStringParameter('account', 'the account name')
+        ->using(fn (): string => '[]');
+
+    $properties = ToolMap::map([$tool])[0]['function']['parameters']['properties'];
+
+    expect($properties['limit'])->not->toHaveKey('type')
+        ->and($properties['limit']['anyOf'])->toBe([['type' => 'number'], ['type' => 'string']])
+        ->and($properties['include_pending']['anyOf'])->toBe([['type' => 'boolean'], ['type' => 'string']])
+        ->and($properties['account']['type'])->toBe('string');
+});
+
 it('maps tools with strict mode', function (): void {
     $tool = (new Tool)
         ->as('search')
