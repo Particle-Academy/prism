@@ -119,6 +119,7 @@ class Images
     protected function downloadImageAsBase64(string $url): ?string
     {
         try {
+            /** @var \Illuminate\Http\Client\Response $response */
             $response = Http::get($url);
 
             if ($response->successful()) {

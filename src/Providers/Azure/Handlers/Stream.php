@@ -7,6 +7,7 @@ namespace Prism\Prism\Providers\Azure\Handlers;
 use Generator;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\PendingRequest;
+use Illuminate\Http\Client\RequestException;
 use Illuminate\Http\Client\Response;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Str;
@@ -616,7 +617,11 @@ class Stream
             );
 
         if ($response->failed()) {
-            $this->provider->handleRequestException($request->model(), $response->toException());
+            $exception = $response->toException();
+
+            if ($exception instanceof RequestException) {
+                $this->provider->handleRequestException($request->model(), $exception);
+            }
         }
 
         return $response;
@@ -635,7 +640,11 @@ class Stream
             );
 
         if ($response->failed()) {
-            $this->provider->handleRequestException($request->model(), $response->toException());
+            $exception = $response->toException();
+
+            if ($exception instanceof RequestException) {
+                $this->provider->handleRequestException($request->model(), $exception);
+            }
         }
 
         return $response;
@@ -852,6 +861,7 @@ class Stream
 
         return $buffer;
     }
+
     protected function tokenParameter(string $model): string
     {
         return str_contains(mb_strtolower($model), 'gpt-5')

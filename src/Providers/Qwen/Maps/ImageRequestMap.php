@@ -69,8 +69,10 @@ class ImageRequestMap
      */
     protected static function resolveImageSource(Image $image): string
     {
-        if ($image->isUrl()) {
-            return $image->url();
+        $url = $image->url();
+
+        if ($image->isUrl() && $url !== null) {
+            return $url;
         }
 
         return sprintf('data:%s;base64,%s', $image->mimeType(), $image->base64());
