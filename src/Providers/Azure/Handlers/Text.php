@@ -163,7 +163,7 @@ class Text
             additionalContent: [],
         ));
     }
-    private function tokenParameter(string $model): string
+    protected function tokenParameter(string $model): string
     {
         return str_contains(mb_strtolower($model), 'gpt-5')
             ? 'max_completion_tokens'
