@@ -122,8 +122,9 @@ class MessageMap
                 ->groupBy(fn (ToolCall $toolCall): string => $toolCall->reasoningId ?? '');
 
             foreach ($grouped as $reasoningId => $toolCalls) {
-                if ($reasoningId !== '') {
-                    $first = $toolCalls->first();
+                $first = $toolCalls->first();
+
+                if ($reasoningId !== '' && $first instanceof ToolCall) {
                     $this->mappedMessages[] = [
                         'type' => 'reasoning',
                         'id' => $first->reasoningId,
