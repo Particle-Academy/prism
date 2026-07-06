@@ -263,7 +263,7 @@ it('supports AnyOfSchema with complex objects', function (): void {
 
         foreach ($anyOf as $nestedSchema) {
             expect($nestedSchema)->not->toHaveKey('name');
-            expect($nestedSchema)->not->toHaveKey('additionalProperties');
+            expect($nestedSchema['additionalProperties'])->toBeFalse();
             expect($nestedSchema)->toHaveKey('type');
             expect($nestedSchema['type'])->toBe('object');
             expect($nestedSchema)->toHaveKey('properties');

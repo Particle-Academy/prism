@@ -127,7 +127,11 @@ class Structured
                 'cachedContent' => $providerOptions['cachedContentName'] ?? null,
                 'generationConfig' => Arr::whereNotNull([
                     'response_mime_type' => 'application/json',
-                    'response_json_schema' => (new SchemaMap($request->schema()))->toArray(),
+                    // response_json_schema takes standard JSON Schema, which the
+                    // Prism schema objects already emit natively (type arrays for
+                    // nullability, null in nullable enums) — no OpenAPI-style
+                    // SchemaMap conversion, which would lose nullable semantics.
+                    'response_json_schema' => $request->schema()->toArray(),
                     'temperature' => $request->temperature(),
                     'topP' => $request->topP(),
                     'maxOutputTokens' => $request->maxTokens(),
