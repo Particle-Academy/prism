@@ -145,13 +145,21 @@ class Vertex extends Provider
         return $this->getAccessTokenFromApplicationDefaultCredentials();
     }
 
-    protected function getAccessTokenFromServiceAccount(): string
+    protected function getAccessTokenFromServiceAccount(?string $path = null): string
     {
-        if (! file_exists($this->credentialsPath)) {
-            throw new PrismException("Vertex AI credentials file not found: {$this->credentialsPath}");
+        $path ??= $this->credentialsPath;
+
+        if ($path === null || ! file_exists($path)) {
+            throw new PrismException('Vertex AI credentials file not found: '.($path ?? '(none)'));
         }
 
-        $credentials = json_decode(file_get_contents($this->credentialsPath), true);
+        $contents = file_get_contents($path);
+
+        if ($contents === false) {
+            throw new PrismException("Vertex AI credentials file could not be read: {$path}");
+        }
+
+        $credentials = json_decode($contents, true);
 
         if (! isset($credentials['client_email'], $credentials['private_key'])) {
             throw new PrismException('Invalid Vertex AI service account credentials file');
@@ -179,8 +187,8 @@ class Vertex extends Provider
             'exp' => $now + 3600,
         ];
 
-        $headerEncoded = $this->base64UrlEncode(json_encode($header));
-        $payloadEncoded = $this->base64UrlEncode(json_encode($payload));
+        $headerEncoded = $this->base64UrlEncode(json_encode($header, JSON_THROW_ON_ERROR));
+        $payloadEncoded = $this->base64UrlEncode(json_encode($payload, JSON_THROW_ON_ERROR));
 
         $signatureInput = $headerEncoded.'.'.$payloadEncoded;
 
@@ -207,14 +215,13 @@ class Vertex extends Provider
         $adcPath = getenv('GOOGLE_APPLICATION_CREDENTIALS');
 
         if ($adcPath !== false && $adcPath !== '' && file_exists($adcPath)) {
-            $this->credentialsPath !== null ?: $adcPath;
-
-            return $this->getAccessTokenFromServiceAccount();
+            return $this->getAccessTokenFromServiceAccount($adcPath);
         }
 
         $defaultPath = $this->getDefaultAdcPath();
         if (file_exists($defaultPath)) {
-            $credentials = json_decode(file_get_contents($defaultPath), true);
+            $contents = file_get_contents($defaultPath);
+            $credentials = $contents === false ? null : json_decode($contents, true);
 
             if (isset($credentials['type']) && $credentials['type'] === 'authorized_user') {
                 return $this->refreshAccessToken($credentials);
