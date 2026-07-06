@@ -9,6 +9,7 @@ use Illuminate\Http\Client\Response;
 use Prism\Prism\Concerns\CallsTools;
 use Prism\Prism\Enums\FinishReason;
 use Prism\Prism\Providers\OpenRouter\Concerns\BuildsRequestOptions;
+use Prism\Prism\Providers\OpenRouter\Concerns\ExtractsReasoning;
 use Prism\Prism\Providers\OpenRouter\Concerns\MapsFinishReason;
 use Prism\Prism\Providers\OpenRouter\Concerns\ValidatesResponses;
 use Prism\Prism\Providers\OpenRouter\Maps\MessageMap;
@@ -27,6 +28,7 @@ class Text
 {
     use BuildsRequestOptions;
     use CallsTools;
+    use ExtractsReasoning;
     use MapsFinishReason;
     use ValidatesResponses;
 
@@ -63,7 +65,7 @@ class Text
         $request = $request->addMessage(new AssistantMessage(
             data_get($data, 'choices.0.message.content') ?? '',
             $toolCalls,
-            []
+            $this->extractReasoning($data),
         ));
         $request = $request->addMessage(new ToolResultMessage($toolResults));
         $request->resetToolChoice();
@@ -121,13 +123,11 @@ class Text
             toolResults: $toolResults,
             providerToolCalls: [],
             usage: new Usage(
-                (int) data_get($data, 'usage.prompt_tokens', 0),
-                (int) data_get($data, 'usage.completion_tokens', 0),
-                // OpenRouter: usage.prompt_tokens_details.cache_write_tokens / cached_tokens
-                (int) data_get($data, 'usage.prompt_tokens_details.cache_write_tokens', 0) ?: null,
-                (int) data_get($data, 'usage.prompt_tokens_details.cached_tokens', 0) ?: null,
-                // OpenRouter: usage.completion_tokens_details.reasoning_tokens
-                (int) data_get($data, 'usage.completion_tokens_details.reasoning_tokens', 0) ?: null,
+                promptTokens: (int) data_get($data, 'usage.prompt_tokens', 0),
+                completionTokens: (int) data_get($data, 'usage.completion_tokens', 0),
+                cacheWriteInputTokens: (int) data_get($data, 'usage.prompt_tokens_details.cache_write_tokens', 0) ?: null,
+                cacheReadInputTokens: (int) data_get($data, 'usage.prompt_tokens_details.cached_tokens', 0) ?: null,
+                thoughtTokens: $this->extractThoughtTokens($data),
             ),
             meta: new Meta(
                 id: data_get($data, 'id', ''),
@@ -135,7 +135,7 @@ class Text
             ),
             messages: $request->messages(),
             systemPrompts: $request->systemPrompts(),
-            additionalContent: [],
+            additionalContent: $this->extractReasoning($data),
             raw: $data,
         ));
     }
