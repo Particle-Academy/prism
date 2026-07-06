@@ -66,17 +66,21 @@ it('throws when request count exceeds limit', function (): void {
 it('throws when payload size exceeds limit', function (): void {
     Http::fake()->preventStrayRequests();
 
+    // Shrink the limit via config so the guard is exercised without
+    // materializing multi-hundred-megabyte payloads in the test worker.
+    config()->set('prism.anthropic.batch.max_payload_bytes', 1024);
+
     $items = [];
     for ($i = 0; $i < 10; $i++) {
         $items[] = new BatchRequestItem(
             customId: "req-{$i}",
-            request: createTextRequest(str_repeat('A', Create::MAX_PAYLOAD_BYTES)),
+            request: createTextRequest(str_repeat('A', 256)),
         );
     }
 
     $provider = Prism::provider('anthropic');
     $provider->batch(new BatchRequest(items: $items));
-})->throws(PrismException::class, 'Anthropic request payload size exceeded the maximum of 268,435,456 bytes.');
+})->throws(PrismException::class, 'Anthropic request payload size exceeded the maximum of 1,024 bytes.');
 
 it('throws when provider returns an error in response body', function (): void {
     Http::fake([

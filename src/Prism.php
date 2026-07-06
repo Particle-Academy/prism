@@ -57,6 +57,8 @@ class Prism
     public function batch(): PendingBatchRequest
     {
         return new PendingBatchRequest;
+    }
+
     public function fim(): PendingFimRequest
     {
         return new PendingFimRequest;

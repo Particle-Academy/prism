@@ -63,9 +63,10 @@ class Create
 
         $payload = ['requests' => $requests];
 
+        $maxPayloadBytes = $this->maxPayloadBytes();
         $payloadSize = strlen((string) json_encode($payload));
-        if ($payloadSize > self::MAX_PAYLOAD_BYTES) {
-            throw PrismBatchPayloadSizeExceededException::make('Anthropic', self::MAX_PAYLOAD_BYTES);
+        if ($payloadSize > $maxPayloadBytes) {
+            throw PrismBatchPayloadSizeExceededException::make('Anthropic', $maxPayloadBytes);
         }
 
         $response = $this->client->post('messages/batches', $payload);
@@ -73,5 +74,14 @@ class Create
         $this->handleResponseErrors($data);
 
         return self::mapBatchJob($data);
+    }
+
+    /**
+     * Overridable via config so the guard can be tested without materializing
+     * multi-hundred-megabyte payloads.
+     */
+    protected function maxPayloadBytes(): int
+    {
+        return (int) config('prism.anthropic.batch.max_payload_bytes', self::MAX_PAYLOAD_BYTES);
     }
 }
