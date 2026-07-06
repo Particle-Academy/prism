@@ -134,6 +134,7 @@ class Structured
                     'response_json_schema' => $request->schema()->toArray(),
                     'temperature' => $request->temperature(),
                     'topP' => $request->topP(),
+                    'topK' => $request->topK(),
                     'maxOutputTokens' => $request->maxTokens(),
                     'thinkingConfig' => $thinkingConfig,
                 ]),
