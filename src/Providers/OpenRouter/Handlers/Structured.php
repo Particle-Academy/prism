@@ -160,6 +160,7 @@ class Structured
                 cacheWriteInputTokens: (int) data_get($data, 'usage.prompt_tokens_details.cache_write_tokens', 0) ?: null,
                 cacheReadInputTokens: (int) data_get($data, 'usage.prompt_tokens_details.cached_tokens', 0) ?: null,
                 thoughtTokens: $this->extractThoughtTokens($data),
+                cost: ($cost = data_get($data, 'usage.cost')) !== null ? (float) $cost : null,
             ),
             meta: new Meta(
                 id: data_get($data, 'id', ''),

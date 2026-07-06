@@ -540,6 +540,7 @@ class Stream
             cacheWriteInputTokens: (int) data_get($usage, 'prompt_tokens_details.cache_write_tokens', 0) ?: null,
             cacheReadInputTokens: (int) data_get($usage, 'prompt_tokens_details.cached_tokens', 0) ?: null,
             thoughtTokens: (int) data_get($usage, 'completion_tokens_details.reasoning_tokens', 0) ?: null,
+            cost: ($cost = data_get($usage, 'cost')) !== null ? (float) $cost : null,
         );
     }
 }
