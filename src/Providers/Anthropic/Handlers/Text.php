@@ -260,10 +260,15 @@ class Text
     }
 
     /**
+     * @param  TextRequest  $request
      * @return array<string, mixed>|null
      */
     protected static function resolveThinking(PrismRequest $request): ?array
     {
+        if ($request->reasoningEnabled() === false) {
+            return null;
+        }
+
         if ($request->providerOptions('thinking.type') === 'adaptive') {
             return ['type' => 'adaptive'];
         }
