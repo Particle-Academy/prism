@@ -20,6 +20,7 @@ use Prism\Prism\Providers\OpenAI\OpenAI;
 use Prism\Prism\Providers\OpenRouter\OpenRouter;
 use Prism\Prism\Providers\Perplexity\Perplexity;
 use Prism\Prism\Providers\Provider;
+use Prism\Prism\Providers\Replicate\Replicate;
 use Prism\Prism\Providers\Qwen\Qwen;
 use Prism\Prism\Providers\Requesty\Requesty;
 use Prism\Prism\Providers\Vertex\Vertex;
@@ -257,6 +258,21 @@ class PrismManager
         return new ElevenLabs(
             apiKey: $config['api_key'] ?? '',
             url: $config['url'] ?? 'https://api.elevenlabs.io/v1/',
+        );
+    }
+
+    /**
+     * @param  array<string, mixed>  $config
+     */
+    protected function createReplicateProvider(array $config): Replicate
+    {
+        return new Replicate(
+            apiKey: $config['api_key'] ?? '',
+            url: $config['url'] ?? 'https://api.replicate.com/v1',
+            webhookUrl: $config['webhook_url'] ?? null,
+            useSyncMode: $config['use_sync_mode'] ?? true,
+            pollingInterval: $config['polling_interval'] ?? 1000,
+            maxWaitTime: $config['max_wait_time'] ?? 60,
         );
     }
 

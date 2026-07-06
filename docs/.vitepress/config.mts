@@ -220,6 +220,8 @@ export default defineConfig({
                 link: "/providers/openrouter",
               },
               {
+                text: "Replicate",
+                link: "/providers/replicate",
                 text: "Qwen",
                 link: "/providers/qwen",
                 text: "Requesty",
