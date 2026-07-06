@@ -62,6 +62,12 @@ return [
                 'x_title' => env('OPENROUTER_SITE_X_TITLE', null),
             ],
         ],
+        'azure' => [
+            'url' => env('AZURE_AI_URL', ''),
+            'api_key' => env('AZURE_AI_API_KEY', ''),
+            'api_version' => env('AZURE_AI_API_VERSION', '2024-10-21'),
+            'deployment_name' => env('AZURE_AI_DEPLOYMENT', ''),
+        ],
         'requesty' => [
             'api_key' => env('REQUESTY_API_KEY', ''),
             'url' => env('REQUESTY_URL', 'https://router.requesty.ai/v1'),
