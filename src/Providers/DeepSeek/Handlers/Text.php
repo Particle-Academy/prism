@@ -61,10 +61,13 @@ class Text
 
         $this->addStep($data, $request, $toolResults);
 
+        $reasoningContent = data_get($data, 'choices.0.message.reasoning_content');
+        $additionalContent = $reasoningContent ? ['reasoning_content' => $reasoningContent] : [];
+
         $request = $request->addMessage(new AssistantMessage(
             data_get($data, 'choices.0.message.content') ?? '',
             $toolCalls,
-            []
+            $additionalContent
         ));
         $request = $request->addMessage(new ToolResultMessage($toolResults));
         $request->resetToolChoice();
@@ -123,6 +126,7 @@ class Text
         $totalPrompt = (int) (data_get($data, 'usage.prompt_tokens') ?? 0);
         $cacheHit = (int) (data_get($data, 'usage.prompt_cache_hit_tokens') ?? 0);
         $reasoning = (int) (data_get($data, 'usage.completion_tokens_details.reasoning_tokens') ?? 0);
+        $reasoningContent = data_get($data, 'choices.0.message.reasoning_content');
 
         $this->responseBuilder->addStep(new Step(
             text: data_get($data, 'choices.0.message.content') ?? '',
@@ -142,7 +146,7 @@ class Text
             ),
             messages: $request->messages(),
             systemPrompts: $request->systemPrompts(),
-            additionalContent: [],
+            additionalContent: $reasoningContent ? ['reasoning_content' => $reasoningContent] : [],
             raw: $data,
         ));
     }
