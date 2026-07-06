@@ -91,7 +91,7 @@ class Structured
             'model' => $request->model(),
             'messages' => MessageMap::map($request->messages(), $request->providerOptions()),
             'system' => MessageMap::mapSystemMessages($request->systemPrompts()) ?: null,
-            'thinking' => static::resolveThinking($request),
+'thinking' => static::resolveThinking($request),
             'max_tokens' => $request->maxTokens() ?? 64000,
             'temperature' => $request->temperature(),
             'top_p' => $request->topP(),

@@ -76,7 +76,7 @@ class Text
             'model' => $request->model(),
             'system' => MessageMap::mapSystemMessages($request->systemPrompts()) ?: null,
             'messages' => MessageMap::map($request->messages(), $request->providerOptions()),
-            'thinking' => static::resolveThinking($request),
+'thinking' => static::resolveThinking($request),
             'max_tokens' => $request->maxTokens() ?? 64000,
             'temperature' => $request->temperature(),
             'top_p' => $request->topP(),

@@ -115,6 +115,10 @@ class Structured
             ]);
         }
 
+        if ($request->reasoningEnabled() === false && $thinkingConfig === null) {
+            $thinkingConfig = ['thinkingBudget' => 0];
+        }
+
         $toolConfig = ToolConfigMap::map($request->toolChoice(), $hasBothToolTypes);
 
         /** @var Response $response */
