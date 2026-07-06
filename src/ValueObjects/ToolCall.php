@@ -77,6 +77,7 @@ class ToolCall implements Arrayable
             'reasoning_summary' => $this->reasoningSummary,
         ];
     }
+
     /**
      * Escape raw control characters (0x00–0x1F) that appear inside JSON string
      * literals with their JSON escape sequences, and drop the ones that appear

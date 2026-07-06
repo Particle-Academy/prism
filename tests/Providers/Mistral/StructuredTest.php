@@ -2,10 +2,10 @@
 
 declare(strict_types=1);
 
-use Prism\Prism\Enums\Provider;
-use Prism\Prism\Facades\Prism;
 use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Http;
+use Prism\Prism\Enums\Provider;
+use Prism\Prism\Facades\Prism;
 use Prism\Prism\Schema\BooleanSchema;
 use Prism\Prism\Schema\ObjectSchema;
 use Prism\Prism\Schema\StringSchema;
@@ -82,4 +82,3 @@ it('forwards reasoning_effort provider option for structured requests', function
             && $payload['reasoning_effort'] === 'high';
     });
 });
-
