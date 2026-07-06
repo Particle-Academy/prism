@@ -27,6 +27,13 @@ class SchemaMap
         // Remove unsupported fields
         unset($schemaArray['additionalProperties'], $schemaArray['name']);
 
+        // Gemini's OpenAPI-flavoured schema expresses nullability via the
+        // `nullable` flag; a JSON Schema style null entry in the enum list is
+        // not a valid Gemini enum value.
+        if (isset($schemaArray['enum']) && is_array($schemaArray['enum'])) {
+            $schemaArray['enum'] = array_values(array_filter($schemaArray['enum'], fn ($option): bool => $option !== null));
+        }
+
         if ($this->schema instanceof RawSchema) {
             return $schemaArray;
         }
