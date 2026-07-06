@@ -2,9 +2,9 @@
 
 declare(strict_types=1);
 
-namespace Tests\Providers\XAI;
+namespace Tests\Providers\Z;
 
-use Prism\Prism\Providers\XAI\Maps\ToolMap;
+use Prism\Prism\Providers\Z\Maps\ToolMap;
 use Prism\Prism\Tool;
 use stdClass;
 

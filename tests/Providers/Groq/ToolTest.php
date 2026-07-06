@@ -6,6 +6,7 @@ namespace Tests\Providers\Groq;
 
 use Prism\Prism\Providers\Groq\Maps\ToolMap;
 use Prism\Prism\Tool;
+use stdClass;
 
 it('maps tools', function (): void {
     $tool = (new Tool)
@@ -31,6 +32,18 @@ it('maps tools', function (): void {
             ],
         ],
     ]]);
+});
+
+it('maps tools without parameters to an object properties field', function (): void {
+    $tool = (new Tool)
+        ->as('ping')
+        ->for('Pings the service')
+        ->using(fn (): string => 'pong');
+
+    $mapped = ToolMap::map([$tool]);
+
+    expect($mapped[0]['function']['parameters']['properties'])->toBeInstanceOf(stdClass::class)
+        ->and(json_encode($mapped[0]['function']['parameters']['properties']))->toBe('{}');
 });
 
 it('maps tools with strict mode', function (): void {
