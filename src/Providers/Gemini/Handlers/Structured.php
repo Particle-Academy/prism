@@ -18,7 +18,7 @@ use Prism\Prism\Providers\Gemini\Maps\FinishReasonMap;
 use Prism\Prism\Providers\Gemini\Maps\MessageMap;
 use Prism\Prism\Providers\Gemini\Maps\SchemaMap;
 use Prism\Prism\Providers\Gemini\Maps\ToolCallMap;
-use Prism\Prism\Providers\Gemini\Maps\ToolChoiceMap;
+use Prism\Prism\Providers\Gemini\Maps\ToolConfigMap;
 use Prism\Prism\Providers\Gemini\Maps\ToolMap;
 use Prism\Prism\Structured\Request;
 use Prism\Prism\Structured\Response as StructuredResponse;
@@ -78,9 +78,7 @@ class Structured
     {
         $providerOptions = $request->providerOptions();
 
-        if ($request->tools() !== [] && $request->providerTools() !== []) {
-            throw new PrismException('Use of provider tools with custom tools is not currently supported by Gemini.');
-        }
+        $hasBothToolTypes = $request->tools() !== [] && $request->providerTools() !== [];
 
         $tools = [];
 
@@ -96,10 +94,8 @@ class Structured
         }
 
         if ($request->tools() !== []) {
-            $tools = [
-                [
-                    'function_declarations' => ToolMap::map($request->tools()),
-                ],
+            $tools[] = [
+                'function_declarations' => ToolMap::map($request->tools()),
             ];
         }
 
@@ -118,6 +114,8 @@ class Structured
                 'includeThoughts' => $providerOptions['includeThoughts'] ?? null,
             ]);
         }
+
+        $toolConfig = ToolConfigMap::map($request->toolChoice(), $hasBothToolTypes);
 
         /** @var Response $response */
         $response = $this->client->post(
@@ -139,7 +137,7 @@ class Structured
                     'thinkingConfig' => $thinkingConfig,
                 ]),
                 'tools' => $tools !== [] ? $tools : null,
-                'tool_config' => $request->toolChoice() ? ToolChoiceMap::map($request->toolChoice()) : null,
+                'tool_config' => $toolConfig,
                 'safetySettings' => $providerOptions['safetySettings'] ?? null,
                 'service_tier' => $providerOptions['serviceTier'] ?? null,
             ])
