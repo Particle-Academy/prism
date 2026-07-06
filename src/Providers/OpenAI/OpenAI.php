@@ -46,6 +46,9 @@ use Prism\Prism\Providers\OpenAI\Handlers\Batch\Create;
 use Prism\Prism\Providers\OpenAI\Handlers\Batch\ListBatches;
 use Prism\Prism\Providers\OpenAI\Handlers\Batch\Results;
 use Prism\Prism\Providers\OpenAI\Handlers\Batch\Retrieve;
+use Prism\Prism\Providers\OpenAI\Handlers\ChatCompletions\Stream as ChatCompletionsStream;
+use Prism\Prism\Providers\OpenAI\Handlers\ChatCompletions\Structured as ChatCompletionsStructured;
+use Prism\Prism\Providers\OpenAI\Handlers\ChatCompletions\Text as ChatCompletionsText;
 use Prism\Prism\Providers\OpenAI\Handlers\Embeddings;
 use Prism\Prism\Providers\OpenAI\Handlers\Files\Delete as FileDelete;
 use Prism\Prism\Providers\OpenAI\Handlers\Files\Download as FileDownload;
@@ -73,15 +76,15 @@ class OpenAI extends Provider
         public readonly string $url,
         public readonly ?string $organization,
         public readonly ?string $project,
+        public readonly string $apiFormat = 'responses',
     ) {}
 
     #[\Override]
     public function text(TextRequest $request): TextResponse
     {
-        $handler = new Text($this->client(
-            $request->clientOptions(),
-            $request->clientRetry()
-        ));
+        $handler = $this->apiFormat === 'chat_completions'
+            ? new ChatCompletionsText($this->client($request->clientOptions(), $request->clientRetry()))
+            : new Text($this->client($request->clientOptions(), $request->clientRetry()));
 
         return $handler->handle($request);
     }
@@ -89,10 +92,9 @@ class OpenAI extends Provider
     #[\Override]
     public function structured(StructuredRequest $request): StructuredResponse
     {
-        $handler = new Structured($this->client(
-            $request->clientOptions(),
-            $request->clientRetry()
-        ));
+        $handler = $this->apiFormat === 'chat_completions'
+            ? new ChatCompletionsStructured($this->client($request->clientOptions(), $request->clientRetry()))
+            : new Structured($this->client($request->clientOptions(), $request->clientRetry()));
 
         return $handler->handle($request);
     }
@@ -155,10 +157,9 @@ class OpenAI extends Provider
     #[\Override]
     public function stream(TextRequest $request): Generator
     {
-        $handler = new Stream($this->client(
-            $request->clientOptions(),
-            $request->clientRetry()
-        ));
+        $handler = $this->apiFormat === 'chat_completions'
+            ? new ChatCompletionsStream($this->client($request->clientOptions(), $request->clientRetry()))
+            : new Stream($this->client($request->clientOptions(), $request->clientRetry()));
 
         return $handler->handle($request);
     }
