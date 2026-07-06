@@ -367,3 +367,24 @@ describe('rate limits', function (): void {
         });
     });
 });
+
+it('splits arguments embedded in the function name by Llama models', function (): void {
+    FixtureResponse::fakeResponseSequence('v1/chat/completions', 'groq/generate-text-with-mangled-tool-name');
+
+    $response = Prism::text()
+        ->using(Provider::Groq, 'llama-3.3-70b-versatile')
+        ->withTools([
+            Tool::as('weather')
+                ->for('weather lookup')
+                ->withStringParameter('city', 'the city')
+                ->using(fn (string $city): string => 'The weather will be 75° and sunny'),
+        ])
+        ->withMaxSteps(2)
+        ->withPrompt('Weather in Detroit?')
+        ->asText();
+
+    $firstStep = $response->steps[0];
+    expect($firstStep->toolCalls[0]->name)->toBe('weather')
+        ->and($firstStep->toolCalls[0]->arguments())->toBe(['city' => 'Detroit'])
+        ->and($firstStep->toolResults[0]->result)->toBe('The weather will be 75° and sunny');
+});
