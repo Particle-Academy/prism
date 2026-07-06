@@ -470,3 +470,27 @@ it('sends topK in generationConfig for streaming', function (): void {
         return true;
     });
 });
+
+it('passes service_tier in the request body for streaming', function (): void {
+    FixtureResponse::fakeResponseSequence('*', 'gemini/stream-basic-text');
+
+    $response = Prism::text()
+        ->using(Provider::Gemini, 'gemini-2.5-flash')
+        ->withPrompt('Summarize this document.')
+        ->withProviderOptions(['serviceTier' => 'flex'])
+        ->asStream();
+
+    // Consume the stream
+    foreach ($response as $event) {
+        //
+    }
+
+    Http::assertSent(function (Request $request): true {
+        $data = $request->data();
+
+        expect($data)->toHaveKey('service_tier')
+            ->and($data['service_tier'])->toBe('flex');
+
+        return true;
+    });
+});
