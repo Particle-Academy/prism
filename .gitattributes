@@ -10,3 +10,5 @@
 /Taskfile.yml       export-ignore
 /testbench.yaml     export-ignore
 /whisky.json        export-ignore
+/dev                export-ignore
+/composer-require-checker.json export-ignore
