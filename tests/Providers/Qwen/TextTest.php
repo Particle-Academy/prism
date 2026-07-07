@@ -248,3 +248,34 @@ it('sends generation parameters correctly', function (): void {
             && $data['parameters']['result_format'] === 'message';
     });
 });
+
+it('excludes cached tokens from promptTokens', function (): void {
+    Http::fake([
+        '*' => Http::response([
+            'status_code' => 200,
+            'request_id' => 'cache-test-1',
+            'code' => '',
+            'message' => '',
+            'output' => [
+                'choices' => [[
+                    'message' => ['role' => 'assistant', 'content' => 'Hello!'],
+                    'finish_reason' => 'stop',
+                ]],
+            ],
+            'usage' => [
+                'input_tokens' => 100,
+                'output_tokens' => 10,
+                'total_tokens' => 110,
+                'prompt_tokens_details' => ['cached_tokens' => 60],
+            ],
+        ]),
+    ])->preventStrayRequests();
+
+    $response = Prism::text()
+        ->using(Provider::Qwen, 'qwen-plus')
+        ->withPrompt('Hello')
+        ->asText();
+
+    expect($response->usage->promptTokens)->toBe(40)
+        ->and($response->usage->cacheReadInputTokens)->toBe(60);
+});

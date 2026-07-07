@@ -127,8 +127,9 @@ class Structured
             text: $text,
             finishReason: FinishReasonMap::map(data_get($data, 'output.choices.0.finish_reason', '')),
             usage: new Usage(
-                data_get($data, 'usage.input_tokens'),
-                data_get($data, 'usage.output_tokens'),
+                promptTokens: max(0, (int) data_get($data, 'usage.input_tokens', 0) - (int) data_get($data, 'usage.prompt_tokens_details.cached_tokens', 0)),
+                completionTokens: (int) data_get($data, 'usage.output_tokens', 0),
+                cacheReadInputTokens: (int) data_get($data, 'usage.prompt_tokens_details.cached_tokens', 0) ?: null,
             ),
             meta: new Meta(
                 id: data_get($data, 'request_id'),

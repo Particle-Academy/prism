@@ -388,3 +388,30 @@ it('splits arguments embedded in the function name by Llama models', function ()
         ->and($firstStep->toolCalls[0]->arguments())->toBe(['city' => 'Detroit'])
         ->and($firstStep->toolResults[0]->result)->toBe('The weather will be 75° and sunny');
 });
+
+it('excludes cached tokens from promptTokens', function (): void {
+    Http::fake([
+        '*' => Http::response([
+            'id' => 'cache-test-1',
+            'model' => 'llama-3.3-70b-versatile',
+            'choices' => [[
+                'index' => 0,
+                'message' => ['role' => 'assistant', 'content' => 'Hello!'],
+                'finish_reason' => 'stop',
+            ]],
+            'usage' => [
+                'prompt_tokens' => 100,
+                'completion_tokens' => 10,
+                'prompt_tokens_details' => ['cached_tokens' => 60],
+            ],
+        ]),
+    ])->preventStrayRequests();
+
+    $response = Prism::text()
+        ->using(Provider::Groq, 'llama-3.3-70b-versatile')
+        ->withPrompt('Hello')
+        ->asText();
+
+    expect($response->usage->promptTokens)->toBe(40)
+        ->and($response->usage->cacheReadInputTokens)->toBe(60);
+});

@@ -329,3 +329,24 @@ it('throws PrismRateLimitedException for 429 in streaming', function (): void {
     collect($response);
 
 })->throws(PrismRateLimitedException::class);
+
+it('excludes cached tokens from streamed promptTokens', function (): void {
+    FixtureResponse::fakeStreamResponses('chat/completions', 'z/stream-cached-tokens');
+
+    $response = Prism::text()
+        ->using(Provider::Z, 'glm-5')
+        ->withPrompt('Who are you?')
+        ->asStream();
+
+    $endEvent = null;
+
+    foreach ($response as $event) {
+        if ($event instanceof StreamEndEvent) {
+            $endEvent = $event;
+        }
+    }
+
+    expect($endEvent)->toBeInstanceOf(StreamEndEvent::class)
+        ->and($endEvent->usage->promptTokens)->toBe(40)
+        ->and($endEvent->usage->cacheReadInputTokens)->toBe(60);
+});

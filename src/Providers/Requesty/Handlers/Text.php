@@ -127,8 +127,9 @@ class Text
             toolResults: $toolResults,
             providerToolCalls: [],
             usage: new Usage(
-                (int) data_get($data, 'usage.prompt_tokens', 0),
-                (int) data_get($data, 'usage.completion_tokens', 0),
+                promptTokens: max(0, (int) data_get($data, 'usage.prompt_tokens', 0) - (int) data_get($data, 'usage.prompt_tokens_details.cached_tokens', 0)),
+                completionTokens: (int) data_get($data, 'usage.completion_tokens', 0),
+                cacheReadInputTokens: (int) data_get($data, 'usage.prompt_tokens_details.cached_tokens', 0) ?: null,
             ),
             meta: new Meta(
                 id: data_get($data, 'id', ''),

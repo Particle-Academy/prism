@@ -1025,7 +1025,7 @@ describe('approval-required tools', function (): void {
             $events[] = $event;
         }
 
-        $eventTypes = array_map(fn (\Prism\Prism\Streaming\Events\StreamEvent $e): string => $e::class, $events);
+        $eventTypes = array_map(fn (StreamEvent $e): string => $e::class, $events);
 
         $approvalIndex = array_search(ToolApprovalRequestEvent::class, $eventTypes);
         expect($approvalIndex)->not->toBeFalse();

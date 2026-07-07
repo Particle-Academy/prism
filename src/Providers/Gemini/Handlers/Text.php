@@ -180,8 +180,6 @@ class Text
      */
     protected function addStep(array $data, Request $request, FinishReason $finishReason, array $toolResults = []): void
     {
-        $providerOptions = $request->providerOptions();
-
         $thoughtSummaries = $this->extractThoughtSummaries($data);
 
         $this->responseBuilder->addStep(new Step(
