@@ -257,3 +257,27 @@ describe('Request format for Vertex', function (): void {
         });
     });
 });
+
+it('excludes cached tokens from promptTokens', function (): void {
+    Http::fake([
+        '*' => Http::response([
+            'candidates' => [[
+                'content' => ['parts' => [['text' => 'Hello!']], 'role' => 'model'],
+                'finishReason' => 'STOP',
+            ]],
+            'usageMetadata' => [
+                'promptTokenCount' => 100,
+                'cachedContentTokenCount' => 60,
+                'candidatesTokenCount' => 10,
+            ],
+        ]),
+    ])->preventStrayRequests();
+
+    $response = Prism::text()
+        ->using('vertex', 'gemini-1.5-flash')
+        ->withPrompt('Hello')
+        ->asText();
+
+    expect($response->usage->promptTokens)->toBe(40)
+        ->and($response->usage->cacheReadInputTokens)->toBe(60);
+});

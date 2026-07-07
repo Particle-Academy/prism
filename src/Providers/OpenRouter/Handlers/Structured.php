@@ -160,7 +160,7 @@ class Structured
             text: data_get($data, 'choices.0.message.content') ?? '',
             finishReason: $this->mapFinishReason($data),
             usage: new Usage(
-                promptTokens: (int) data_get($data, 'usage.prompt_tokens', 0),
+                promptTokens: max(0, (int) data_get($data, 'usage.prompt_tokens', 0) - (int) data_get($data, 'usage.prompt_tokens_details.cached_tokens', 0)),
                 completionTokens: (int) data_get($data, 'usage.completion_tokens', 0),
                 cacheWriteInputTokens: (int) data_get($data, 'usage.prompt_tokens_details.cache_write_tokens', 0) ?: null,
                 cacheReadInputTokens: (int) data_get($data, 'usage.prompt_tokens_details.cached_tokens', 0) ?: null,

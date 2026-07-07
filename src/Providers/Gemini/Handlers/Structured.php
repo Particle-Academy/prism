@@ -254,7 +254,7 @@ class Structured
                 text: $textContent,
                 finishReason: $finishReason,
                 usage: new Usage(
-                    promptTokens: data_get($data, 'usageMetadata.promptTokenCount', 0),
+                    promptTokens: max(0, (int) data_get($data, 'usageMetadata.promptTokenCount', 0) - (int) data_get($data, 'usageMetadata.cachedContentTokenCount', 0)),
                     completionTokens: data_get($data, 'usageMetadata.candidatesTokenCount', 0),
                     cacheReadInputTokens: data_get($data, 'usageMetadata.cachedContentTokenCount'),
                     thoughtTokens: data_get($data, 'usageMetadata.thoughtsTokenCount'),

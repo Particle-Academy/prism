@@ -429,12 +429,8 @@ class Stream
      */
     protected function extractUsage(array $data, Request $request): Usage
     {
-        $providerOptions = $request->providerOptions();
-
         return new Usage(
-            promptTokens: isset($providerOptions['cachedContentName'])
-                ? (data_get($data, 'usageMetadata.promptTokenCount', 0) - data_get($data, 'usageMetadata.cachedContentTokenCount', 0))
-                : data_get($data, 'usageMetadata.promptTokenCount', 0),
+            promptTokens: max(0, (int) data_get($data, 'usageMetadata.promptTokenCount', 0) - (int) data_get($data, 'usageMetadata.cachedContentTokenCount', 0)),
             completionTokens: data_get($data, 'usageMetadata.candidatesTokenCount', 0),
             cacheReadInputTokens: data_get($data, 'usageMetadata.cachedContentTokenCount'),
             thoughtTokens: data_get($data, 'usageMetadata.thoughtsTokenCount'),

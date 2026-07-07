@@ -254,3 +254,30 @@ it('forwards advanced provider options to openrouter', function (): void {
             && $payload['verbosity'] === 'medium';
     });
 });
+
+it('excludes cached tokens from promptTokens', function (): void {
+    Http::fake([
+        '*' => Http::response([
+            'id' => 'gen-cache-1',
+            'model' => 'openai/gpt-4o',
+            'choices' => [[
+                'index' => 0,
+                'message' => ['role' => 'assistant', 'content' => 'Hello!'],
+                'finish_reason' => 'stop',
+            ]],
+            'usage' => [
+                'prompt_tokens' => 100,
+                'completion_tokens' => 10,
+                'prompt_tokens_details' => ['cached_tokens' => 60],
+            ],
+        ]),
+    ])->preventStrayRequests();
+
+    $response = Prism::text()
+        ->using(Provider::OpenRouter, 'openai/gpt-4o')
+        ->withPrompt('Hello')
+        ->asText();
+
+    expect($response->usage->promptTokens)->toBe(40)
+        ->and($response->usage->cacheReadInputTokens)->toBe(60);
+});
