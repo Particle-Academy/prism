@@ -69,6 +69,8 @@ return [
             'use_sync_mode' => env('REPLICATE_USE_SYNC_MODE', true), // Use Prefer: wait header
             'polling_interval' => env('REPLICATE_POLLING_INTERVAL', 1000),
             'max_wait_time' => env('REPLICATE_MAX_WAIT_TIME', 60),
+            // Hosts generated images may be auto-downloaded from (https only).
+            'download_hosts' => ['replicate.delivery'],
         ],
         'qwen' => [
             'api_key' => env('QWEN_API_KEY', ''),

@@ -114,15 +114,29 @@ class Images
     }
 
     /**
+     * Maximum bytes accepted when downloading a generated image.
+     */
+    protected const MAX_DOWNLOAD_BYTES = 25 * 1024 * 1024;
+
+    /**
      * Download an image from URL and convert to base64.
+     *
+     * The URL originates from the provider response, so it is only fetched
+     * when it is https on an allowlisted host (defense against SSRF via a
+     * compromised provider path), with an explicit timeout and a size cap.
+     * On any rejection or failure the caller falls back to the URL.
      */
     protected function downloadImageAsBase64(string $url): ?string
     {
+        if (! $this->isDownloadableUrl($url)) {
+            return null;
+        }
+
         try {
             /** @var \Illuminate\Http\Client\Response $response */
-            $response = Http::get($url);
+            $response = Http::timeout(30)->get($url);
 
-            if ($response->successful()) {
+            if ($response->successful() && strlen($response->body()) <= self::MAX_DOWNLOAD_BYTES) {
                 return base64_encode($response->body());
             }
         } catch (\Exception) {
@@ -130,6 +144,30 @@ class Images
         }
 
         return null;
+    }
+
+    protected function isDownloadableUrl(string $url): bool
+    {
+        $parts = parse_url($url);
+
+        if (($parts['scheme'] ?? '') !== 'https') {
+            return false;
+        }
+
+        $host = strtolower((string) ($parts['host'] ?? ''));
+
+        /** @var array<int, string> $allowedHosts */
+        $allowedHosts = config('prism.providers.replicate.download_hosts', ['replicate.delivery']);
+
+        foreach ($allowedHosts as $allowedHost) {
+            $allowedHost = strtolower($allowedHost);
+
+            if ($host === $allowedHost || str_ends_with($host, '.'.$allowedHost)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**

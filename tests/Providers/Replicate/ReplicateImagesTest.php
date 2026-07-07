@@ -87,3 +87,76 @@ describe('Image Generation for Replicate', function (): void {
             ->and($response->meta->model)->toBe('black-forest-labs/flux-schnell');
     });
 });
+
+describe('Image download hardening', function (): void {
+    function fakeReplicatePrediction(string $imageUrl): void
+    {
+        $createResponse = json_decode(file_get_contents(__DIR__.'/../../Fixtures/replicate/generate-image-basic-1.json'), true);
+        $completedResponse = json_decode(file_get_contents(__DIR__.'/../../Fixtures/replicate/generate-image-basic-2.json'), true);
+        // Override the output URL in both responses — sync mode uses the
+        // create response directly.
+        if (isset($createResponse['output'])) {
+            $createResponse['output'] = [$imageUrl];
+        }
+        $completedResponse['output'] = [$imageUrl];
+        $predictionId = $createResponse['id'];
+
+        Http::fake([
+            'https://api.replicate.com/v1/predictions' => Http::response($createResponse, 201),
+            "https://api.replicate.com/v1/predictions/{$predictionId}" => Http::response($completedResponse, 200),
+            '*' => Http::response('fake-image-content', 200),
+        ]);
+    }
+
+    it('does not download from non-https urls', function (): void {
+        fakeReplicatePrediction('http://replicate.delivery/pbxt/image.webp');
+
+        $response = Prism::image()
+            ->using('replicate', 'black-forest-labs/flux-schnell')
+            ->withPrompt('otter')
+            ->generate();
+
+        expect($response->firstImage()->base64)->toBeNull()
+            ->and($response->firstImage()->url)->toBe('http://replicate.delivery/pbxt/image.webp');
+
+        Http::assertNotSent(fn ($request): bool => str_contains((string) $request->url(), 'pbxt/image.webp'));
+    });
+
+    it('does not download from hosts outside the allowlist', function (): void {
+        fakeReplicatePrediction('https://169.254.169.254/latest/meta-data');
+
+        $response = Prism::image()
+            ->using('replicate', 'black-forest-labs/flux-schnell')
+            ->withPrompt('otter')
+            ->generate();
+
+        expect($response->firstImage()->base64)->toBeNull();
+
+        Http::assertNotSent(fn ($request): bool => str_contains((string) $request->url(), '169.254.169.254'));
+    });
+
+    it('downloads from allowlisted subdomains over https', function (): void {
+        fakeReplicatePrediction('https://cdn.replicate.delivery/pbxt/image.webp');
+
+        $response = Prism::image()
+            ->using('replicate', 'black-forest-labs/flux-schnell')
+            ->withPrompt('otter')
+            ->generate();
+
+        expect($response->firstImage()->base64)->not->toBeNull()
+            ->and(base64_decode((string) $response->firstImage()->base64))->toBe('fake-image-content');
+    });
+
+    it('honors a custom download host allowlist', function (): void {
+        config()->set('prism.providers.replicate.download_hosts', ['my-gateway.example.com']);
+
+        fakeReplicatePrediction('https://my-gateway.example.com/outputs/image.webp');
+
+        $response = Prism::image()
+            ->using('replicate', 'black-forest-labs/flux-schnell')
+            ->withPrompt('otter')
+            ->generate();
+
+        expect($response->firstImage()->base64)->not->toBeNull();
+    });
+});
