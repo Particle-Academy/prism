@@ -477,7 +477,7 @@ class Stream
                 if (is_string($arguments) && $arguments !== '') {
                     try {
                         $parsedArguments = json_decode($arguments, true, flags: JSON_THROW_ON_ERROR);
-                        $arguments = $parsedArguments;
+                        $arguments = is_array($parsedArguments) ? $parsedArguments : ['raw' => $arguments];
                     } catch (Throwable) {
                         $arguments = ['raw' => $arguments];
                     }

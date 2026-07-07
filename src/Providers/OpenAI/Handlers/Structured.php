@@ -233,9 +233,10 @@ class Structured
                     $request->reasoningEnabled() === false ? ['effort' => 'minimal'] : null
                 ),
                 'store' => $request->providerOptions('store'),
-                'text' => [
+                'text' => Arr::whereNotNull([
                     'format' => $responseFormat,
-                ],
+                    'verbosity' => $request->providerOptions('text_verbosity'),
+                ]),
             ]))
         );
 

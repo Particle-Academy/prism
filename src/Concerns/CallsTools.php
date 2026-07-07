@@ -486,10 +486,18 @@ trait CallsTools
                 'events' => $events,
             ];
         } catch (PrismException $e) {
+            try {
+                $args = $toolCall->arguments();
+            } catch (PrismException) {
+                // Malformed arguments are themselves the failure being reported —
+                // surface the raw string so the model can see what it sent.
+                $args = ['raw' => is_string($toolCall->arguments) ? $toolCall->arguments : ''];
+            }
+
             $toolResult = new ToolResult(
                 toolCallId: $toolCall->id,
                 toolName: $toolCall->name,
-                args: $toolCall->arguments(),
+                args: $args,
                 result: $e->getMessage(),
                 toolCallResultId: $toolCall->resultId,
             );

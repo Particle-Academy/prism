@@ -184,3 +184,38 @@ it('excludes cached tokens from promptTokens', function (): void {
     expect($response->usage->promptTokens)->toBe(40)
         ->and($response->usage->cacheReadInputTokens)->toBe(60);
 });
+
+it('passes text_verbosity through to chat/completions', function (): void {
+    FixtureResponse::fakeResponseSequence('chat/completions', 'openai-chat-completions/generate-text');
+
+    Prism::text()
+        ->using('openai', 'gpt-5')
+        ->withPrompt('Who are you?')
+        ->withProviderOptions(['text_verbosity' => 'low'])
+        ->generate();
+
+    Http::assertSent(function (Request $request): true {
+        $body = json_decode($request->body(), true);
+
+        expect(data_get($body, 'verbosity'))->toBe('low');
+
+        return true;
+    });
+});
+
+it('omits verbosity from chat/completions when text_verbosity is not set', function (): void {
+    FixtureResponse::fakeResponseSequence('chat/completions', 'openai-chat-completions/generate-text');
+
+    Prism::text()
+        ->using('openai', 'gpt-5')
+        ->withPrompt('Who are you?')
+        ->generate();
+
+    Http::assertSent(function (Request $request): true {
+        $body = json_decode($request->body(), true);
+
+        expect($body)->not->toHaveKey('verbosity');
+
+        return true;
+    });
+});

@@ -6,6 +6,7 @@ namespace Prism\Prism\ValueObjects;
 
 use Illuminate\Contracts\Support\Arrayable;
 use JsonException;
+use Prism\Prism\Exceptions\PrismException;
 
 /**
  * @implements Arrayable<string, mixed>
@@ -46,11 +47,15 @@ class ToolCall implements Arrayable
                 // characters inside string values, which RFC 8259 requires to be
                 // escaped. Escape them in place — rather than stripping them, which
                 // would corrupt intentional newlines/tabs — and decode again.
-                $decoded = json_decode(
-                    self::escapeControlCharactersInStrings($this->arguments),
-                    true,
-                    flags: JSON_THROW_ON_ERROR
-                );
+                try {
+                    $decoded = json_decode(
+                        self::escapeControlCharactersInStrings($this->arguments),
+                        true,
+                        flags: JSON_THROW_ON_ERROR
+                    );
+                } catch (JsonException $e) {
+                    throw PrismException::malformedToolCallArguments($this->name, $e);
+                }
             }
 
             return is_array($decoded) ? $decoded : [];

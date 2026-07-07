@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use Prism\Prism\Exceptions\PrismException;
 use Prism\Prism\ValueObjects\ToolCall;
 
 it('handles empty string arguments correctly', function (): void {
@@ -111,7 +112,7 @@ it('handles JSON null string arguments correctly', function (): void {
     expect($toolCall->arguments())->toBe([]);
 });
 
-it('throws exception for malformed JSON string arguments', function (): void {
+it('throws a handled PrismException for malformed JSON string arguments', function (): void {
     $toolCall = new ToolCall(
         id: 'test-id',
         name: 'test-tool',
@@ -119,5 +120,9 @@ it('throws exception for malformed JSON string arguments', function (): void {
     );
 
     expect($toolCall->arguments)->toBe('{"invalid json"');
-    expect($toolCall->arguments(...))->toThrow(JsonException::class);
+
+    // Malformed arguments surface as a handled PrismException (wrapping the
+    // underlying JsonException) so the tool-execution loop can turn it into a
+    // tool result the model sees, rather than crashing with a raw exception.
+    expect($toolCall->arguments(...))->toThrow(PrismException::class, 'not valid JSON');
 });

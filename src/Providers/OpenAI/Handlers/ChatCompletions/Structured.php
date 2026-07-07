@@ -55,6 +55,7 @@ class Structured
                 'temperature' => $request->temperature(),
                 'top_p' => $request->topP(),
                 'response_format' => ['type' => 'json_object'],
+                'verbosity' => $request->providerOptions('text_verbosity'),
             ]))
         );
 

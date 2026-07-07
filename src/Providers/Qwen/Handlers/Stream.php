@@ -454,7 +454,7 @@ class Stream
             : 'services/aigc/text-generation/generation';
 
         /** @var Response $response */
-        $response = $this->client->post($endpoint, $payload);
+        $response = $this->client->withOptions(['stream' => true])->post($endpoint, $payload);
 
         return $response;
     }

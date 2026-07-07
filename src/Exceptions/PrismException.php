@@ -43,6 +43,14 @@ class PrismException extends Exception
         );
     }
 
+    public static function malformedToolCallArguments(string $toolName, Throwable $previous): self
+    {
+        return new self(
+            sprintf('Tool call arguments for tool %s are not valid JSON', $toolName),
+            previous: $previous
+        );
+    }
+
     public static function invalidParameterInTool(string $toolName, Throwable $previous): self
     {
         return new self(

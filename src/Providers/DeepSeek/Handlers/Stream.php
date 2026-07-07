@@ -442,7 +442,7 @@ class Stream
     protected function sendRequest(Request $request): Response
     {
         /** @var Response $response */
-        $response = $this->client->post(
+        $response = $this->client->withOptions(['stream' => true])->post(
             'chat/completions',
             array_merge([
                 'stream' => true,

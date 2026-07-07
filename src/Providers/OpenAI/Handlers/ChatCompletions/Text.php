@@ -70,6 +70,7 @@ class Text
                 'top_p' => $request->topP(),
                 'tools' => ChatCompletionsToolMap::map($request->tools()),
                 'tool_choice' => ChatCompletionsToolChoiceMap::map($request->toolChoice()),
+                'verbosity' => $request->providerOptions('text_verbosity'),
             ])
         );
 
