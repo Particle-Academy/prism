@@ -45,6 +45,8 @@ class Text
 
     public function handle(Request $request): TextResponse
     {
+        $this->resolveToolApprovals($request);
+
         $data = $this->sendRequest($request);
 
         $this->validateResponse($data);
@@ -71,16 +73,30 @@ class Text
      */
     protected function handleToolCalls(array $data, Request $request): TextResponse
     {
-        $toolResults = $this->callTools(
-            $request->tools(),
-            ToolCallMap::map(data_get($data, 'choices.0.message.tool_calls', []))
-        );
+        $toolCalls = ToolCallMap::map(data_get($data, 'choices.0.message.tool_calls', []));
+
+        $hasPendingToolCalls = false;
+        $approvalRequests = [];
+        $toolResults = $this->callToolsWithPending($request->tools(), $toolCalls, $hasPendingToolCalls, $approvalRequests);
+
+        if ($approvalRequests !== []) {
+            // Replace the assistant message appended in handle() with one
+            // carrying the approval requests so the resume pass correlates them.
+            $messages = $request->messages();
+            array_pop($messages);
+            $request->setMessages($messages);
+            $request->addMessage(new AssistantMessage(
+                data_get($data, 'choices.0.message.content') ?? '',
+                $toolCalls,
+                toolApprovalRequests: $approvalRequests,
+            ));
+        }
 
         $request = $request->addMessage(new ToolResultMessage($toolResults));
 
         $this->addStep($data, $request, $toolResults);
 
-        if ($this->shouldContinue($request)) {
+        if (! $hasPendingToolCalls && $this->shouldContinue($request)) {
             return $this->handle($request);
         }
 

@@ -47,6 +47,8 @@ class Structured
 
     public function handle(Request $request): StructuredResponse
     {
+        $this->resolveToolApprovals($request);
+
         $data = $this->sendRequest($request);
 
         $this->validateResponse($data);
@@ -201,17 +203,28 @@ class Structured
      */
     protected function handleToolCalls(array $data, Request $request): StructuredResponse
     {
-        $toolResults = $this->callTools(
-            $request->tools(),
-            ToolCallMap::map(data_get($data, 'candidates.0.content.parts', []))
-        );
+        $toolCalls = ToolCallMap::map(data_get($data, 'candidates.0.content.parts', []));
+
+        $hasPendingToolCalls = false;
+        $approvalRequests = [];
+        $toolResults = $this->callToolsWithPending($request->tools(), $toolCalls, $hasPendingToolCalls, $approvalRequests);
+
+        if ($approvalRequests !== []) {
+            // Record the tool calls + approval requests so the resume pass
+            // can correlate approval responses.
+            $request->addMessage(new AssistantMessage(
+                $this->extractTextContent($data),
+                $toolCalls,
+                toolApprovalRequests: $approvalRequests,
+            ));
+        }
 
         $request->addMessage(new ToolResultMessage($toolResults));
         $request->resetToolChoice();
 
         $this->addStep($data, $request, FinishReason::ToolCalls, $toolResults);
 
-        if ($this->shouldContinue($request)) {
+        if (! $hasPendingToolCalls && $this->shouldContinue($request)) {
             return $this->handle($request);
         }
 
