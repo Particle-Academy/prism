@@ -241,6 +241,37 @@ foreach ($response->responseMessages as $message) {
 }
 ```
 
+### Understanding Token Usage
+
+The `Usage` value object exposes these token counts:
+
+| Property | Meaning |
+|---|---|
+| `promptTokens` | Input tokens, **excluding** cached (prompt-cache) tokens |
+| `completionTokens` | Output tokens |
+| `cacheReadInputTokens` | Input tokens served from the provider's prompt cache |
+| `cacheWriteInputTokens` | Input tokens written to the prompt cache |
+| `thoughtTokens` | Reasoning / thinking tokens, where the provider reports them |
+| `cost` | Provider-reported cost, where available |
+
+Prism normalizes `promptTokens` to **exclude** cached input tokens across every
+provider that exposes them, so `promptTokens + cacheReadInputTokens` is the
+total input billed. This is consistent everywhere.
+
+> [!IMPORTANT]
+> **`completionTokens` and reasoning tokens are not yet normalized across providers.**
+> Most providers (OpenAI, Anthropic, and the OpenAI-compatible providers)
+> report `completionTokens` **inclusive** of `thoughtTokens` — the reasoning
+> tokens are part of the output count, and `thoughtTokens` breaks out how many
+> of them were reasoning. **Gemini and Vertex** report `completionTokens`
+> **exclusive** of reasoning (`thoughtTokens` is separate and additive).
+>
+> If you compute cost or output length from `completionTokens` for a
+> reasoning-enabled model, account for this difference — e.g. for a
+> provider-agnostic "total output tokens" figure use
+> `completionTokens + (thoughtTokens excluded ? thoughtTokens : 0)`, or read
+> the provider's `raw` usage block directly.
+
 ## Handling Completions with Callbacks
 
 Need to perform actions after text generation completes? Pass a callback directly to `asText()` to handle the response without interrupting the return flow. This is perfect for persisting conversations, tracking analytics, or logging AI interactions.
