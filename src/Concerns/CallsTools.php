@@ -8,11 +8,15 @@ use Generator;
 use Illuminate\Support\Facades\Concurrency;
 use Illuminate\Support\ItemNotFoundException;
 use Illuminate\Support\MultipleItemsFoundException;
+use Prism\Prism\Enums\FinishReason;
 use Prism\Prism\Exceptions\PrismException;
 use Prism\Prism\Streaming\EventID;
 use Prism\Prism\Streaming\Events\ArtifactEvent;
+use Prism\Prism\Streaming\Events\StepFinishEvent;
+use Prism\Prism\Streaming\Events\StreamEndEvent;
 use Prism\Prism\Streaming\Events\ToolApprovalRequestEvent;
 use Prism\Prism\Streaming\Events\ToolResultEvent;
+use Prism\Prism\Streaming\StreamState;
 use Prism\Prism\Structured\Request as StructuredRequest;
 use Prism\Prism\Text\Request as TextRequest;
 use Prism\Prism\Tool;
@@ -179,6 +183,30 @@ trait CallsTools
         }
 
         return $serverToolCalls;
+    }
+
+    /**
+     * Yield stream completion events when marked tool calls are pending: the
+     * step and stream end with FinishReason::ToolCalls so the consumer can
+     * collect the pending calls and resume.
+     *
+     * @return Generator<StepFinishEvent|StreamEndEvent>
+     */
+    protected function yieldToolCallsFinishEvents(StreamState $state): Generator
+    {
+        yield new StepFinishEvent(
+            id: EventID::generate(),
+            timestamp: time(),
+            usage: $state->usage(),
+        );
+
+        yield new StreamEndEvent(
+            id: EventID::generate(),
+            timestamp: time(),
+            finishReason: FinishReason::ToolCalls,
+            usage: $state->usage(),
+            citations: $state->citations() !== [] ? $state->citations() : null,
+        );
     }
 
     /**
