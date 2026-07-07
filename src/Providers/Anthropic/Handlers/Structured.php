@@ -32,6 +32,7 @@ use Prism\Prism\ValueObjects\Messages\AssistantMessage;
 use Prism\Prism\ValueObjects\Messages\ToolResultMessage;
 use Prism\Prism\ValueObjects\Meta;
 use Prism\Prism\ValueObjects\ProviderTool;
+use Prism\Prism\ValueObjects\ToolApprovalRequest;
 use Prism\Prism\ValueObjects\ToolCall;
 use Prism\Prism\ValueObjects\ToolResult;
 use Prism\Prism\ValueObjects\Usage;
@@ -52,6 +53,8 @@ class Structured
 
     public function handle(): Response
     {
+        $this->resolveToolApprovals($this->request);
+
         $this->strategy->appendMessages();
 
         $this->sendRequest();
@@ -188,8 +191,12 @@ class Structured
     protected function executeCustomToolsAndFinalize(array $toolCalls, Response $tempResponse): Response
     {
         $customToolCalls = $this->filterCustomToolCalls($toolCalls);
-        $toolResults = $this->callTools($this->request->tools(), $customToolCalls);
-        $this->addStep($toolCalls, $tempResponse, $toolResults);
+        $hasPendingToolCalls = false;
+        $approvalRequests = [];
+        $toolResults = $this->callToolsWithPending($this->request->tools(), $customToolCalls, $hasPendingToolCalls, $approvalRequests);
+
+        $this->attachApprovalRequests($approvalRequests, $tempResponse, $toolCalls);
+        $this->addStep($toolCalls, $tempResponse, $toolResults, $approvalRequests);
 
         return $this->responseBuilder->toResponse();
     }
@@ -200,7 +207,11 @@ class Structured
     protected function executeCustomToolsAndContinue(array $toolCalls, Response $tempResponse): Response
     {
         $customToolCalls = $this->filterCustomToolCalls($toolCalls);
-        $toolResults = $this->callTools($this->request->tools(), $customToolCalls);
+        $hasPendingToolCalls = false;
+        $approvalRequests = [];
+        $toolResults = $this->callToolsWithPending($this->request->tools(), $customToolCalls, $hasPendingToolCalls, $approvalRequests);
+
+        $this->attachApprovalRequests($approvalRequests, $tempResponse, $toolCalls);
 
         $message = new ToolResultMessage($toolResults);
         if ($toolResultCacheType = $this->request->providerOptions('tool_result_cache_type')) {
@@ -209,13 +220,38 @@ class Structured
 
         $this->request->addMessage($message);
         $this->request->resetToolChoice();
-        $this->addStep($toolCalls, $tempResponse, $toolResults);
+        $this->addStep($toolCalls, $tempResponse, $toolResults, $approvalRequests);
 
-        if ($this->canContinue()) {
+        if (! $hasPendingToolCalls && $this->canContinue()) {
             return $this->handle();
         }
 
         return $this->responseBuilder->toResponse();
+    }
+
+    /**
+     * Replace the already-appended assistant message with one carrying the
+     * approval requests, so the resume pass can correlate them.
+     *
+     * @param  ToolApprovalRequest[]  $approvalRequests
+     * @param  ToolCall[]  $toolCalls
+     */
+    protected function attachApprovalRequests(array $approvalRequests, Response $tempResponse, array $toolCalls): void
+    {
+        if ($approvalRequests === []) {
+            return;
+        }
+
+        $messages = $this->request->messages();
+        array_pop($messages);
+        $this->request->setMessages($messages);
+
+        $this->request->addMessage(new AssistantMessage(
+            content: $tempResponse->text,
+            toolCalls: $toolCalls,
+            additionalContent: $tempResponse->additionalContent,
+            toolApprovalRequests: $approvalRequests,
+        ));
     }
 
     /**
@@ -283,8 +319,9 @@ class Structured
     /**
      * @param  ToolCall[]  $toolCalls
      * @param  ToolResult[]  $toolResults
+     * @param  ToolApprovalRequest[]  $toolApprovalRequests
      */
-    protected function addStep(array $toolCalls, Response $tempResponse, array $toolResults = []): void
+    protected function addStep(array $toolCalls, Response $tempResponse, array $toolResults = [], array $toolApprovalRequests = []): void
     {
         $data = $this->httpResponse->json();
         $isStructuredStep = $this->determineIfStructuredStep($toolCalls, $toolResults);
@@ -302,6 +339,7 @@ class Structured
             providerToolCalls: $this->extractProviderToolCalls($data),
             toolResults: $toolResults,
             raw: $data,
+            toolApprovalRequests: $toolApprovalRequests,
         ));
     }
 

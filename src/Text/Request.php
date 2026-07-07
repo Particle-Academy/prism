@@ -152,6 +152,16 @@ class Request implements PrismRequest
         return $this;
     }
 
+    /**
+     * @param  Message[]  $messages
+     */
+    public function setMessages(array $messages): self
+    {
+        $this->messages = $messages;
+
+        return $this;
+    }
+
     public function resetToolChoice(): self
     {
         if (is_string($this->toolChoice) || $this->toolChoice === ToolChoice::Any) {

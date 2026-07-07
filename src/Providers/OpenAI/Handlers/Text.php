@@ -25,6 +25,7 @@ use Prism\Prism\ValueObjects\MessagePartWithCitations;
 use Prism\Prism\ValueObjects\Messages\AssistantMessage;
 use Prism\Prism\ValueObjects\Messages\ToolResultMessage;
 use Prism\Prism\ValueObjects\Meta;
+use Prism\Prism\ValueObjects\ToolApprovalRequest;
 use Prism\Prism\ValueObjects\ToolResult;
 use Prism\Prism\ValueObjects\Usage;
 
@@ -49,6 +50,8 @@ class Text
 
     public function handle(Request $request): Response
     {
+        $this->resolveToolApprovals($request);
+
         $response = $this->sendRequest($request);
 
         $this->validateResponse($response);
@@ -78,9 +81,11 @@ class Text
             array_filter(data_get($data, 'output', []), fn (array $output): bool => $output['type'] === 'reasoning'),
         );
 
-        $toolResults = $this->callTools($request->tools(), $toolCalls);
+        $hasPendingToolCalls = false;
+        $approvalRequests = [];
+        $toolResults = $this->callToolsWithPending($request->tools(), $toolCalls, $hasPendingToolCalls, $approvalRequests);
 
-        $this->addStep($data, $request, $clientResponse, $toolResults);
+        $this->addStep($data, $request, $clientResponse, $toolResults, $approvalRequests);
 
         $providerToolCalls = ProviderToolCallMap::map(data_get($data, 'output', []));
 
@@ -91,11 +96,12 @@ class Text
                 'citations' => $this->citations,
                 'provider_tool_calls' => $providerToolCalls === [] ? null : $providerToolCalls,
             ]),
+            toolApprovalRequests: $approvalRequests,
         ));
         $request->addMessage(new ToolResultMessage($toolResults));
         $request->resetToolChoice();
 
-        if ($this->shouldContinue($request)) {
+        if (! $hasPendingToolCalls && $this->shouldContinue($request)) {
             return $this->handle($request);
         }
 
@@ -131,12 +137,14 @@ class Text
     /**
      * @param  array<string, mixed>  $data
      * @param  ToolResult[]  $toolResults
+     * @param  ToolApprovalRequest[]  $toolApprovalRequests
      */
     protected function addStep(
         array $data,
         Request $request,
         ClientResponse $clientResponse,
-        array $toolResults = []
+        array $toolResults = [],
+        array $toolApprovalRequests = []
     ): void {
         /** @var array<array-key, array<string, mixed>> $output */
         $output = data_get($data, 'output', []);
@@ -194,6 +202,7 @@ class Text
                     ->toArray(),
             ]),
             raw: $data,
+            toolApprovalRequests: $toolApprovalRequests,
         ));
     }
 }

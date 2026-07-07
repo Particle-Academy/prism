@@ -13,6 +13,7 @@ use Prism\Prism\ValueObjects\Messages\ToolResultMessage;
 use Prism\Prism\ValueObjects\Messages\UserMessage;
 use Prism\Prism\ValueObjects\Meta;
 use Prism\Prism\ValueObjects\ProviderToolCall;
+use Prism\Prism\ValueObjects\ToolApprovalRequest;
 use Prism\Prism\ValueObjects\ToolCall;
 use Prism\Prism\ValueObjects\ToolResult;
 use Prism\Prism\ValueObjects\Usage;
@@ -31,6 +32,7 @@ readonly class Step implements Arrayable
      * @param  array<int, ProviderToolCall>  $providerToolCalls
      * @param  array<int, ToolResult>  $toolResults
      * @param  array<string,mixed>|null  $raw
+     * @param  ToolApprovalRequest[]  $toolApprovalRequests
      */
     public function __construct(
         public string $text,
@@ -44,7 +46,8 @@ readonly class Step implements Arrayable
         public array $toolCalls = [],
         public array $providerToolCalls = [],
         public array $toolResults = [],
-        public ?array $raw = null
+        public ?array $raw = null,
+        public array $toolApprovalRequests = []
     ) {}
 
     /**

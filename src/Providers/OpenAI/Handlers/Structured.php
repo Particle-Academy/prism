@@ -31,6 +31,7 @@ use Prism\Prism\ValueObjects\Messages\SystemMessage;
 use Prism\Prism\ValueObjects\Messages\ToolResultMessage;
 use Prism\Prism\ValueObjects\Meta;
 use Prism\Prism\ValueObjects\ProviderTool;
+use Prism\Prism\ValueObjects\ToolApprovalRequest;
 use Prism\Prism\ValueObjects\ToolResult;
 use Prism\Prism\ValueObjects\Usage;
 
@@ -53,6 +54,8 @@ class Structured
 
     public function handle(Request $request): StructuredResponse
     {
+        $this->resolveToolApprovals($request);
+
         $response = match ($request->mode()) {
             StructuredMode::Auto => $this->handleAutoMode($request),
             StructuredMode::Structured => $this->handleStructuredMode($request),
@@ -94,17 +97,31 @@ class Structured
      */
     protected function handleToolCalls(array $data, Request $request, ClientResponse $clientResponse): StructuredResponse
     {
-        $toolResults = $this->callTools(
-            $request->tools(),
-            ToolCallMap::map($this->extractFunctionCalls($data)),
-        );
+        $toolCalls = ToolCallMap::map($this->extractFunctionCalls($data));
+
+        $hasPendingToolCalls = false;
+        $approvalRequests = [];
+        $toolResults = $this->callToolsWithPending($request->tools(), $toolCalls, $hasPendingToolCalls, $approvalRequests);
+
+        if ($approvalRequests !== []) {
+            // Replace the assistant message appended in handle() with one
+            // carrying the approval requests so the resume pass correlates them.
+            $messages = $request->messages();
+            array_pop($messages);
+            $request->setMessages($messages);
+            $request->addMessage(new AssistantMessage(
+                content: data_get($data, 'output.{last}.content.0.text') ?? '',
+                toolCalls: $toolCalls,
+                toolApprovalRequests: $approvalRequests,
+            ));
+        }
 
         $request->addMessage(new ToolResultMessage($toolResults));
         $request->resetToolChoice();
 
-        $this->addStep($data, $request, $clientResponse, $toolResults);
+        $this->addStep($data, $request, $clientResponse, $toolResults, $approvalRequests);
 
-        if ($this->shouldContinue($request)) {
+        if (! $hasPendingToolCalls && $this->shouldContinue($request)) {
             return $this->handle($request);
         }
 
@@ -124,8 +141,9 @@ class Structured
     /**
      * @param  array<string, mixed>  $data
      * @param  ToolResult[]  $toolResults
+     * @param  ToolApprovalRequest[]  $toolApprovalRequests
      */
-    protected function addStep(array $data, Request $request, ClientResponse $clientResponse, array $toolResults = []): void
+    protected function addStep(array $data, Request $request, ClientResponse $clientResponse, array $toolResults = [], array $toolApprovalRequests = []): void
     {
         $finishReason = $this->mapFinishReason($data);
         $isStructuredStep = $finishReason !== FinishReason::ToolCalls;
@@ -161,6 +179,7 @@ class Structured
             toolCalls: $toolCalls,
             toolResults: $toolResults,
             raw: $data,
+            toolApprovalRequests: $toolApprovalRequests,
         ));
     }
 

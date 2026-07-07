@@ -141,6 +141,16 @@ class Request implements PrismRequest
     }
 
     /**
+     * @param  Message[]  $messages
+     */
+    public function setMessages(array $messages): self
+    {
+        $this->messages = $messages;
+
+        return $this;
+    }
+
+    /**
      * @return array<int, Tool>
      */
     public function tools(): array

@@ -47,6 +47,11 @@ class Tool
 
     protected bool $concurrent = false;
 
+    protected bool $clientExecuted = false;
+
+    /** @var bool|Closure(array<string,mixed>):bool */
+    protected bool|Closure $requiresApproval = false;
+
     public function __construct()
     {
         //
@@ -73,8 +78,65 @@ class Tool
         }
 
         $this->fn = $fn;
+        $this->clientExecuted = false;
 
         return $this;
+    }
+
+    /**
+     * Mark this tool as client-executed (no server-side handler).
+     *
+     * Client-executed tools are sent to the AI model, but their execution is
+     * handled by the consuming application: the request loop stops and the
+     * pending tool calls are returned on the response instead of being run.
+     */
+    public function clientExecuted(): self
+    {
+        $this->clientExecuted = true;
+        $this->fn = null;
+
+        return $this;
+    }
+
+    public function isClientExecuted(): bool
+    {
+        return $this->clientExecuted;
+    }
+
+    /**
+     * Mark this tool as requiring approval before execution.
+     *
+     * When a closure is provided, it receives the tool call arguments and
+     * should return true if approval is required for that specific call.
+     *
+     * @param  bool|Closure(array<string,mixed>):bool  $condition
+     */
+    public function requiresApproval(bool|Closure $condition = true): self
+    {
+        $this->requiresApproval = $condition;
+
+        return $this;
+    }
+
+    /**
+     * Whether this tool has approval configured (static true or dynamic
+     * closure) — an early-exit check that never invokes the closure.
+     */
+    public function hasApprovalConfigured(): bool
+    {
+        return $this->requiresApproval === true || $this->requiresApproval instanceof Closure;
+    }
+
+    /**
+     * @param  array<string,mixed>  $arguments
+     */
+    public function needsApproval(array $arguments = []): bool
+    {
+        if ($this->requiresApproval instanceof Closure) {
+            return (bool) ($this->requiresApproval)($arguments);
+        }
+
+        return $this->requiresApproval;
     }
 
     public function make(string|object $tool): Tool

@@ -13,6 +13,7 @@ use Prism\Prism\ValueObjects\Messages\ToolResultMessage;
 use Prism\Prism\ValueObjects\Messages\UserMessage;
 use Prism\Prism\ValueObjects\Meta;
 use Prism\Prism\ValueObjects\ProviderToolCall;
+use Prism\Prism\ValueObjects\ToolApprovalRequest;
 use Prism\Prism\ValueObjects\ToolCall;
 use Prism\Prism\ValueObjects\ToolResult;
 use Prism\Prism\ValueObjects\Usage;
@@ -30,6 +31,7 @@ readonly class Step implements Arrayable
      * @param  SystemMessage[]  $systemPrompts
      * @param  array<string,mixed>  $additionalContent
      * @param  array<string,mixed>|null  $raw
+     * @param  ToolApprovalRequest[]  $toolApprovalRequests
      */
     public function __construct(
         public string $text,
@@ -42,7 +44,8 @@ readonly class Step implements Arrayable
         public array $messages,
         public array $systemPrompts,
         public array $additionalContent = [],
-        public ?array $raw = null
+        public ?array $raw = null,
+        public array $toolApprovalRequests = []
     ) {}
 
     /**
@@ -63,6 +66,7 @@ readonly class Step implements Arrayable
             'system_prompts' => array_map(fn (SystemMessage $systemMessage): array => $systemMessage->toArray(), $this->systemPrompts),
             'additional_content' => $this->additionalContent,
             'raw' => $this->raw,
+            'tool_approval_requests' => array_map(fn (ToolApprovalRequest $request): array => $request->toArray(), $this->toolApprovalRequests),
         ];
     }
 

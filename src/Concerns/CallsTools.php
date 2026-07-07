@@ -11,8 +11,15 @@ use Illuminate\Support\MultipleItemsFoundException;
 use Prism\Prism\Exceptions\PrismException;
 use Prism\Prism\Streaming\EventID;
 use Prism\Prism\Streaming\Events\ArtifactEvent;
+use Prism\Prism\Streaming\Events\ToolApprovalRequestEvent;
 use Prism\Prism\Streaming\Events\ToolResultEvent;
+use Prism\Prism\Structured\Request as StructuredRequest;
+use Prism\Prism\Text\Request as TextRequest;
 use Prism\Prism\Tool;
+use Prism\Prism\ValueObjects\Messages\AssistantMessage;
+use Prism\Prism\ValueObjects\Messages\ToolResultMessage;
+use Prism\Prism\ValueObjects\ToolApprovalRequest;
+use Prism\Prism\ValueObjects\ToolApprovalResponse;
 use Prism\Prism\ValueObjects\ToolCall;
 use Prism\Prism\ValueObjects\ToolError;
 use Prism\Prism\ValueObjects\ToolOutput;
@@ -40,20 +47,80 @@ trait CallsTools
     }
 
     /**
+     * Execute tools honoring client-executed and approval-required markers.
+     *
+     * Marked tool calls are NOT executed: $hasPendingToolCalls is set so the
+     * handler stops its loop, and approval requests are collected into
+     * $approvalRequests for correlation on resume.
+     *
+     * @param  Tool[]  $tools
+     * @param  ToolCall[]  $toolCalls
+     * @param  ToolApprovalRequest[]  $approvalRequests
+     * @return ToolResult[]
+     */
+    protected function callToolsWithPending(array $tools, array $toolCalls, bool &$hasPendingToolCalls, array &$approvalRequests): array
+    {
+        $toolResults = [];
+
+        foreach ($this->callToolsAndYieldEventsWithPending($tools, $toolCalls, EventID::generate(), $toolResults, $hasPendingToolCalls) as $event) {
+            if ($event instanceof ToolApprovalRequestEvent) {
+                $approvalRequests[] = new ToolApprovalRequest(
+                    approvalId: $event->approvalId,
+                    toolCallId: $event->toolCall->id,
+                );
+            }
+        }
+
+        return $toolResults;
+    }
+
+    /**
      * Generate tool execution events and collect results (for streaming handlers).
      *
      * @param  Tool[]  $tools
      * @param  ToolCall[]  $toolCalls
      * @param  ToolResult[]  $toolResults  Results are collected into this array by reference
-     * @return Generator<ToolResultEvent|ArtifactEvent>
+     * @return Generator<ToolResultEvent|ArtifactEvent|ToolApprovalRequestEvent>
      */
     protected function callToolsAndYieldEvents(array $tools, array $toolCalls, string $messageId, array &$toolResults): Generator
     {
-        $groupedToolCalls = $this->groupToolCallsByConcurrency($tools, $toolCalls);
+        $hasPendingToolCalls = false;
+
+        yield from $this->yieldToolEvents($tools, $toolCalls, $messageId, $toolResults, $hasPendingToolCalls, filterPending: false);
+    }
+
+    /**
+     * Streaming variant honoring client-executed and approval-required markers.
+     *
+     * @param  Tool[]  $tools
+     * @param  ToolCall[]  $toolCalls
+     * @param  ToolResult[]  $toolResults  Results are collected into this array by reference
+     * @return Generator<ToolResultEvent|ArtifactEvent|ToolApprovalRequestEvent>
+     */
+    protected function callToolsAndYieldEventsWithPending(array $tools, array $toolCalls, string $messageId, array &$toolResults, bool &$hasPendingToolCalls): Generator
+    {
+        yield from $this->yieldToolEvents($tools, $toolCalls, $messageId, $toolResults, $hasPendingToolCalls, filterPending: true);
+    }
+
+    /**
+     * @param  Tool[]  $tools
+     * @param  ToolCall[]  $toolCalls
+     * @param  ToolResult[]  $toolResults
+     * @return Generator<ToolResultEvent|ArtifactEvent|ToolApprovalRequestEvent>
+     */
+    protected function yieldToolEvents(array $tools, array $toolCalls, string $messageId, array &$toolResults, bool &$hasPendingToolCalls, bool $filterPending): Generator
+    {
+        $approvalRequiredToolCalls = [];
+
+        $executableToolCalls = $filterPending
+            ? $this->filterServerExecutedToolCalls($tools, $toolCalls, $hasPendingToolCalls, $approvalRequiredToolCalls)
+            : $toolCalls;
+
+        $groupedToolCalls = $this->groupToolCallsByConcurrency($tools, $executableToolCalls);
 
         $executionResults = $this->executeToolsWithConcurrency($tools, $groupedToolCalls, $messageId);
 
-        foreach (array_keys($toolCalls) as $index) {
+        foreach (collect($executionResults)->keys()->sort() as $index) {
             $result = $executionResults[$index];
 
             $toolResults[] = $result['toolResult'];
@@ -62,6 +129,199 @@ trait CallsTools
                 yield $event;
             }
         }
+
+        foreach ($approvalRequiredToolCalls as $toolCall) {
+            yield new ToolApprovalRequestEvent(
+                id: EventID::generate(),
+                timestamp: time(),
+                toolCall: $toolCall,
+                messageId: $messageId,
+                approvalId: EventID::generate('apr'),
+            );
+        }
+    }
+
+    /**
+     * Split out client-executed and approval-required tool calls, setting the
+     * pending flag when any are found.
+     *
+     * @param  Tool[]  $tools
+     * @param  ToolCall[]  $toolCalls
+     * @param  ToolCall[]  $approvalRequiredToolCalls  Collected by reference
+     * @return array<int, ToolCall> Server-executed tool calls with original indices preserved
+     */
+    protected function filterServerExecutedToolCalls(array $tools, array $toolCalls, bool &$hasPendingToolCalls, array &$approvalRequiredToolCalls): array
+    {
+        $serverToolCalls = [];
+
+        foreach ($toolCalls as $index => $toolCall) {
+            try {
+                $tool = $this->resolveTool($toolCall->name, $tools);
+
+                if ($tool->isClientExecuted()) {
+                    $hasPendingToolCalls = true;
+
+                    continue;
+                }
+
+                if ($tool->needsApproval($toolCall->arguments())) {
+                    $hasPendingToolCalls = true;
+                    $approvalRequiredToolCalls[] = $toolCall;
+
+                    continue;
+                }
+
+                $serverToolCalls[$index] = $toolCall;
+            } catch (PrismException) {
+                // Unknown tool — keep it so error handling fires in executeToolCall.
+                $serverToolCalls[$index] = $toolCall;
+            }
+        }
+
+        return $serverToolCalls;
+    }
+
+    /**
+     * Resolve pending tool approvals from a previous request (non-streaming).
+     *
+     * Scans the request messages for a ToolResultMessage carrying approval
+     * responses after the last tool-calling AssistantMessage. Approved tools
+     * are executed; denied or unanswered ones produce denial results
+     * (deny-by-default). The tool message is replaced with one containing the
+     * merged results so the conversation is complete before the next send.
+     */
+    protected function resolveToolApprovals(StructuredRequest|TextRequest $request): void
+    {
+        foreach ($this->resolveToolApprovalsAndYieldEvents($request, EventID::generate()) as $event) {
+            // Events are discarded for non-streaming handlers
+        }
+    }
+
+    /**
+     * @return Generator<ToolResultEvent|ArtifactEvent>
+     */
+    protected function resolveToolApprovalsAndYieldEvents(StructuredRequest|TextRequest $request, string $messageId): Generator
+    {
+        $messages = $request->messages();
+
+        $assistantMessage = null;
+        $assistantMessageIndex = null;
+
+        for ($i = count($messages) - 1; $i >= 0; $i--) {
+            if ($messages[$i] instanceof AssistantMessage && $messages[$i]->toolCalls !== []) {
+                $assistantMessage = $messages[$i];
+                $assistantMessageIndex = $i;
+
+                break;
+            }
+        }
+
+        if (! $assistantMessage instanceof AssistantMessage || $assistantMessageIndex === null) {
+            return;
+        }
+
+        $toolsByName = collect($request->tools())->keyBy(fn (Tool $tool): string => $tool->name());
+
+        $isAnyToolApprovalConfigured = collect($assistantMessage->toolCalls)->contains(
+            fn (ToolCall $toolCall): bool => $toolsByName->get($toolCall->name)?->hasApprovalConfigured() === true,
+        );
+
+        if (! $isAnyToolApprovalConfigured) {
+            return;
+        }
+
+        $toolMessage = null;
+        $toolMessageIndex = null;
+        $messageCount = count($messages);
+
+        for ($i = $assistantMessageIndex + 1; $i < $messageCount; $i++) {
+            if ($messages[$i] instanceof ToolResultMessage) {
+                $toolMessage = $messages[$i];
+                $toolMessageIndex = $i;
+
+                break;
+            }
+        }
+
+        if (! $toolMessage instanceof ToolResultMessage) {
+            $toolMessage = new ToolResultMessage;
+            $toolMessageIndex = null;
+        }
+
+        $toolCallIdToApprovalId = [];
+        foreach ($assistantMessage->toolApprovalRequests as $approvalRequest) {
+            $toolCallIdToApprovalId[$approvalRequest->toolCallId] = $approvalRequest->approvalId;
+        }
+
+        $approvalResolvedToolResults = [];
+
+        foreach ($assistantMessage->toolCalls as $toolCall) {
+            $approvalId = $toolCallIdToApprovalId[$toolCall->id] ?? null;
+            $approval = $approvalId !== null ? $toolMessage->findByApprovalId($approvalId) : null;
+
+            if (! $approval instanceof ToolApprovalResponse) {
+                if (collect($toolMessage->toolResults)->contains(fn (ToolResult $toolResult): bool => $toolResult->toolCallId === $toolCall->id)) {
+                    continue; // already executed
+                }
+
+                if ($toolsByName->get($toolCall->name)?->hasApprovalConfigured() !== true) {
+                    continue;
+                }
+
+                // Deny by default when no approval response was provided.
+                $approval = new ToolApprovalResponse($approvalId ?? EventID::generate('apr'), false, 'No approval response provided');
+            }
+
+            if ($approval->approved) {
+                $result = $this->executeToolCall($request->tools(), $toolCall, $messageId);
+
+                $approvalResolvedToolResults[] = $result['toolResult'];
+
+                foreach ($result['events'] as $event) {
+                    yield $event;
+                }
+
+                continue;
+            }
+
+            $reason = $approval->reason ?? 'User denied tool execution';
+
+            $toolResult = new ToolResult(
+                toolCallId: $toolCall->id,
+                toolName: $toolCall->name,
+                args: $toolCall->arguments(),
+                result: $reason,
+                toolCallResultId: $toolCall->resultId,
+            );
+
+            $approvalResolvedToolResults[] = $toolResult;
+
+            yield new ToolResultEvent(
+                id: EventID::generate(),
+                timestamp: time(),
+                toolResult: $toolResult,
+                messageId: $messageId,
+                success: false,
+                error: $reason,
+            );
+        }
+
+        if ($approvalResolvedToolResults === []) {
+            return;
+        }
+
+        if ($toolMessageIndex !== null) {
+            $request->setMessages(array_values(array_filter(
+                $messages,
+                fn (int $index): bool => $index !== $toolMessageIndex,
+                ARRAY_FILTER_USE_KEY,
+            )));
+        }
+
+        $request->addMessage(new ToolResultMessage(
+            array_merge($toolMessage->toolResults, $approvalResolvedToolResults),
+            $toolMessage->toolApprovalResponses,
+        ));
     }
 
     /**

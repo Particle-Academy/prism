@@ -29,6 +29,7 @@ use Prism\Prism\ValueObjects\Messages\AssistantMessage;
 use Prism\Prism\ValueObjects\Messages\ToolResultMessage;
 use Prism\Prism\ValueObjects\Meta;
 use Prism\Prism\ValueObjects\ProviderTool;
+use Prism\Prism\ValueObjects\ToolApprovalRequest;
 use Prism\Prism\ValueObjects\ToolCall;
 use Prism\Prism\ValueObjects\ToolResult;
 use Prism\Prism\ValueObjects\Usage;
@@ -48,6 +49,8 @@ class Text
 
     public function handle(): Response
     {
+        $this->resolveToolApprovals($this->request);
+
         $this->sendRequest();
 
         $this->prepareTempResponse();
@@ -115,14 +118,17 @@ class Text
 
     protected function handleToolCalls(): Response
     {
-        $toolResults = $this->callTools($this->request->tools(), $this->tempResponse->toolCalls);
+        $hasPendingToolCalls = false;
+        $approvalRequests = [];
+        $toolResults = $this->callToolsWithPending($this->request->tools(), $this->tempResponse->toolCalls, $hasPendingToolCalls, $approvalRequests);
 
-        $this->addStep($toolResults);
+        $this->addStep($toolResults, $approvalRequests);
 
         $this->request->addMessage(new AssistantMessage(
             $this->tempResponse->text,
             $this->tempResponse->toolCalls,
             $this->tempResponse->additionalContent,
+            $approvalRequests,
         ));
 
         $toolResultMessage = new ToolResultMessage($toolResults);
@@ -130,7 +136,7 @@ class Text
         $this->request->addMessage($toolResultMessage);
         $this->request->resetToolChoice();
 
-        if ($this->responseBuilder->steps->count() < $this->request->maxSteps()) {
+        if (! $hasPendingToolCalls && $this->responseBuilder->steps->count() < $this->request->maxSteps()) {
             return $this->handle();
         }
 
@@ -146,8 +152,9 @@ class Text
 
     /**
      * @param  ToolResult[]  $toolResults
+     * @param  ToolApprovalRequest[]  $toolApprovalRequests
      */
-    protected function addStep(array $toolResults = []): void
+    protected function addStep(array $toolResults = [], array $toolApprovalRequests = []): void
     {
         $data = $this->httpResponse->json();
 
@@ -163,6 +170,7 @@ class Text
             systemPrompts: $this->request->systemPrompts(),
             additionalContent: $this->tempResponse->additionalContent,
             raw: $data,
+            toolApprovalRequests: $toolApprovalRequests,
         ));
     }
 
