@@ -41,7 +41,7 @@ class ToolApprovalTestHandler
 
     public function resolveStream(Request $request, string $messageId, ?StreamState $state = null): Generator
     {
-        return $this->resolveToolApprovalsAndYieldEvents($request, $messageId, $state);
+        return $this->resolveToolApprovalsAndYieldEvents($request, $messageId);
     }
 }
 
