@@ -248,6 +248,63 @@ it('can stream text with empty parameters tool calls when using gpt-5', function
     expect($streamEndEvents)->not->toBeEmpty();
 });
 
+it('sends correct tool payload when streaming with a parameterless tool', function (): void {
+    FixtureResponse::fakeStreamResponses('v1/chat/completions', 'openrouter/stream-text-with-parameterless-tool');
+
+    $currentTime = '08:00:00';
+
+    $timeTool = Tool::as('time')
+        ->for('Get the current time')
+        ->using(fn (): string => $currentTime);
+
+    $searchTool = Tool::as('search')
+        ->for('Search the web')
+        ->withStringParameter('query', 'the search query')
+        ->using(fn (string $query): string => 'results');
+
+    $response = Prism::text()
+        ->using(Provider::OpenRouter, 'openai/gpt-5')
+        ->withTools([$timeTool, $searchTool])
+        ->withMaxSteps(3)
+        ->withPrompt('What time is it?')
+        ->asStream();
+
+    $text = '';
+    $toolCallEvents = [];
+
+    foreach ($response as $event) {
+        if ($event instanceof TextDeltaEvent) {
+            $text .= $event->delta;
+        }
+
+        if ($event instanceof ToolCallEvent) {
+            $toolCallEvents[] = $event;
+        }
+    }
+
+    expect($toolCallEvents)->toHaveCount(1);
+    expect($toolCallEvents[0]->toolCall->name)->toBe('time');
+    expect($toolCallEvents[0]->toolCall->arguments())->toBe([]);
+    expect($text)->toContain('The current time is '.$currentTime);
+
+    Http::assertSent(function (Request $request): bool {
+        $tools = $request->data()['tools'];
+
+        // Tool without parameters: no 'parameters' key in function
+        $timeFunction = $tools[0]['function'];
+        expect($timeFunction['name'])->toBe('time');
+        expect($timeFunction)->not->toHaveKey('parameters');
+
+        // Tool with parameters keeps its 'parameters' key
+        $searchFunction = $tools[1]['function'];
+        expect($searchFunction['name'])->toBe('search');
+        expect($searchFunction)->toHaveKey('parameters');
+        expect($searchFunction['parameters']['properties'])->toHaveKey('query');
+
+        return true;
+    });
+});
+
 it('can handle reasoning/thinking tokens in streaming', function (): void {
     FixtureResponse::fakeStreamResponses('v1/chat/completions', 'openrouter/stream-text-with-reasoning');
 
