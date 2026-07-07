@@ -114,6 +114,10 @@ export default defineConfig({
                 link: "/core-concepts/tools-function-calling",
               },
               {
+                text: "Human-in-the-Loop",
+                link: "/core-concepts/human-in-the-loop",
+              },
+              {
                 text: "Structured Output",
                 link: "/core-concepts/structured-output",
               },
