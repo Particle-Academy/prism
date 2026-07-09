@@ -235,7 +235,24 @@ Vertex AI provides access to Google's Gemini model family:
 
 ## Regions
 
-Vertex AI is available in multiple regions. Common options include:
+Vertex AI is available in multiple regions. Configure your region in the `.env` file:
+
+```env
+VERTEX_REGION=us-central1
+```
+
+### Regional Endpoints
+
+Prism selects the API hostname based on the configured region:
+
+| Region value | Endpoint hostname | Use case |
+|--------------|-------------------|----------|
+| `global` | `aiplatform.googleapis.com` | Global endpoint (no regional prefix) |
+| `eu` | `aiplatform.eu.rep.googleapis.com` | Multi-region EU |
+| `us` | `aiplatform.us.rep.googleapis.com` | Multi-region US |
+| Any other value (e.g. `us-central1`) | `{region}-aiplatform.googleapis.com` | Single-region endpoint |
+
+### Common Single-Region Values
 
 - `us-central1` (default)
 - `us-east1`
@@ -245,10 +262,17 @@ Vertex AI is available in multiple regions. Common options include:
 - `asia-northeast1`
 - `asia-southeast1`
 
-Configure your region in the `.env` file:
+Use `global`, `eu`, or `us` when you need Google Cloud's multi-region endpoints rather than a specific single region:
 
 ```env
-VERTEX_REGION=us-central1
+# Multi-region EU
+VERTEX_REGION=eu
+
+# Multi-region US
+VERTEX_REGION=us
+
+# Global endpoint
+VERTEX_REGION=global
 ```
 
 ## Differences from Gemini API

@@ -124,6 +124,16 @@ class Vertex extends Provider
             );
         }
 
+        // Multi-region endpoints
+        if ($this->region === 'eu' || $this->region === 'us') {
+            return sprintf(
+                'https://aiplatform.%s.rep.googleapis.com/v1/projects/%s/locations/%s/publishers/google/models',
+                $this->region,
+                $this->projectId,
+                $this->region
+            );
+        }
+
         return sprintf(
             'https://%s-aiplatform.googleapis.com/v1/projects/%s/locations/%s/publishers/google/models',
             $this->region,
