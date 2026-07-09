@@ -235,6 +235,44 @@ describe('Request format for Vertex', function (): void {
         });
     });
 
+    it('uses multi-region eu hostname when region is eu', function (): void {
+        config()->set('prism.providers.vertex.region', 'eu');
+        FixtureResponse::fakeResponseSequence('*', 'vertex/generate-text-with-a-prompt');
+
+        Prism::text()
+            ->using(Provider::Vertex, 'gemini-1.5-flash')
+            ->withPrompt('Hello')
+            ->asText();
+
+        Http::assertSent(function (Request $request): bool {
+            expect($request->url())->toContain('https://aiplatform.eu.rep.googleapis.com')
+                ->and($request->url())->toContain('projects/test-project')
+                ->and($request->url())->toContain('locations/eu')
+                ->and($request->url())->toContain('publishers/google/models');
+
+            return true;
+        });
+    });
+
+    it('uses multi-region us hostname when region is us', function (): void {
+        config()->set('prism.providers.vertex.region', 'us');
+        FixtureResponse::fakeResponseSequence('*', 'vertex/generate-text-with-a-prompt');
+
+        Prism::text()
+            ->using(Provider::Vertex, 'gemini-1.5-flash')
+            ->withPrompt('Hello')
+            ->asText();
+
+        Http::assertSent(function (Request $request): bool {
+            expect($request->url())->toContain('https://aiplatform.us.rep.googleapis.com')
+                ->and($request->url())->toContain('projects/test-project')
+                ->and($request->url())->toContain('locations/us')
+                ->and($request->url())->toContain('publishers/google/models');
+
+            return true;
+        });
+    });
+
     it('includes generation config in request', function (): void {
         FixtureResponse::fakeResponseSequence('*', 'vertex/generate-text-with-a-prompt');
 
