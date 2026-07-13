@@ -18,6 +18,8 @@ use Prism\Prism\Streaming\Events\ToolApprovalRequestEvent;
 use Prism\Prism\Streaming\Events\ToolResultEvent;
 use Prism\Prism\Streaming\StreamState;
 use Prism\Prism\Structured\Request as StructuredRequest;
+use Prism\Prism\Telemetry\Telemetry;
+use Prism\Prism\Telemetry\TelemetryContext;
 use Prism\Prism\Text\Request as TextRequest;
 use Prism\Prism\Tool;
 use Prism\Prism\ValueObjects\Messages\AssistantMessage;
@@ -303,6 +305,12 @@ trait CallsTools
             if ($approval->approved) {
                 $result = $this->executeToolCall($request->tools(), $toolCall, $messageId);
 
+                $telemetryContext = Telemetry::current();
+
+                if ($telemetryContext instanceof TelemetryContext) {
+                    Telemetry::toolInvoked($telemetryContext, $toolCall, $result['toolResult'], $result['durationMs']);
+                }
+
                 $approvalResolvedToolResults[] = $result['toolResult'];
 
                 foreach ($result['events'] as $event) {
@@ -385,13 +393,15 @@ trait CallsTools
     /**
      * @param  Tool[]  $tools
      * @param  array{concurrent: array<int, ToolCall>, sequential: array<int, ToolCall>}  $groupedToolCalls
-     * @return array<int, array{toolResult: ToolResult, events: array<int, ToolResultEvent|ArtifactEvent>}>
+     * @return array<int, array{toolResult: ToolResult, events: array<int, ToolResultEvent|ArtifactEvent>, durationMs: float}>
      */
     protected function executeToolsWithConcurrency(array $tools, array $groupedToolCalls, string $messageId): array
     {
         $results = [];
 
         $concurrentClosures = [];
+
+        $telemetryContext = Telemetry::current();
 
         foreach ($groupedToolCalls['concurrent'] as $index => $toolCall) {
             $concurrentClosures[$index] = fn () => $this->executeToolCall($tools, $toolCall, $messageId);
@@ -400,23 +410,58 @@ trait CallsTools
         if ($concurrentClosures !== []) {
             foreach (Concurrency::run($concurrentClosures) as $index => $result) {
                 $results[$index] = $result;
+
+                if ($telemetryContext instanceof TelemetryContext) {
+                    $this->recordToolTelemetry($telemetryContext, $groupedToolCalls['concurrent'][$index], $result, $index);
+                }
             }
         }
 
         foreach ($groupedToolCalls['sequential'] as $index => $toolCall) {
-            $results[$index] = $this->executeToolCall($tools, $toolCall, $messageId);
+            $result = $this->executeToolCall($tools, $toolCall, $messageId);
+
+            $results[$index] = $result;
+
+            if ($telemetryContext instanceof TelemetryContext) {
+                $this->recordToolTelemetry($telemetryContext, $toolCall, $result, $index);
+            }
         }
 
         return $results;
     }
 
     /**
+     * Emit a ToolInvoked telemetry event for a single executed tool call.
+     *
+     * Reads defensively because concurrently-executed results arrive back from
+     * Concurrency::run() as loosely-typed values.
+     */
+    protected function recordToolTelemetry(TelemetryContext $context, ToolCall $toolCall, mixed $result, int $index): void
+    {
+        if (! is_array($result)) {
+            return;
+        }
+
+        $toolResult = $result['toolResult'] ?? null;
+
+        if (! $toolResult instanceof ToolResult) {
+            return;
+        }
+
+        $durationMs = $result['durationMs'] ?? 0.0;
+
+        Telemetry::toolInvoked($context, $toolCall, $toolResult, is_float($durationMs) ? $durationMs : 0.0, $index);
+    }
+
+    /**
      * @param  Tool[]  $tools
-     * @return array{toolResult: ToolResult, events: array<int, ToolResultEvent|ArtifactEvent>}
+     * @return array{toolResult: ToolResult, events: array<int, ToolResultEvent|ArtifactEvent>, durationMs: float}
      */
     protected static function executeToolCall(array $tools, ToolCall $toolCall, string $messageId): array
     {
         $events = [];
+
+        $startedAt = microtime(true);
 
         try {
             $tool = self::resolveTool($toolCall->name, $tools);
@@ -446,6 +491,7 @@ trait CallsTools
                 return [
                     'toolResult' => $toolResult,
                     'events' => $events,
+                    'durationMs' => (microtime(true) - $startedAt) * 1000,
                 ];
             }
 
@@ -484,6 +530,7 @@ trait CallsTools
             return [
                 'toolResult' => $toolResult,
                 'events' => $events,
+                'durationMs' => (microtime(true) - $startedAt) * 1000,
             ];
         } catch (PrismException $e) {
             try {
@@ -514,6 +561,7 @@ trait CallsTools
             return [
                 'toolResult' => $toolResult,
                 'events' => $events,
+                'durationMs' => (microtime(true) - $startedAt) * 1000,
             ];
         }
     }

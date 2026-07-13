@@ -8,7 +8,9 @@ use Illuminate\Http\Client\RequestException;
 use Prism\Prism\Concerns\ConfiguresClient;
 use Prism\Prism\Concerns\ConfiguresProviders;
 use Prism\Prism\Concerns\HasProviderOptions;
+use Prism\Prism\Enums\TelemetryOperation;
 use Prism\Prism\Exceptions\PrismException;
+use Prism\Prism\Telemetry\Telemetry;
 use Prism\Prism\ValueObjects\Media\Audio;
 use Prism\Prism\ValueObjects\Media\Document;
 use Prism\Prism\ValueObjects\Media\Image;
@@ -181,10 +183,20 @@ class PendingRequest
 
         $request = $this->toRequest();
 
+        $context = Telemetry::start(TelemetryOperation::Embeddings, $this->providerKey(), $request->model(), $request);
+
         try {
-            return $this->provider->embeddings($request);
+            $response = $this->provider->embeddings($request);
+
+            Telemetry::completed($context, $response);
+
+            return $response;
         } catch (RequestException $e) {
+            Telemetry::failed($context, $e);
+
             $this->provider->handleRequestException($request->model(), $e);
+        } finally {
+            Telemetry::end($context);
         }
     }
 
