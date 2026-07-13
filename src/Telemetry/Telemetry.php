@@ -132,11 +132,15 @@ class Telemetry
             return;
         }
 
+        $capturesContent = self::capturesContent();
+
         event(new ToolInvoked(
             $toolIndex === null ? $context : $context->withTool($toolIndex),
-            $toolCall,
-            $toolResult,
+            $toolCall->name,
+            $toolCall->id,
             $durationMs,
+            $capturesContent ? $toolCall : null,
+            $capturesContent ? $toolResult : null,
         ));
     }
 

@@ -152,23 +152,44 @@ it('instruments a stream: passes events through and emits step + completion tele
         && $e->usage?->completionTokens === 4);
 });
 
-it('emits ToolInvoked with the tool ordinal and duration', function (): void {
+it('emits ToolInvoked with identity + duration and withholds content by default', function (): void {
     Event::fake();
 
     $context = new TelemetryContext('trace', TelemetryOperation::Text, 'openai', 'm', microtime(true));
 
-    $toolCall = new ToolCall('call-1', 'weather', ['city' => 'NYC']);
-    $toolResult = new ToolResult(
-        toolCallId: 'call-1',
-        toolName: 'weather',
-        args: ['city' => 'NYC'],
-        result: 'Sunny',
+    Telemetry::toolInvoked(
+        $context,
+        new ToolCall('call-1', 'weather', ['city' => 'NYC']),
+        new ToolResult(toolCallId: 'call-1', toolName: 'weather', args: ['city' => 'NYC'], result: 'Sunny'),
+        12.5,
+        0,
     );
-
-    Telemetry::toolInvoked($context, $toolCall, $toolResult, 12.5, 0);
 
     Event::assertDispatched(ToolInvoked::class, fn (ToolInvoked $e): bool => $e->context->toolIndex === 0
         && $e->durationMs === 12.5
-        && $e->toolCall->name === 'weather'
-        && $e->toolResult->result === 'Sunny');
+        && $e->toolName === 'weather'
+        && $e->toolCallId === 'call-1'
+        // content withheld because capture_content is off (the default)
+        && $e->toolCall === null
+        && $e->toolResult === null);
+});
+
+it('includes tool call and result content only when capture_content is enabled', function (): void {
+    config()->set('prism.telemetry.capture_content', true);
+
+    Event::fake();
+
+    $context = new TelemetryContext('trace', TelemetryOperation::Text, 'openai', 'm', microtime(true));
+
+    Telemetry::toolInvoked(
+        $context,
+        new ToolCall('call-1', 'weather', ['city' => 'NYC']),
+        new ToolResult(toolCallId: 'call-1', toolName: 'weather', args: ['city' => 'NYC'], result: 'Sunny'),
+        12.5,
+        0,
+    );
+
+    Event::assertDispatched(ToolInvoked::class, fn (ToolInvoked $e): bool => $e->toolName === 'weather'
+        && $e->toolCall?->name === 'weather'
+        && $e->toolResult?->result === 'Sunny');
 });
