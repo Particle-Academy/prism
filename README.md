@@ -31,7 +31,7 @@ Prism is a powerful Laravel package for integrating Large Language Models (LLMs)
 
 ## Official Documentation
 
-Official documentation can be found on the [Prism website](https://prismphp.com).
+Official documentation can be found at [ai.particle.academy](https://ai.particle.academy).
 
 ## Code of Conduct
 
