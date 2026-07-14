@@ -170,8 +170,8 @@ it('emits ToolInvoked with identity + duration and withholds content by default'
         && $e->toolName === 'weather'
         && $e->toolCallId === 'call-1'
         // content withheld because capture_content is off (the default)
-        && $e->toolCall === null
-        && $e->toolResult === null);
+        && ! $e->toolCall instanceof ToolCall
+        && ! $e->toolResult instanceof ToolResult);
 });
 
 it('includes tool call and result content only when capture_content is enabled', function (): void {
