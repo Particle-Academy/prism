@@ -126,6 +126,10 @@ trait CallsTools
 
         $executionResults = $this->executeToolsWithConcurrency($tools, $groupedToolCalls, $messageId);
 
+        // This tool batch belongs to the current step; advance the telemetry
+        // step cursor so the next step's tools are tagged one step later.
+        Telemetry::advanceStep(Telemetry::current());
+
         foreach (collect($executionResults)->keys()->sort() as $index) {
             $result = $executionResults[$index];
 

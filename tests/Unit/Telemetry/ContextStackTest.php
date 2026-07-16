@@ -64,3 +64,33 @@ it('clears the stack', function (): void {
 
     expect($stack->current())->toBeNull();
 });
+
+it('tracks an independent step cursor per generation', function (): void {
+    $stack = new ContextStack;
+    $stack->push(stackContext('a'));
+    $stack->push(stackContext('b'));
+
+    // both start at 0
+    expect($stack->stepFor('a'))->toBe(0);
+    expect($stack->stepFor('b'))->toBe(0);
+
+    $stack->advanceStepFor('a');
+    $stack->advanceStepFor('a');
+
+    expect($stack->stepFor('a'))->toBe(2);
+    expect($stack->stepFor('b'))->toBe(0); // sibling generation unaffected
+});
+
+it('defaults the step cursor to 0 for an unknown generation', function (): void {
+    expect((new ContextStack)->stepFor('never-started'))->toBe(0);
+});
+
+it('clears the step cursor for a generation', function (): void {
+    $stack = new ContextStack;
+    $stack->push(stackContext('a'));
+    $stack->advanceStepFor('a');
+
+    $stack->clearStepFor('a');
+
+    expect($stack->stepFor('a'))->toBe(0);
+});

@@ -124,6 +124,21 @@ class Telemetry
         }
 
         self::stack()->pop($context);
+        self::stack()->clearStepFor($context->traceId);
+    }
+
+    /**
+     * Advance the step cursor after a tool batch executes, so the next step's
+     * tools are tagged with the correct step ordinal. A no-op when telemetry is
+     * off (no active context).
+     */
+    public static function advanceStep(?TelemetryContext $context): void
+    {
+        if (! $context instanceof TelemetryContext) {
+            return;
+        }
+
+        self::stack()->advanceStepFor($context->traceId);
     }
 
     public static function toolInvoked(?TelemetryContext $context, ToolCall $toolCall, ToolResult $toolResult, float $durationMs, ?int $toolIndex = null): void
@@ -134,8 +149,16 @@ class Telemetry
 
         $capturesContent = self::capturesContent();
 
+        // Tag the tool with the step that owns it (the current cursor) so a
+        // consumer can nest tool spans under their step, then the tool ordinal.
+        $eventContext = $context->withStep(self::stack()->stepFor($context->traceId));
+
+        if ($toolIndex !== null) {
+            $eventContext = $eventContext->withTool($toolIndex);
+        }
+
         event(new ToolInvoked(
-            $toolIndex === null ? $context : $context->withTool($toolIndex),
+            $eventContext,
             $toolCall->name,
             $toolCall->id,
             $durationMs,

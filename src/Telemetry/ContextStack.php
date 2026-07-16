@@ -18,9 +18,40 @@ class ContextStack
     /** @var list<TelemetryContext> */
     protected array $stack = [];
 
+    /**
+     * Per-generation step cursor, keyed by trace id. Advanced once per executed
+     * tool batch so tool events can be tagged with the step that owns them —
+     * Prism's recursive loop runs step N's tools before step N is recorded.
+     *
+     * @var array<string, int>
+     */
+    protected array $stepCursors = [];
+
     public function push(TelemetryContext $context): void
     {
         $this->stack[] = $context;
+        $this->stepCursors[$context->traceId] ??= 0;
+    }
+
+    /**
+     * The current step ordinal for a generation (0 before any tool batch runs).
+     */
+    public function stepFor(string $traceId): int
+    {
+        return $this->stepCursors[$traceId] ?? 0;
+    }
+
+    /**
+     * Advance a generation's step cursor after a tool batch completes.
+     */
+    public function advanceStepFor(string $traceId): void
+    {
+        $this->stepCursors[$traceId] = ($this->stepCursors[$traceId] ?? 0) + 1;
+    }
+
+    public function clearStepFor(string $traceId): void
+    {
+        unset($this->stepCursors[$traceId]);
     }
 
     public function current(): ?TelemetryContext
@@ -56,5 +87,6 @@ class ContextStack
     public function clear(): void
     {
         $this->stack = [];
+        $this->stepCursors = [];
     }
 }

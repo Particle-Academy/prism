@@ -193,3 +193,30 @@ it('includes tool call and result content only when capture_content is enabled',
         && $e->toolCall?->name === 'weather'
         && $e->toolResult?->result === 'Sunny');
 });
+
+it('tags tool events with the advancing step cursor so tools nest under their step', function (): void {
+    Event::fake();
+
+    $context = Telemetry::start(TelemetryOperation::Text, 'openai', 'gpt-4o');
+
+    $invoke = function (string $id) use ($context): void {
+        Telemetry::toolInvoked(
+            $context,
+            new ToolCall($id, 'weather', []),
+            new ToolResult(toolCallId: $id, toolName: 'weather', args: [], result: 'ok'),
+            1.0,
+            0,
+        );
+    };
+
+    $invoke('c0');                     // step 0's tool
+    Telemetry::advanceStep($context);  // batch boundary — next tools are step 1
+    $invoke('c1');                     // step 1's tool
+
+    Event::assertDispatched(ToolInvoked::class, fn (ToolInvoked $e): bool => $e->toolCallId === 'c0' && $e->context->stepIndex === 0);
+    Event::assertDispatched(ToolInvoked::class, fn (ToolInvoked $e): bool => $e->toolCallId === 'c1' && $e->context->stepIndex === 1);
+
+    // ending the generation clears its cursor
+    Telemetry::end($context);
+    expect(Telemetry::stack()->stepFor($context->traceId))->toBe(0);
+});
