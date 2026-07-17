@@ -8,6 +8,7 @@ use Illuminate\Http\Client\RequestException;
 use Prism\Prism\Concerns\ConfiguresClient;
 use Prism\Prism\Concerns\ConfiguresProviders;
 use Prism\Prism\Concerns\HasProviderOptions;
+use Prism\Prism\Concerns\HasTelemetryMetadata;
 use Prism\Prism\Enums\TelemetryOperation;
 use Prism\Prism\Exceptions\PrismException;
 use Prism\Prism\Telemetry\Telemetry;
@@ -23,6 +24,7 @@ class PendingRequest
     use ConfiguresClient;
     use ConfiguresProviders;
     use HasProviderOptions;
+    use HasTelemetryMetadata;
 
     /** @var array<Content> */
     protected array $contents = [];
@@ -183,7 +185,7 @@ class PendingRequest
 
         $request = $this->toRequest();
 
-        $context = Telemetry::start(TelemetryOperation::Embeddings, $this->providerKey(), $request->model(), $request);
+        $context = Telemetry::start(TelemetryOperation::Embeddings, $this->providerKey(), $request->model(), $request, $this->telemetryUserId, $this->telemetrySessionId);
 
         try {
             $response = $this->provider->embeddings($request);

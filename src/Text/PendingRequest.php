@@ -18,6 +18,7 @@ use Prism\Prism\Concerns\HasPrompts;
 use Prism\Prism\Concerns\HasProviderOptions;
 use Prism\Prism\Concerns\HasProviderTools;
 use Prism\Prism\Concerns\HasReasoning;
+use Prism\Prism\Concerns\HasTelemetryMetadata;
 use Prism\Prism\Concerns\HasTools;
 use Prism\Prism\Enums\TelemetryOperation;
 use Prism\Prism\Exceptions\PrismException;
@@ -44,6 +45,7 @@ class PendingRequest
     use HasProviderOptions;
     use HasProviderTools;
     use HasReasoning;
+    use HasTelemetryMetadata;
     use HasTools;
 
     /**
@@ -63,7 +65,7 @@ class PendingRequest
     {
         $request = $this->toRequest();
 
-        $context = Telemetry::start(TelemetryOperation::Text, $this->providerKey(), $request->model(), $request);
+        $context = Telemetry::start(TelemetryOperation::Text, $this->providerKey(), $request->model(), $request, $this->telemetryUserId, $this->telemetrySessionId);
 
         try {
             $response = $this->provider->text($request);
@@ -91,13 +93,13 @@ class PendingRequest
     {
         $request = $this->toRequest();
 
-        $context = Telemetry::start(TelemetryOperation::Stream, $this->providerKey(), $request->model(), $request);
+        $context = Telemetry::start(TelemetryOperation::Stream, $this->providerKey(), $request->model(), $request, $this->telemetryUserId, $this->telemetrySessionId);
 
         try {
             $stream = $this->provider->stream($request);
 
             yield from $context instanceof TelemetryContext
-                ? Telemetry::instrumentStream($context, $stream)
+                ? Telemetry::instrumentStream($context, $stream, $request)
                 : $stream;
         } catch (RequestException $e) {
             Telemetry::failed($context, $e);

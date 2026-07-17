@@ -16,6 +16,11 @@ return [
         // Off by default: this data can contain PII. Only enable it where the
         // telemetry sink is trusted.
         'capture_content' => env('PRISM_TELEMETRY_CAPTURE_CONTENT', false),
+
+        // Bound opt-in stream reconstruction so telemetry cannot turn an
+        // otherwise streaming response into unbounded process memory.
+        'content_max_length' => (int) env('PRISM_TELEMETRY_CONTENT_MAX_LENGTH', 65_536),
+        'content_max_items' => (int) env('PRISM_TELEMETRY_CONTENT_MAX_ITEMS', 256),
     ],
     'providers' => [
         'openai' => [

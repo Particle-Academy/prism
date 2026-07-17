@@ -24,6 +24,8 @@ readonly class TelemetryContext
         public float $startedAt,
         public ?int $stepIndex = null,
         public ?int $toolIndex = null,
+        public ?string $userId = null,
+        public ?string $sessionId = null,
     ) {}
 
     public function withStep(int $stepIndex): self
@@ -36,6 +38,8 @@ readonly class TelemetryContext
             $this->startedAt,
             $stepIndex,
             $this->toolIndex,
+            $this->userId,
+            $this->sessionId,
         );
     }
 
@@ -49,6 +53,8 @@ readonly class TelemetryContext
             $this->startedAt,
             $this->stepIndex,
             $toolIndex,
+            $this->userId,
+            $this->sessionId,
         );
     }
 

@@ -16,6 +16,7 @@ use Prism\Prism\Events\Telemetry\ToolInvoked;
 use Prism\Prism\Facades\Prism;
 use Prism\Prism\Streaming\Events\StepFinishEvent;
 use Prism\Prism\Streaming\Events\StreamEndEvent;
+use Prism\Prism\Streaming\Events\TextDeltaEvent;
 use Prism\Prism\Telemetry\Telemetry;
 use Prism\Prism\Telemetry\TelemetryContext;
 use Prism\Prism\Testing\TextResponseFake;
@@ -150,6 +151,107 @@ it('instruments a stream: passes events through and emits step + completion tele
     Event::assertDispatchedTimes(StepCompleted::class, 1);
     Event::assertDispatched(GenerationCompleted::class, fn (GenerationCompleted $e): bool => $e->finishReason === FinishReason::Stop
         && $e->usage?->completionTokens === 4);
+});
+
+it('captures streaming step and final output content when enabled', function (): void {
+    config()->set('prism.telemetry.capture_content', true);
+    Event::fake();
+
+    $context = Telemetry::start(TelemetryOperation::Stream, 'openai', 'gpt-x');
+    $inner = (function (): Generator {
+        yield new TextDeltaEvent('d1', time(), 'Hello ', 'm1');
+        yield new TextDeltaEvent('d2', time(), 'world', 'm1');
+        yield new StepFinishEvent('s1', time(), new Usage(1, 2));
+        yield new StreamEndEvent('e1', time(), FinishReason::Stop, new Usage(1, 2));
+    })();
+
+    iterator_to_array(Telemetry::instrumentStream($context, $inner), false);
+
+    Event::assertDispatched(StepCompleted::class, fn (StepCompleted $event): bool => $event->step?->toArray()['text'] === 'Hello world');
+    Event::assertDispatched(GenerationCompleted::class, fn (GenerationCompleted $event): bool => $event->response?->toArray()['text'] === 'Hello world');
+});
+
+it('bounds captured streaming content and reports truncation', function (): void {
+    config()->set('prism.telemetry.capture_content', true);
+    config()->set('prism.telemetry.content_max_length', 5);
+    Event::fake();
+
+    $context = Telemetry::start(TelemetryOperation::Stream, 'openai', 'gpt-x');
+    $inner = (function (): Generator {
+        yield new TextDeltaEvent('d1', time(), 'sensitive-long-output', 'm1');
+        yield new StepFinishEvent('s1', time(), new Usage(1, 2));
+        yield new StreamEndEvent('e1', time(), FinishReason::Stop, new Usage(1, 2));
+    })();
+
+    iterator_to_array(Telemetry::instrumentStream($context, $inner), false);
+
+    Event::assertDispatched(GenerationCompleted::class, fn (GenerationCompleted $event): bool => $event->response?->toArray()['text'] === 'sensi'
+        && $event->response?->toArray()['truncated'] === true);
+});
+
+it('does not reconstruct stream content when capture is disabled', function (): void {
+    Event::fake();
+    $context = Telemetry::start(TelemetryOperation::Stream, 'openai', 'gpt-x');
+    $inner = (function (): Generator {
+        yield new TextDeltaEvent('d1', time(), str_repeat('x', 100_000), 'm1');
+        yield new StepFinishEvent('s1', time(), new Usage(1, 2));
+        yield new StreamEndEvent('e1', time(), FinishReason::Stop, new Usage(1, 2));
+    })();
+
+    iterator_to_array(Telemetry::instrumentStream($context, $inner), false);
+
+    Event::assertDispatched(StepCompleted::class, fn (StepCompleted $event): bool => $event->step === null);
+    Event::assertDispatched(GenerationCompleted::class, fn (GenerationCompleted $event): bool => $event->response === null);
+});
+
+it('does not expose private properties from unknown message objects', function (): void {
+    config()->set('prism.telemetry.capture_content', true);
+    Event::fake();
+
+    $request = new class
+    {
+        public function systemPrompts(): array
+        {
+            return [];
+        }
+
+        public function messages(): array
+        {
+            return [new class
+            {
+                private string $secret = 'must-not-leak';
+
+                public function secret(): string
+                {
+                    return $this->secret;
+                }
+            }];
+        }
+    };
+    $context = Telemetry::start(TelemetryOperation::Stream, 'openai', 'gpt-x');
+    $inner = (function (): Generator {
+        yield new StepFinishEvent('s1', time(), new Usage(1, 2));
+        yield new StreamEndEvent('e1', time(), FinishReason::Stop, new Usage(1, 2));
+    })();
+
+    iterator_to_array(Telemetry::instrumentStream($context, $inner, $request), false);
+
+    Event::assertDispatched(StepCompleted::class, function (StepCompleted $event): bool {
+        $json = json_encode($event->step?->toArray(), JSON_THROW_ON_ERROR);
+
+        return ! str_contains($json, 'must-not-leak') && str_contains($json, '"type"');
+    });
+});
+
+it('carries user and session ids on the telemetry context', function (): void {
+    Event::fake();
+
+    $context = Telemetry::start(TelemetryOperation::Text, 'openai', 'gpt-x', userId: 'user-7', sessionId: 'session-9');
+
+    expect($context?->userId)->toBe('user-7')
+        ->and($context?->sessionId)->toBe('session-9')
+        ->and($context?->withStep(1)->userId)->toBe('user-7')
+        ->and($context?->withTool(2)->sessionId)->toBe('session-9');
 });
 
 it('emits ToolInvoked with identity + duration and withholds content by default', function (): void {

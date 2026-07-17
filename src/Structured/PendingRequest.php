@@ -17,6 +17,7 @@ use Prism\Prism\Concerns\HasProviderOptions;
 use Prism\Prism\Concerns\HasProviderTools;
 use Prism\Prism\Concerns\HasReasoning;
 use Prism\Prism\Concerns\HasSchema;
+use Prism\Prism\Concerns\HasTelemetryMetadata;
 use Prism\Prism\Concerns\HasTools;
 use Prism\Prism\Contracts\Schema;
 use Prism\Prism\Enums\TelemetryOperation;
@@ -38,6 +39,7 @@ class PendingRequest
     use HasProviderTools;
     use HasReasoning;
     use HasSchema;
+    use HasTelemetryMetadata;
     use HasTools;
 
     /**
@@ -52,7 +54,7 @@ class PendingRequest
     {
         $request = $this->toRequest();
 
-        $context = Telemetry::start(TelemetryOperation::Structured, $this->providerKey(), $request->model(), $request);
+        $context = Telemetry::start(TelemetryOperation::Structured, $this->providerKey(), $request->model(), $request, $this->telemetryUserId, $this->telemetrySessionId);
 
         try {
             $response = $this->provider->structured($request);

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Prism\Prism\Telemetry;
 
 use Generator;
+use Illuminate\Contracts\Support\Arrayable;
 use Illuminate\Support\Str;
 use Prism\Prism\Enums\FinishReason;
 use Prism\Prism\Enums\TelemetryOperation;
@@ -16,6 +17,9 @@ use Prism\Prism\Events\Telemetry\ToolInvoked;
 use Prism\Prism\Streaming\Events\StepFinishEvent;
 use Prism\Prism\Streaming\Events\StreamEndEvent;
 use Prism\Prism\Streaming\Events\StreamEvent;
+use Prism\Prism\Streaming\Events\TextDeltaEvent;
+use Prism\Prism\Streaming\Events\ToolCallEvent;
+use Prism\Prism\Streaming\Events\ToolResultEvent;
 use Prism\Prism\Structured\Response as StructuredResponse;
 use Prism\Prism\Text\Response as TextResponse;
 use Prism\Prism\ValueObjects\ToolCall;
@@ -57,7 +61,7 @@ class Telemetry
         return self::stack()->current();
     }
 
-    public static function start(TelemetryOperation $operation, string $provider, string $model, mixed $request = null): ?TelemetryContext
+    public static function start(TelemetryOperation $operation, string $provider, string $model, mixed $request = null, ?string $userId = null, ?string $sessionId = null): ?TelemetryContext
     {
         if (! self::enabled()) {
             return null;
@@ -69,6 +73,8 @@ class Telemetry
             provider: $provider,
             model: $model,
             startedAt: microtime(true),
+            userId: $userId,
+            sessionId: $sessionId,
         );
 
         self::stack()->push($context);
@@ -175,16 +181,46 @@ class Telemetry
      * @param  Generator<StreamEvent>  $events
      * @return Generator<StreamEvent>
      */
-    public static function instrumentStream(TelemetryContext $context, Generator $events): Generator
+    public static function instrumentStream(TelemetryContext $context, Generator $events, mixed $request = null): Generator
     {
+        $capturesContent = self::capturesContent();
+        $maxLength = max(0, (int) config('prism.telemetry.content_max_length', 65_536));
+        $maxItems = max(0, (int) config('prism.telemetry.content_max_items', 256));
         $stepIndex = 0;
         $lastEnd = null;
+        $stepText = '';
+        $fullText = '';
+        $toolCalls = [];
+        $stepTruncated = false;
+        $fullTruncated = false;
+        $itemsTruncated = false;
+        $systemPrompts = $capturesContent
+            ? self::contentArray(is_object($request) && method_exists($request, 'systemPrompts') ? $request->systemPrompts() : [], $maxItems, $itemsTruncated)
+            : [];
+        $messages = $capturesContent
+            ? self::contentArray(is_object($request) && method_exists($request, 'messages') ? $request->messages() : [], $maxItems, $itemsTruncated)
+            : [];
 
         foreach ($events as $event) {
-            if ($event instanceof StepFinishEvent) {
-                event(new StepCompleted($context->withStep($stepIndex), null, $event->usage));
+            if ($event instanceof TextDeltaEvent && $capturesContent) {
+                self::appendBounded($stepText, $event->delta, $maxLength, $stepTruncated);
+                self::appendBounded($fullText, $event->delta, $maxLength, $fullTruncated);
+            } elseif ($event instanceof ToolCallEvent && $capturesContent) {
+                self::appendItem($toolCalls, $event->toolCall->toArray(), $maxItems, $itemsTruncated);
+            } elseif ($event instanceof ToolResultEvent && $capturesContent) {
+                self::appendItem($messages, ['type' => 'tool_result', 'tool_results' => [$event->toolResult->toArray()]], $maxItems, $itemsTruncated);
+            } elseif ($event instanceof StepFinishEvent) {
+                $content = $capturesContent ? new StreamContent($stepText, $systemPrompts, $messages, $toolCalls, $stepTruncated || $itemsTruncated) : null;
+                event(new StepCompleted($context->withStep($stepIndex), null, $event->usage, $content));
+
+                if ($capturesContent) {
+                    self::appendItem($messages, ['type' => 'assistant', 'content' => $stepText, 'tool_calls' => $toolCalls], $maxItems, $itemsTruncated);
+                }
 
                 $stepIndex++;
+                $stepText = '';
+                $toolCalls = [];
+                $stepTruncated = false;
             } elseif ($event instanceof StreamEndEvent) {
                 $lastEnd = $event;
             }
@@ -192,6 +228,49 @@ class Telemetry
             yield $event;
         }
 
-        self::completed($context, null, $lastEnd?->finishReason, $lastEnd?->usage);
+        self::completed($context, $capturesContent ? new StreamContent($fullText, $systemPrompts, $messages, truncated: $fullTruncated || $itemsTruncated) : null, $lastEnd?->finishReason, $lastEnd?->usage);
+    }
+
+    /**
+     * @param  array<int, mixed>  $values
+     * @return array<int, array<string, mixed>>
+     */
+    protected static function contentArray(array $values, int $maxItems, bool &$truncated): array
+    {
+        if (count($values) > $maxItems) {
+            $truncated = true;
+        }
+
+        return array_map(
+            fn (mixed $value): array => $value instanceof Arrayable
+                ? $value->toArray()
+                : (is_array($value) ? $value : ['type' => get_debug_type($value)]),
+            array_slice($values, 0, $maxItems),
+        );
+    }
+
+    protected static function appendBounded(string &$buffer, string $value, int $limit, bool &$truncated): void
+    {
+        $remaining = max(0, $limit - strlen($buffer));
+
+        if (strlen($value) > $remaining) {
+            $truncated = true;
+        }
+
+        if ($remaining > 0) {
+            $buffer .= substr($value, 0, $remaining);
+        }
+    }
+
+    /** @param array<int, mixed> $items */
+    protected static function appendItem(array &$items, mixed $item, int $limit, bool &$truncated): void
+    {
+        if (count($items) >= $limit) {
+            $truncated = true;
+
+            return;
+        }
+
+        $items[] = $item;
     }
 }

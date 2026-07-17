@@ -10,6 +10,7 @@ use Prism\Prism\Concerns\ConfiguresModels;
 use Prism\Prism\Concerns\ConfiguresProviders;
 use Prism\Prism\Concerns\HasPrompts;
 use Prism\Prism\Concerns\HasProviderOptions;
+use Prism\Prism\Concerns\HasTelemetryMetadata;
 use Prism\Prism\Enums\TelemetryOperation;
 use Prism\Prism\Telemetry\Telemetry;
 use Prism\Prism\ValueObjects\Media\Image;
@@ -23,12 +24,13 @@ class PendingRequest
     use ConfiguresProviders;
     use HasPrompts;
     use HasProviderOptions;
+    use HasTelemetryMetadata;
 
     public function generate(): Response
     {
         $request = $this->toRequest();
 
-        $context = Telemetry::start(TelemetryOperation::Image, $this->providerKey(), $request->model(), $request);
+        $context = Telemetry::start(TelemetryOperation::Image, $this->providerKey(), $request->model(), $request, $this->telemetryUserId, $this->telemetrySessionId);
 
         try {
             $response = $this->provider->images($request);
