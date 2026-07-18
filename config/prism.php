@@ -7,6 +7,21 @@ return [
         'enabled' => env('PRISM_SERVER_ENABLED', false),
     ],
     'request_timeout' => env('PRISM_REQUEST_TIMEOUT', 30), // The timeout for requests in seconds.
+    'telemetry' => [
+        // Master switch. When false, telemetry is a complete no-op: no contexts
+        // are minted and no events are dispatched.
+        'enabled' => env('PRISM_TELEMETRY_ENABLED', false),
+
+        // Include prompts, completions, and tool arguments in telemetry payloads.
+        // Off by default: this data can contain PII. Only enable it where the
+        // telemetry sink is trusted.
+        'capture_content' => env('PRISM_TELEMETRY_CAPTURE_CONTENT', false),
+
+        // Bound opt-in stream reconstruction so telemetry cannot turn an
+        // otherwise streaming response into unbounded process memory.
+        'content_max_length' => (int) env('PRISM_TELEMETRY_CONTENT_MAX_LENGTH', 65_536),
+        'content_max_items' => (int) env('PRISM_TELEMETRY_CONTENT_MAX_ITEMS', 256),
+    ],
     'providers' => [
         'openai' => [
             'url' => env('OPENAI_URL', 'https://api.openai.com/v1'),

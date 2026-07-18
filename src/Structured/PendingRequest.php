@@ -17,9 +17,12 @@ use Prism\Prism\Concerns\HasProviderOptions;
 use Prism\Prism\Concerns\HasProviderTools;
 use Prism\Prism\Concerns\HasReasoning;
 use Prism\Prism\Concerns\HasSchema;
+use Prism\Prism\Concerns\HasTelemetryMetadata;
 use Prism\Prism\Concerns\HasTools;
 use Prism\Prism\Contracts\Schema;
+use Prism\Prism\Enums\TelemetryOperation;
 use Prism\Prism\Exceptions\PrismException;
+use Prism\Prism\Telemetry\Telemetry;
 use Prism\Prism\ValueObjects\Messages\UserMessage;
 
 class PendingRequest
@@ -36,6 +39,7 @@ class PendingRequest
     use HasProviderTools;
     use HasReasoning;
     use HasSchema;
+    use HasTelemetryMetadata;
     use HasTools;
 
     /**
@@ -50,10 +54,20 @@ class PendingRequest
     {
         $request = $this->toRequest();
 
+        $context = Telemetry::start(TelemetryOperation::Structured, $this->providerKey(), $request->model(), $request, $this->telemetryUserId, $this->telemetrySessionId);
+
         try {
-            return $this->provider->structured($request);
+            $response = $this->provider->structured($request);
+
+            Telemetry::completed($context, $response, $response->finishReason, $response->usage);
+
+            return $response;
         } catch (RequestException $e) {
+            Telemetry::failed($context, $e);
+
             $this->provider->handleRequestException($request->model(), $e);
+        } finally {
+            Telemetry::end($context);
         }
     }
 
