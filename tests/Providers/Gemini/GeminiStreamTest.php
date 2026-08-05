@@ -494,3 +494,38 @@ it('passes service_tier in the request body for streaming', function (): void {
         return true;
     });
 });
+
+it('keeps tools a JSON array when streaming with provider and custom tools', function (): void {
+    FixtureResponse::fakeResponseSequence('*', 'gemini/stream-with-tools-search-grounding');
+
+    $tools = [
+        Tool::as('search_games')
+            ->for('useful for searching current games times in the city')
+            ->withStringParameter('city', 'The city that you want the game times for')
+            ->using(fn (string $city): string => 'The tigers game is at 3pm in detroit'),
+    ];
+
+    $response = Prism::text()
+        ->using(Provider::Gemini, 'gemini-2.5-flash')
+        ->withMaxSteps(1)
+        ->withTools($tools)
+        ->withProviderTools([new ProviderTool('google_search')])
+        ->withPrompt('What sport fixtures are on today?')
+        ->asStream();
+
+    foreach ($response as $event) {
+        // drain the stream so the request is actually dispatched
+    }
+
+    Http::assertSent(function (Request $request): true {
+        $tools = $request->data()['tools'];
+
+        // Grounding + custom tools together must stay Tool[] (a JSON array),
+        // not a mixed-key array json_encode would emit as an object.
+        expect(array_is_list($tools))->toBeTrue();
+        expect($tools[0])->toHaveKey('google_search');
+        expect($tools[1])->toHaveKey('function_declarations');
+
+        return true;
+    });
+});
