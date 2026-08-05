@@ -478,7 +478,7 @@ class Stream
         }
 
         if ($request->tools() !== []) {
-            $tools['function_declarations'] = ToolMap::map($request->tools());
+            $tools[] = ['function_declarations' => ToolMap::map($request->tools())];
         }
 
         $thinkingConfig = $providerOptions['thinkingConfig'] ?? null;
