@@ -465,6 +465,42 @@ describe('provider tools', function (): void {
         });
     });
 
+    it('keeps tools a JSON array when only custom tools are present', function (): void {
+        FixtureResponse::fakeResponseSequence('*', 'gemini/generate-text-with-multiple-tools');
+
+        $tools = [
+            (new Tool)
+                ->as('get_weather')
+                ->for('use this tool when you need to get weather for the city')
+                ->withStringParameter('city', 'The city that you want the weather for')
+                ->using(fn (string $city): string => 'The weather will be 45° and cold'),
+            (new Tool)
+                ->as('search_games')
+                ->for('useful for searching current games times in the city')
+                ->withStringParameter('city', 'The city that you want the game times for')
+                ->using(fn (string $city): string => 'The tigers game is at 3pm in detroit'),
+        ];
+
+        Prism::text()
+            ->using(Provider::Gemini, 'gemini-2.5-flash')
+            ->withMaxSteps(1)
+            ->withTools($tools)
+            ->withPrompt('What time is the tigers game today in Detroit and should I wear a coat?')
+            ->asText();
+
+        Http::assertSent(function (Request $request): true {
+            $tools = $request->data()['tools'];
+
+            // Custom-tools-only must still serialize as Tool[]: a bare
+            // ['function_declarations' => …] emits a JSON object Gemini rejects.
+            expect(array_is_list($tools))->toBeTrue();
+            expect($tools)->toHaveCount(1);
+            expect($tools[0])->toHaveKey('function_declarations');
+
+            return true;
+        });
+    });
+
     it('adds file_search provider tool with options to the request', function (): void {
         FixtureResponse::fakeResponseSequence('*', 'gemini/generate-text-with-file-search');
 
