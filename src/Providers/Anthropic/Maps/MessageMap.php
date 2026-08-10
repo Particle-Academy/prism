@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Prism\Prism\Providers\Anthropic\Maps;
 
 use Exception;
+use Illuminate\Support\Arr;
 use Prism\Prism\Contracts\Message;
 use Prism\Prism\Exceptions\PrismException;
 use Prism\Prism\Providers\Anthropic\Concerns\NormalizesCacheControl;
@@ -168,9 +169,12 @@ class MessageMap
                     'cache_control' => $cacheControl,
                 ]);
             }
-        } elseif ($message->content !== '' && $message->content !== '0') {
+        } elseif ($message->content !== '') {
 
-            $content[] = array_filter([
+            // whereNotNull, not array_filter: the only optional key here is
+            // cache_control, and a bare array_filter would also drop
+            // 'text' => '0', which is falsy but is real assistant output.
+            $content[] = Arr::whereNotNull([
                 'type' => 'text',
                 'text' => $message->content,
                 'cache_control' => $cacheControl,

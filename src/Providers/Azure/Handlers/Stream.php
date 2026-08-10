@@ -192,7 +192,7 @@ class Stream
             }
 
             $content = $this->extractContentDelta($data);
-            if ($content !== '' && $content !== '0') {
+            if ($content !== '') {
                 if ($this->state->shouldEmitTextStart()) {
                     $this->state->markTextStarted();
 
@@ -324,7 +324,7 @@ class Stream
             }
 
             $content = $this->extractContentDelta($data);
-            if ($content !== '' && $content !== '0') {
+            if ($content !== '') {
                 if ($this->state->shouldEmitTextStart()) {
                     $this->state->markTextStarted();
 

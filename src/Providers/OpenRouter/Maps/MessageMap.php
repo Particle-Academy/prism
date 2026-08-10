@@ -183,7 +183,7 @@ class MessageMap
             : $message->additionalContent['reasoning_details'];
 
         // OpenRouter supports cache_control on assistant messages
-        if ($cacheType && $message->content !== '' && $message->content !== '0') {
+        if ($cacheType && $message->content !== '') {
             $this->mappedMessages[] = array_filter([
                 'role' => 'assistant',
                 'content' => [
