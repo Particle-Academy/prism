@@ -107,16 +107,23 @@ class Text
         /** @var Response $response */
         $response = $this->client->post(
             'chat/completions',
-            array_merge([
-                'model' => $request->model(),
-                'messages' => (new MessageMap($request->messages(), $request->systemPrompts()))(),
-                'max_tokens' => $request->maxTokens(),
-            ], Arr::whereNotNull([
-                'temperature' => $request->temperature(),
-                'top_p' => $request->topP(),
-                'tools' => ToolMap::map($request->tools()) ?: null,
-                'tool_choice' => ToolChoiceMap::map($request->toolChoice()),
-            ]))
+            array_merge(
+                // DeepSeek-specific knobs — 'thinking' => ['type' => 'disabled'],
+                // 'reasoning_effort', 'stop', the penalties, and anything DeepSeek
+                // adds later. Merged first so the explicit request settings below
+                // always win and a stray option cannot clobber model or messages.
+                $request->providerOptions(),
+                [
+                    'model' => $request->model(),
+                    'messages' => (new MessageMap($request->messages(), $request->systemPrompts()))(),
+                    'max_tokens' => $request->maxTokens(),
+                ], Arr::whereNotNull([
+                    'temperature' => $request->temperature(),
+                    'top_p' => $request->topP(),
+                    'tools' => ToolMap::map($request->tools()) ?: null,
+                    'tool_choice' => ToolChoiceMap::map($request->toolChoice()),
+                ])
+            )
         );
 
         return $response->json();

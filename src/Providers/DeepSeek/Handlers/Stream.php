@@ -444,17 +444,22 @@ class Stream
         /** @var Response $response */
         $response = $this->client->withOptions(['stream' => true])->post(
             'chat/completions',
-            array_merge([
-                'stream' => true,
-                'model' => $request->model(),
-                'messages' => (new MessageMap($request->messages(), $request->systemPrompts()))(),
-                'max_tokens' => $request->maxTokens(),
-            ], Arr::whereNotNull([
-                'temperature' => $request->temperature(),
-                'top_p' => $request->topP(),
-                'tools' => ToolMap::map($request->tools()) ?: null,
-                'tool_choice' => ToolChoiceMap::map($request->toolChoice()),
-            ]))
+            array_merge(
+                // See Text::sendRequest. Merging first also means a provider
+                // option can never turn 'stream' off underneath this handler.
+                $request->providerOptions(),
+                [
+                    'stream' => true,
+                    'model' => $request->model(),
+                    'messages' => (new MessageMap($request->messages(), $request->systemPrompts()))(),
+                    'max_tokens' => $request->maxTokens(),
+                ], Arr::whereNotNull([
+                    'temperature' => $request->temperature(),
+                    'top_p' => $request->topP(),
+                    'tools' => ToolMap::map($request->tools()) ?: null,
+                    'tool_choice' => ToolChoiceMap::map($request->toolChoice()),
+                ])
+            )
         );
 
         return $response;
