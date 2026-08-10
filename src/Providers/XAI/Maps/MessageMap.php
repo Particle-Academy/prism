@@ -6,6 +6,7 @@ namespace Prism\Prism\Providers\XAI\Maps;
 
 use Exception;
 use Prism\Prism\Contracts\Message;
+use Prism\Prism\Providers\Support\Payload;
 use Prism\Prism\ValueObjects\Media\Image;
 use Prism\Prism\ValueObjects\Messages\AssistantMessage;
 use Prism\Prism\ValueObjects\Messages\SystemMessage;
@@ -101,7 +102,7 @@ class MessageMap
             ],
         ], $message->toolCalls);
 
-        $this->mappedMessages[] = array_filter([
+        $this->mappedMessages[] = Payload::compact([
             'role' => 'assistant',
             'content' => $message->content,
             'tool_calls' => $toolCalls,

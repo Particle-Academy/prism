@@ -7,6 +7,7 @@ namespace Prism\Prism\Providers\Requesty\Maps;
 use BackedEnum;
 use Exception;
 use Prism\Prism\Contracts\Message;
+use Prism\Prism\Providers\Support\Payload;
 use Prism\Prism\ValueObjects\Media\Audio;
 use Prism\Prism\ValueObjects\Media\Document;
 use Prism\Prism\ValueObjects\Media\Image;
@@ -99,7 +100,7 @@ class MessageMap
                 // Only add cache_control to the last tool result
                 $isLastResult = $index === $totalResults - 1;
 
-                return array_filter([
+                return Payload::compact([
                     'type' => 'tool_result',
                     'tool_call_id' => $toolResult->toolCallId,
                     'content' => $toolResult->result,
@@ -137,7 +138,7 @@ class MessageMap
         $this->mappedMessages[] = [
             'role' => 'user',
             'content' => [
-                array_filter([
+                Payload::compact([
                     'type' => 'text',
                     'text' => $message->text(),
                     'cache_control' => $cacheControl,
@@ -165,7 +166,7 @@ class MessageMap
 
         // Requesty supports cache_control on assistant messages
         if ($cacheType && $message->content !== '') {
-            $this->mappedMessages[] = array_filter([
+            $this->mappedMessages[] = Payload::compact([
                 'role' => 'assistant',
                 'content' => [
                     [
@@ -177,7 +178,7 @@ class MessageMap
                 'tool_calls' => $toolCalls,
             ]);
         } else {
-            $this->mappedMessages[] = array_filter([
+            $this->mappedMessages[] = Payload::compact([
                 'role' => 'assistant',
                 'content' => $message->content,
                 'tool_calls' => $toolCalls,

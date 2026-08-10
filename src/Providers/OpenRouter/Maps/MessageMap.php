@@ -7,6 +7,7 @@ namespace Prism\Prism\Providers\OpenRouter\Maps;
 use BackedEnum;
 use Exception;
 use Prism\Prism\Contracts\Message;
+use Prism\Prism\Providers\Support\Payload;
 use Prism\Prism\ValueObjects\Media\Audio;
 use Prism\Prism\ValueObjects\Media\Document;
 use Prism\Prism\ValueObjects\Media\Image;
@@ -75,7 +76,7 @@ class MessageMap
                     [
                         'type' => 'text',
                         'text' => $message->content,
-                        'cache_control' => array_filter([
+                        'cache_control' => Payload::compact([
                             'type' => $cacheType instanceof BackedEnum ? $cacheType->value : $cacheType,
                             'ttl' => $cacheTtl,
                         ]),
@@ -94,7 +95,7 @@ class MessageMap
     {
         $cacheType = $message->providerOptions('cacheType');
         $cacheTtl = $message->providerOptions('cacheTtl');
-        $cacheControl = $cacheType ? array_filter([
+        $cacheControl = $cacheType ? Payload::compact([
             'type' => $cacheType instanceof BackedEnum ? $cacheType->value : $cacheType,
             'ttl' => $cacheTtl,
         ]) : null;
@@ -108,7 +109,7 @@ class MessageMap
                 // Only add cache_control to the last tool result
                 $isLastResult = $index === $totalResults - 1;
 
-                return array_filter([
+                return Payload::compact([
                     'type' => 'tool_result',
                     'tool_call_id' => $toolResult->toolCallId,
                     'content' => $toolResult->result,
@@ -136,7 +137,7 @@ class MessageMap
     {
         $cacheType = $message->providerOptions('cacheType');
         $cacheTtl = $message->providerOptions('cacheTtl');
-        $cacheControl = $cacheType ? array_filter([
+        $cacheControl = $cacheType ? Payload::compact([
             'type' => $cacheType instanceof BackedEnum ? $cacheType->value : $cacheType,
             'ttl' => $cacheTtl,
         ]) : null;
@@ -150,7 +151,7 @@ class MessageMap
         $this->mappedMessages[] = [
             'role' => 'user',
             'content' => [
-                array_filter([
+                Payload::compact([
                     'type' => 'text',
                     'text' => $message->text(),
                     'cache_control' => $cacheControl,
@@ -184,13 +185,13 @@ class MessageMap
 
         // OpenRouter supports cache_control on assistant messages
         if ($cacheType && $message->content !== '') {
-            $this->mappedMessages[] = array_filter([
+            $this->mappedMessages[] = Payload::compact([
                 'role' => 'assistant',
                 'content' => [
                     [
                         'type' => 'text',
                         'text' => $message->content,
-                        'cache_control' => array_filter([
+                        'cache_control' => Payload::compact([
                             'type' => $cacheType instanceof BackedEnum ? $cacheType->value : $cacheType,
                             'ttl' => $cacheTtl,
                         ]),
@@ -201,7 +202,7 @@ class MessageMap
                 'reasoning_details' => $reasoningDetails,
             ]);
         } else {
-            $this->mappedMessages[] = array_filter([
+            $this->mappedMessages[] = Payload::compact([
                 'role' => 'assistant',
                 'content' => $message->content,
                 'tool_calls' => $toolCalls,
