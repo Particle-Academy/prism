@@ -426,14 +426,6 @@ class Stream
     {
         $providerOptions = $request->providerOptions();
 
-        if ($request->tools() !== [] && $request->providerTools() !== []) {
-            throw new PrismException('Use of provider tools with custom tools is not currently supported by Vertex.');
-        }
-
-        if ($request->tools() !== [] && ($providerOptions['searchGrounding'] ?? false)) {
-            throw new PrismException('Use of search grounding with custom tools is not currently supported by Prism.');
-        }
-
         $tools = [];
 
         if ($request->providerTools() !== []) {

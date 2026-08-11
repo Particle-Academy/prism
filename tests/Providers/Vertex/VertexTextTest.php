@@ -14,6 +14,7 @@ use Prism\Prism\ValueObjects\Media\Image;
 use Prism\Prism\ValueObjects\Messages\AssistantMessage;
 use Prism\Prism\ValueObjects\Messages\ToolResultMessage;
 use Prism\Prism\ValueObjects\Messages\UserMessage;
+use Prism\Prism\ValueObjects\ProviderTool;
 use Tests\Fixtures\FixtureResponse;
 
 beforeEach(function (): void {
@@ -354,4 +355,59 @@ it('keeps tools a JSON array when only custom tools are present', function (): v
 
         return true;
     });
+});
+
+// Vertex refused provider tools alongside custom tools since the provider was
+// first added (d81de06), as a conservative placeholder rather than a response
+// to the API rejecting anything. Google now documents the combination as
+// supported — "Gemini 3 models also support combining these built-in tools
+// with custom tools (function calling)" — and #12 fixed the payload shape it
+// needs, so the guard is gone and these cover the path it was blocking.
+it('sends grounding and custom tools together as a Tool[]', function (): void {
+    FixtureResponse::fakeResponseSequence('*', 'vertex/generate-text-with-multiple-tools');
+
+    Prism::text()
+        ->using(Provider::Vertex, 'gemini-3-pro')
+        ->withMaxSteps(1)
+        ->withProviderTools([new ProviderTool(type: 'google_search')])
+        ->withTools([
+            (new Tool)
+                ->as('get_weather')
+                ->for('get the weather')
+                ->withStringParameter('city', 'the city')
+                ->using(fn (string $city): string => '45° and cold'),
+        ])
+        ->withPrompt('Do I need a coat in Detroit today?')
+        ->asText();
+
+    Http::assertSent(function (Request $request): true {
+        $tools = $request->data()['tools'];
+
+        expect(array_is_list($tools))->toBeTrue();
+        expect($tools)->toHaveCount(2);
+        expect($tools[0])->toHaveKey('google_search');
+        expect($tools[1])->toHaveKey('function_declarations');
+
+        return true;
+    });
+});
+
+it('no longer throws when provider tools and custom tools are combined', function (): void {
+    FixtureResponse::fakeResponseSequence('*', 'vertex/generate-text-with-multiple-tools');
+
+    $response = Prism::text()
+        ->using(Provider::Vertex, 'gemini-3-pro')
+        ->withMaxSteps(1)
+        ->withProviderTools([new ProviderTool(type: 'google_search')])
+        ->withTools([
+            (new Tool)
+                ->as('get_weather')
+                ->for('get the weather')
+                ->withStringParameter('city', 'the city')
+                ->using(fn (string $city): string => '45° and cold'),
+        ])
+        ->withPrompt('Do I need a coat in Detroit today?')
+        ->asText();
+
+    expect($response)->not->toBeNull();
 });
