@@ -81,10 +81,6 @@ class Structured
     {
         $providerOptions = $request->providerOptions();
 
-        if ($request->tools() !== [] && $request->providerTools() !== []) {
-            throw new PrismException('Use of provider tools with custom tools is not currently supported by Vertex.');
-        }
-
         $tools = [];
 
         if ($request->providerTools() !== []) {
