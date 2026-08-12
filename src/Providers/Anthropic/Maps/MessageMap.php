@@ -5,10 +5,10 @@ declare(strict_types=1);
 namespace Prism\Prism\Providers\Anthropic\Maps;
 
 use Exception;
-use Illuminate\Support\Arr;
 use Prism\Prism\Contracts\Message;
 use Prism\Prism\Exceptions\PrismException;
 use Prism\Prism\Providers\Anthropic\Concerns\NormalizesCacheControl;
+use Prism\Prism\Providers\Support\Payload;
 use Prism\Prism\ValueObjects\Media\Document;
 use Prism\Prism\ValueObjects\Media\Image;
 use Prism\Prism\ValueObjects\Messages\AssistantMessage;
@@ -92,7 +92,7 @@ class MessageMap
      */
     protected static function mapSystemMessage(SystemMessage $systemMessage): array
     {
-        return array_filter([
+        return Payload::compact([
             'type' => 'text',
             'text' => $systemMessage->content,
             'cache_control' => self::normalizeCacheControl($systemMessage),
@@ -113,7 +113,7 @@ class MessageMap
                 // Only add cache_control to the last tool result
                 $isLastResult = $index === $totalResults - 1;
 
-                return array_filter([
+                return Payload::compact([
                     'type' => 'tool_result',
                     'tool_use_id' => $toolResult->toolCallId,
                     'content' => $toolResult->result,
@@ -134,7 +134,7 @@ class MessageMap
         return [
             'role' => 'user',
             'content' => [
-                array_filter([
+                Payload::compact([
                     'type' => 'text',
                     'text' => $message->text(),
                     'cache_control' => $cacheControl,
@@ -164,17 +164,16 @@ class MessageMap
 
         if (isset($message->additionalContent['citations'])) {
             foreach ($message->additionalContent['citations'] as $part) {
-                $content[] = array_filter([
+                $content[] = Payload::compact([
                     ...CitationsMapper::mapToAnthropic($part),
                     'cache_control' => $cacheControl,
                 ]);
             }
         } elseif ($message->content !== '') {
 
-            // whereNotNull, not array_filter: the only optional key here is
-            // cache_control, and a bare array_filter would also drop
-            // 'text' => '0', which is falsy but is real assistant output.
-            $content[] = Arr::whereNotNull([
+            // Payload::compact, not array_filter: a bare array_filter would
+            // also drop 'text' => '0', which is falsy but is real output.
+            $content[] = Payload::compact([
                 'type' => 'text',
                 'text' => $message->content,
                 'cache_control' => $cacheControl,
@@ -192,7 +191,7 @@ class MessageMap
 
         if (isset($message->additionalContent['provider_tool_calls'])) {
             foreach ($message->additionalContent['provider_tool_calls'] as $toolCall) {
-                $content[] = array_filter([
+                $content[] = Payload::compact([
                     'type' => $toolCall['type'] ?? 'server_tool_use',
                     'id' => $toolCall['id'] ?? null,
                     'name' => $toolCall['name'] ?? null,
@@ -203,7 +202,7 @@ class MessageMap
 
         if (isset($message->additionalContent['provider_tool_results'])) {
             foreach ($message->additionalContent['provider_tool_results'] as $toolResult) {
-                $content[] = array_filter([
+                $content[] = Payload::compact([
                     'type' => $toolResult['type'],
                     'tool_use_id' => $toolResult['tool_use_id'] ?? null,
                     'content' => $toolResult['content'] ?? null,

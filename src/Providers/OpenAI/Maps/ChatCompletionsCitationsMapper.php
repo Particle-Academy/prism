@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Prism\Prism\Providers\OpenAI\Maps;
 
 use Prism\Prism\Enums\Citations\CitationSourceType;
+use Prism\Prism\Providers\Support\Payload;
 use Prism\Prism\ValueObjects\Citation;
 use Prism\Prism\ValueObjects\MessagePartWithCitations;
 
@@ -34,7 +35,7 @@ class ChatCompletionsCitationsMapper
                 source: $url,
                 sourceText: $searchResult['snippet'] ?? null,
                 sourceTitle: $searchResult['title'] ?? null,
-                additionalContent: array_filter([
+                additionalContent: Payload::compact([
                     'date' => $searchResult['date'] ?? null,
                     'last_updated' => $searchResult['last_updated'] ?? null,
                     'source' => $searchResult['source'] ?? null,
