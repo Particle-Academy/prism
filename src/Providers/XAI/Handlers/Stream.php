@@ -113,7 +113,7 @@ class Stream
 
             $thinkingContent = $this->extractThinking($data, $request);
 
-            if ($thinkingContent !== '' && $thinkingContent !== '0') {
+            if ($thinkingContent !== '') {
                 if ($this->state->shouldEmitThinkingStart()) {
                     $this->state
                         ->withReasoningId(EventID::generate())
@@ -136,7 +136,7 @@ class Stream
                 continue;
             }
 
-            if ($this->state->hasThinkingStarted() && $thinkingContent === '') {
+            if ($this->state->hasThinkingStarted()) {
                 yield new ThinkingCompleteEvent(
                     id: EventID::generate(),
                     timestamp: time(),

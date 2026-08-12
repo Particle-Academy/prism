@@ -57,9 +57,10 @@ class Media implements Arrayable
             throw new InvalidArgumentException("$path is not a file");
         }
 
-        $content = file_get_contents($path) ?: '';
+        // Not `?: ''` — a file holding just "0" is falsy but not empty.
+        $content = file_get_contents($path);
 
-        if ($content === '' || $content === '0') {
+        if ($content === false || $content === '') {
             throw new InvalidArgumentException("$path is empty");
         }
 
@@ -222,11 +223,14 @@ class Media implements Arrayable
 
     public function rawContent(): ?string
     {
-        if ($this->rawContent) {
+        if ($this->rawContent !== null && $this->rawContent !== '') {
             return $this->rawContent;
         }
         if ($this->localPath) {
-            $this->rawContent = file_get_contents($this->localPath) ?: null;
+            // Not `?: null` — "0" is falsy but is real file content.
+            $content = file_get_contents($this->localPath);
+
+            $this->rawContent = $content === false ? null : $content;
         } elseif ($this->storagePath) {
             $this->rawContent = Storage::get($this->storagePath);
         } elseif ($this->isUrl()) {

@@ -139,7 +139,7 @@ class Stream
             }
 
             $reasoningDelta = $this->extractReasoningDelta($data);
-            if ($reasoningDelta !== '' && $reasoningDelta !== '0') {
+            if ($reasoningDelta !== '') {
                 if ($this->state->shouldEmitThinkingStart()) {
                     $this->state->withReasoningId(EventID::generate())->markThinkingStarted();
 
@@ -160,7 +160,7 @@ class Stream
                 continue;
             }
 
-            if ($this->state->hasThinkingStarted() && $reasoningDelta === '') {
+            if ($this->state->hasThinkingStarted()) {
                 yield new ThinkingCompleteEvent(
                     id: EventID::generate(),
                     timestamp: time(),
@@ -169,7 +169,7 @@ class Stream
             }
 
             $content = $this->extractContentDelta($data);
-            if ($content !== '' && $content !== '0') {
+            if ($content !== '') {
                 if ($this->state->shouldEmitTextStart()) {
                     $this->state->markTextStarted();
 

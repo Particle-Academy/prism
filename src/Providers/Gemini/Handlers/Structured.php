@@ -177,8 +177,8 @@ class Structured
             $totalTokens = data_get($data, 'usageMetadata.totalTokenCount', 0);
             $outputTokens = $candidatesTokens - $thoughtTokens;
 
-            $isEmpty = in_array(trim($content), ['', '0'], true);
-            $isInvalidJson = $content !== '' && $content !== '0' && json_decode($content) === null;
+            $isEmpty = trim($content) === '';
+            $isInvalidJson = $content !== '' && json_decode($content) === null;
             $contentLength = strlen($content);
 
             if (($isEmpty || $isInvalidJson) && $thoughtTokens > 0) {
