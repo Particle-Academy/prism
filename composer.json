@@ -27,6 +27,9 @@
     "symfony/http-foundation": "^7.2|^8.0",
     "symfony/polyfill-php83": "^1.32"
   },
+  "replace": {
+    "prism-php/prism": "self.version"
+  },
   "suggest": {
     "laravel/mcp": "Required to expose Prism tools through a Laravel MCP server (LaravelMcpTool)."
   },
