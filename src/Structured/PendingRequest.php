@@ -77,7 +77,7 @@ class PendingRequest
             throw PrismException::promptOrMessages();
         }
 
-        $messages = $this->messages;
+        $messages = [...$this->threadMessages(), ...$this->messages];
 
         if ($this->prompt) {
             $messages[] = new UserMessage($this->prompt, $this->additionalContent);
