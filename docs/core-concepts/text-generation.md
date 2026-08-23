@@ -152,6 +152,48 @@ $response = Prism::text()
 > [!NOTE]
 > Some providers, like Anthropic, do not support the `SystemMessage` type. In those cases we convert `SystemMessage` to `UserMessage`.
 
+### Threads
+
+Rebuilding the whole message array on every request gets old fast. If your conversation already lives somewhere — a database table, a cache entry, a session — implement `Thread` and hand Prism the conversation instead:
+
+```php
+use Prism\Prism\Contracts\Message;
+use Prism\Prism\Contracts\Thread;
+
+class Conversation extends Model implements Thread
+{
+    /** @return iterable<int, Message> */
+    public function messages(): iterable
+    {
+        return $this->turns->map(fn (Turn $turn): Message => $turn->toPrismMessage());
+    }
+}
+```
+
+Then pass it in. A thread is the history, and `withPrompt()` is the turn you're taking now — so unlike `withMessages()`, the two work together:
+
+```php
+$response = Prism::text()
+    ->using(Provider::Anthropic, 'claude-3-5-sonnet-20241022')
+    ->withThread($conversation)
+    ->withPrompt('Can you show me an example?')
+    ->asText();
+```
+
+Prism only ever reads from a thread, so saving a turn stays yours to do. Everything you need is on the response: `$response->messages` is the full exchange, tool calls and tool results included, which means a conversation interrupted mid-tool-loop can be stored and resumed exactly where it stopped.
+
+```php
+$conversation->record($response->messages);
+```
+
+`messages()` returns an `iterable`, so a generator can page a long history out of storage instead of hydrating every row up front. Prism still materialises the final list — the provider payload needs the whole conversation — so this lowers the cost of reading history, not the peak memory of sending it. Long threads cost tokens on every call, so trim them somewhere.
+
+> [!WARNING]
+> A thread is replayed as context, and `Message` includes `SystemMessage` — so anything that can write to your conversation store can put instructions in front of the model. Treat stored history as untrusted input: restrict who can write it, and don't persist a `SystemMessage` you didn't author.
+
+> [!NOTE]
+> Prism ships the interface, not an implementation — no migrations, no tables, no config. What storage you use is up to you. `withThread()` works on both `Prism::text()` and `Prism::structured()`.
+
 ## Generation Parameters
 
 Fine-tune your generations with various parameters:
