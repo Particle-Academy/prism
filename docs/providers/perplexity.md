@@ -73,6 +73,21 @@ accounting and data-handling decisions depend on knowing which one served the re
 An **empty** `search_results` on a completed run is normal — a preset may answer without
 searching — so do not treat a missing source list as an error.
 
+### Cost is reported, not estimated
+
+Perplexity prices each request in its own response, so you get the real figure rather than one
+derived from a rate card:
+
+```php
+$response->usage->cost;   // e.g. 0.005, or null if the response carried none
+```
+
+Only two Prism providers do this — Perplexity and OpenRouter. Everywhere else `cost` is null and
+you have to derive it. A `0.0` here is a genuine answer, not a missing one.
+
+The breakdown Perplexity sends alongside the total — input, output and request components — stays
+available on the raw response.
+
 > [!NOTE]
 > `tools: []` does not disable a preset's built-in tools. Perplexity exposes no public field
 > that does.

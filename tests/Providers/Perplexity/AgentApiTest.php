@@ -243,3 +243,45 @@ describe('tools', function (): void {
         Http::assertSent(fn ($request): bool => $request->data()['tools'] === [['type' => 'web_search']]);
     });
 });
+
+describe('reported cost', function (): void {
+    it('reports the cost Perplexity priced the request at', function (): void {
+        // Perplexity is one of only two providers that price a request in
+        // their own response. Dropping it makes an application derive an
+        // estimate when it could have had the real figure.
+        FixtureResponse::fakeResponseSequence('v1/agent', 'perplexity/agent-generate-text-with-a-prompt');
+
+        $response = Prism::text()->using(Provider::Perplexity, 'sonar')->withPrompt('Hi')->asText();
+
+        expect($response->usage->cost)->toBe(0.005);
+    });
+
+    it('reports a genuine zero rather than nothing', function (): void {
+        // A cached or free-tier request costs nothing, and that is an answer.
+        // Reporting null would send the caller off to estimate a figure the
+        // provider already gave them.
+        Http::fake(['api.perplexity.ai/*' => Http::response([
+            'status' => 'completed',
+            'model' => 'openai/gpt-5.1',
+            'output' => [['type' => 'message', 'content' => [['type' => 'output_text', 'text' => 'Hi']]]],
+            'usage' => ['input_tokens' => 1, 'output_tokens' => 1, 'cost' => ['total_cost' => 0]],
+        ])]);
+
+        $response = Prism::text()->using(Provider::Perplexity, 'sonar')->withPrompt('Hi')->asText();
+
+        expect($response->usage->cost)->toBe(0.0);
+    });
+
+    it('leaves cost null when the response carries none', function (): void {
+        Http::fake(['api.perplexity.ai/*' => Http::response([
+            'status' => 'completed',
+            'model' => 'openai/gpt-5.1',
+            'output' => [['type' => 'message', 'content' => [['type' => 'output_text', 'text' => 'Hi']]]],
+            'usage' => ['input_tokens' => 1, 'output_tokens' => 1],
+        ])]);
+
+        $response = Prism::text()->using(Provider::Perplexity, 'sonar')->withPrompt('Hi')->asText();
+
+        expect($response->usage->cost)->toBeNull();
+    });
+});
