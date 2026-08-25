@@ -8,6 +8,7 @@ use Prism\Prism\Exceptions\PrismException;
 use Prism\Prism\Facades\Prism;
 use Prism\Prism\Providers\Perplexity\Maps\PresetMap;
 use Prism\Prism\Text\Response;
+use Prism\Prism\Tool;
 use Prism\Prism\ValueObjects\Messages\AssistantMessage;
 use Prism\Prism\ValueObjects\Messages\UserMessage;
 use Tests\Fixtures\FixtureResponse;
@@ -211,5 +212,34 @@ describe('input mapping', function (): void {
             ->asText();
 
         Http::assertSent(fn ($request): bool => $request->data()['instructions'] === 'Answer only in French.');
+    });
+});
+
+describe('tools', function (): void {
+    it('refuses Prism tools rather than dropping them on the floor', function (): void {
+        FixtureResponse::fakeResponseSequence('v1/agent', 'perplexity/agent-generate-text-with-a-prompt');
+
+        // Found by dogfooding against a live key: the provider accepted
+        // withTools() and quietly ignored it, coming back with zero steps and
+        // zero tool calls. That reads as the model declining to call the tool,
+        // which is worse than an error.
+        expect(fn (): Response => Prism::text()
+            ->using(Provider::Perplexity, 'sonar')
+            ->withTools([(new Tool)->as('noop')->for('does nothing')->using(fn (): string => 'ok')])
+            ->withPrompt('Hi')
+            ->asText())
+            ->toThrow(PrismException::class, 'cannot execute Prism tools');
+    });
+
+    it('passes Perplexity own server-side tools through', function (): void {
+        FixtureResponse::fakeResponseSequence('v1/agent', 'perplexity/agent-generate-text-with-a-prompt');
+
+        Prism::text()
+            ->using(Provider::Perplexity, 'sonar')
+            ->withProviderOptions(['tools' => [['type' => 'web_search']]])
+            ->withPrompt('Hi')
+            ->asText();
+
+        Http::assertSent(fn ($request): bool => $request->data()['tools'] === [['type' => 'web_search']]);
     });
 });

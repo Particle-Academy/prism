@@ -7,6 +7,7 @@ namespace Prism\Prism\Providers\Perplexity\Concerns;
 use Illuminate\Http\Client\PendingRequest;
 use Illuminate\Http\Client\Response;
 use Illuminate\Support\Arr;
+use Prism\Prism\Exceptions\PrismException;
 use Prism\Prism\Providers\Perplexity\Maps\InputMapper;
 use Prism\Prism\Providers\Perplexity\Maps\PresetMap;
 use Prism\Prism\Structured\Request as StructuredRequest;
@@ -30,6 +31,8 @@ trait HandlesHttpRequests
      */
     protected function buildHttpRequestPayload(TextRequest|StructuredRequest $request, bool $stream = false): array
     {
+        $this->assertToolsAreReachable($request);
+
         $payload = [
             'input' => InputMapper::map($request->messages()),
             'stream' => $stream,
@@ -61,6 +64,37 @@ trait HandlesHttpRequests
             'language_preference' => $request->providerOptions('language_preference'),
             'reasoning_effort' => $request->providerOptions('reasoning_effort'),
         ]));
+    }
+
+    /**
+     * Refuse `withTools()` rather than dropping it on the floor.
+     *
+     * Perplexity's tools run server-side: you declare which of ITS tools a run
+     * may use — web_search, fetch_url, sandbox, mcp — and it executes them
+     * itself. There is no round trip that would let it invoke a PHP closure, so
+     * a Prism Tool cannot be handed over.
+     *
+     * The provider has never supported them, and before this check it accepted
+     * `withTools()` and quietly ignored it: the run came back with zero steps
+     * and zero tool calls, and an answer that simply never used the tool. That
+     * is worse than an error, because it reads as the model deciding not to
+     * call it. Confirmed against a live key before adding this.
+     *
+     * Perplexity's own tools are reachable through provider options:
+     *
+     *     ->withProviderOptions(['tools' => [['type' => 'web_search']]])
+     */
+    protected function assertToolsAreReachable(TextRequest|StructuredRequest $request): void
+    {
+        if ($request->tools() === []) {
+            return;
+        }
+
+        throw new PrismException(
+            'Perplexity cannot execute Prism tools: its tools run server-side, so there is no '
+            ."callback for a PHP closure. Pass Perplexity's own tools with "
+            ."->withProviderOptions(['tools' => [['type' => 'web_search']]]) instead of ->withTools()."
+        );
     }
 
     /**
