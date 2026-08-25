@@ -11,6 +11,7 @@ use Prism\Prism\Providers\Perplexity\Maps\InputMapper;
 use Prism\Prism\Providers\Perplexity\Maps\PresetMap;
 use Prism\Prism\Structured\Request as StructuredRequest;
 use Prism\Prism\Text\Request as TextRequest;
+use Prism\Prism\ValueObjects\Messages\SystemMessage;
 
 trait HandlesHttpRequests
 {
@@ -103,7 +104,7 @@ trait HandlesHttpRequests
     protected function instructions(TextRequest|StructuredRequest $request): ?string
     {
         $prompts = array_map(
-            fn (\Prism\Prism\ValueObjects\Messages\SystemMessage $message): string => $message->content,
+            fn (SystemMessage $message): string => $message->content,
             $request->systemPrompts(),
         );
 
