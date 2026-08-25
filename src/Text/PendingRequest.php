@@ -141,13 +141,18 @@ class PendingRequest
 
     public function toRequest(): Request
     {
-        if ($this->messages && $this->prompt) {
+        // filled(), not truthiness: a prompt of "0" is a real prompt, and
+        // gating this on truthiness let a caller who set BOTH messages and a
+        // "0" prompt past the refusal — and then dropped the prompt below. A
+        // successful call that answered a different question than the one
+        // asked, with nothing to indicate it.
+        if ($this->messages !== [] && filled($this->prompt)) {
             throw PrismException::promptOrMessages();
         }
 
         $messages = [...$this->threadMessages(), ...$this->messages];
 
-        if ($this->prompt) {
+        if (filled($this->prompt)) {
             $messages[] = new UserMessage($this->prompt, $this->additionalContent);
         }
 
