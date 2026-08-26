@@ -141,18 +141,22 @@ class PendingRequest
 
     public function toRequest(): Request
     {
-        // filled(), not truthiness: a prompt of "0" is a real prompt, and
-        // gating this on truthiness let a caller who set BOTH messages and a
-        // "0" prompt past the refusal — and then dropped the prompt below. A
-        // successful call that answered a different question than the one
-        // asked, with nothing to indicate it.
-        if ($this->messages !== [] && filled($this->prompt)) {
+        // Neither truthiness nor filled(). "" and "0" are the only strings PHP
+        // counts as falsy, so gating this on truthiness let a caller who set
+        // BOTH messages and a "0" prompt past the refusal — and then dropped
+        // the prompt below. A successful call that answered a different
+        // question than the one asked, with nothing to indicate it.
+        //
+        // filled() fixes that input and breaks another: it trims, so a prompt
+        // of "  " would start being dropped in exactly the same silent way.
+        // This test differs from the original on one input — the one at issue.
+        if ($this->messages !== [] && $this->prompt !== null && $this->prompt !== '') {
             throw PrismException::promptOrMessages();
         }
 
         $messages = [...$this->threadMessages(), ...$this->messages];
 
-        if (filled($this->prompt)) {
+        if ($this->prompt !== null && $this->prompt !== '') {
             $messages[] = new UserMessage($this->prompt, $this->additionalContent);
         }
 
