@@ -226,8 +226,12 @@ export default defineConfig({
               {
                 text: "Replicate",
                 link: "/providers/replicate",
+              },
+              {
                 text: "Qwen",
                 link: "/providers/qwen",
+              },
+              {
                 text: "Requesty",
                 link: "/providers/requesty",
               },
@@ -275,12 +279,41 @@ export default defineConfig({
             ],
           },
           {
-            text: "Packages",
+            text: "Companion Packages",
             items: [
               {
-                text: "Relay",
-                link: "https://github.com/prism-php/relay",
+                text: "Overview",
+                link: "/companion-packages/",
               },
+              {
+                text: "Harness (RC)",
+                link: "/companion-packages/harness",
+              },
+              {
+                text: "MCP",
+                link: "/companion-packages/mcp",
+              },
+              {
+                text: "Memory",
+                link: "/companion-packages/memory",
+              },
+              {
+                text: "Workspace",
+                link: "/companion-packages/workspace",
+              },
+              {
+                text: "Perplexity",
+                link: "https://github.com/Particle-Academy/prism-perplexity",
+              },
+              {
+                text: "OpenTelemetry",
+                link: "/advanced/telemetry",
+              },
+            ],
+          },
+          {
+            text: "Other Packages",
+            items: [
               {
                 text: "Bedrock",
                 link: "https://github.com/prism-php/bedrock",
