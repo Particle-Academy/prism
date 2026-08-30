@@ -64,6 +64,33 @@ it('surfaces which model a preset actually resolved to', function (): void {
     expect($response->additionalContent['resolved_model'])->toBe('google/gemini-3-pro');
 });
 
+it('preserves response identity, annotations, and the full usage ledger', function (): void {
+    Http::fake(['api.perplexity.ai/*' => Http::response([
+        'id' => 'resp_ledger',
+        'status' => 'completed',
+        'model' => 'openai/gpt-5.4',
+        'output' => [['type' => 'message', 'content' => [[
+            'type' => 'output_text',
+            'text' => 'Grounded.',
+            'annotations' => [['type' => 'url_citation', 'url' => 'https://prismphp.com']],
+        ]]]],
+        'usage' => [
+            'input_tokens' => 2,
+            'output_tokens' => 1,
+            'cost' => ['currency' => 'USD', 'total_cost' => 0.01, 'tool_calls_cost' => 0.004],
+            'tool_calls_details' => ['web_search' => 1],
+        ],
+    ])]);
+
+    $response = Prism::text()->using(Provider::Perplexity, 'sonar')->withPrompt('Hi')->asText();
+
+    expect($response->additionalContent['response_id'])->toBe('resp_ledger')
+        ->and($response->additionalContent['response_status'])->toBe('completed')
+        ->and($response->additionalContent['annotations'][0]['url'])->toBe('https://prismphp.com')
+        ->and($response->additionalContent['usage']['cost']['tool_calls_cost'])->toBe(0.004)
+        ->and($response->additionalContent['usage']['tool_calls_details']['web_search'])->toBe(1);
+});
+
 it('treats an empty source list on a completed run as normal', function (): void {
     FixtureResponse::fakeResponseSequence('v1/agent', 'perplexity/agent-no-search-results');
 
@@ -241,6 +268,48 @@ describe('tools', function (): void {
             ->asText();
 
         Http::assertSent(fn ($request): bool => $request->data()['tools'] === [['type' => 'web_search']]);
+    });
+
+    it('keeps nested web filters intact', function (): void {
+        FixtureResponse::fakeResponseSequence('v1/agent', 'perplexity/agent-generate-text-with-a-prompt');
+
+        $tools = [['type' => 'web_search', 'filters' => [
+            'search_domain_filter' => ['prismphp.com'],
+            'search_after_date_filter' => '01/01/2026',
+        ]]];
+
+        Prism::text()->using(Provider::Perplexity, 'sonar')
+            ->withProviderOptions(['tools' => $tools])->withPrompt('Hi')->asText();
+
+        Http::assertSent(fn ($request): bool => $request->data()['tools'] === $tools);
+    });
+});
+
+it('passes current Agent API controls without flattening them', function (): void {
+    FixtureResponse::fakeResponseSequence('v1/agent', 'perplexity/agent-generate-text-with-a-prompt');
+
+    Prism::text()->using(Provider::Perplexity, 'sonar')->withProviderOptions([
+        'max_steps' => 9,
+        'models' => ['openai/gpt-5.4', 'anthropic/claude-sonnet-4-6'],
+        'previous_response_id' => 'resp_prior',
+        'store' => true,
+        'reasoning' => ['effort' => 'high'],
+        'skills' => [['type' => 'browser']],
+        'metadata' => ['run_id' => 'run_1'],
+    ])->withPrompt('Hi')->asText();
+
+    Http::assertSent(function ($request): bool {
+        expect($request->data())->toMatchArray([
+            'max_steps' => 9,
+            'models' => ['openai/gpt-5.4', 'anthropic/claude-sonnet-4-6'],
+            'previous_response_id' => 'resp_prior',
+            'store' => true,
+            'reasoning' => ['effort' => 'high'],
+            'skills' => [['type' => 'browser']],
+            'metadata' => ['run_id' => 'run_1'],
+        ]);
+
+        return true;
     });
 });
 

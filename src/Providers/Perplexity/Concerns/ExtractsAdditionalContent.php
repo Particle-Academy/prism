@@ -27,8 +27,36 @@ trait ExtractsAdditionalContent
             // preset can route to a third party, and both token ledgers and
             // data-handling decisions turn on knowing which one served a call.
             'resolved_model' => data_get($data, 'model'),
+            'response_id' => data_get($data, 'id'),
+            'response_status' => data_get($data, 'status'),
+            'annotations' => $this->extractsAnnotations($data),
+            // Prism's Usage value object intentionally exposes the portable
+            // totals. Keep the provider ledger as well: cache and tool costs,
+            // token detail, and currency are otherwise irretrievably lost.
+            'usage' => is_array(data_get($data, 'usage')) ? data_get($data, 'usage') : null,
             'reasoning' => $this->extractsReasoning($this->extractsText($data)),
         ]);
+    }
+
+    /**
+     * @param  array<string, mixed>  $data
+     * @return list<array<string, mixed>>|null
+     */
+    protected function extractsAnnotations(array $data): ?array
+    {
+        $annotations = [];
+
+        foreach ((array) data_get($data, 'output', []) as $item) {
+            foreach ((array) data_get($item, 'content', []) as $content) {
+                foreach ((array) data_get($content, 'annotations', []) as $annotation) {
+                    if (is_array($annotation)) {
+                        $annotations[] = $annotation;
+                    }
+                }
+            }
+        }
+
+        return $annotations === [] ? null : $annotations;
     }
 
     /**
