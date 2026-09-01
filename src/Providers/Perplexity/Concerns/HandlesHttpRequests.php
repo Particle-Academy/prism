@@ -32,6 +32,7 @@ trait HandlesHttpRequests
     protected function buildHttpRequestPayload(TextRequest|StructuredRequest $request, bool $stream = false): array
     {
         $this->assertToolsAreReachable($request);
+        $this->assertSonarOnlyOptionsAreNotSet($request);
 
         $payload = [
             'input' => InputMapper::map($request->messages()),
@@ -50,27 +51,136 @@ trait HandlesHttpRequests
             'max_output_tokens' => $request->maxTokens(),
             'temperature' => $request->temperature(),
             'top_p' => $request->topP(),
-            'tools' => $request->providerOptions('tools'),
+            'tools' => $this->tools($request),
             'background' => $request->providerOptions('background'),
             'max_steps' => $request->providerOptions('max_steps'),
             'models' => $request->providerOptions('models'),
             'previous_response_id' => $request->providerOptions('previous_response_id'),
             'store' => $request->providerOptions('store'),
-            'reasoning' => $request->providerOptions('reasoning'),
+            'reasoning' => $this->reasoning($request),
             'skills' => $request->providerOptions('skills'),
             'metadata' => $request->providerOptions('metadata'),
-            'search_mode' => $request->providerOptions('search_mode'),
+            'language_preference' => $request->providerOptions('language_preference'),
+        ]));
+    }
+
+    /**
+     * Sonar's top-level search filters, moved onto the `web_search` tool.
+     *
+     * The Agent API decodes its body STRICTLY: an unknown field is a 400, not
+     * an ignored key. So every one of these sent at the top level was a request
+     * that failed outright — and it only surfaced in production because
+     * `Arr::whereNotNull` drops what nobody set, so the field appears solely on
+     * the runs where a caller supplied it. Reported as prism#31, by a consumer
+     * whose model chose to narrow a search on a fraction of its runs.
+     *
+     * TRANSLATED rather than dropped. Silently discarding a domain allowlist is
+     * the worse failure of the two: the request succeeds, the search is
+     * quietly broader than the caller asked for, and the answer cites sources
+     * they deliberately excluded. That is the same mistake `withTools()` used to
+     * make above, and it is why that one now throws.
+     *
+     * An explicit `filters` already on the tool WINS, on the same principle as
+     * `preset` over `model` below: the specific spelling beats the translated
+     * one, so a caller who has migrated is never second-guessed.
+     *
+     * @return list<array<string, mixed>>|null
+     */
+    protected function tools(TextRequest|StructuredRequest $request): ?array
+    {
+        /** @var list<array<string, mixed>>|null $tools */
+        $tools = $request->providerOptions('tools');
+
+        $filters = Arr::whereNotNull([
             'search_domain_filter' => $request->providerOptions('search_domain_filter'),
             'search_recency_filter' => $request->providerOptions('search_recency_filter'),
             'search_after_date_filter' => $request->providerOptions('search_after_date_filter'),
             'search_before_date_filter' => $request->providerOptions('search_before_date_filter'),
             'last_updated_after_filter' => $request->providerOptions('last_updated_after_filter'),
             'last_updated_before_filter' => $request->providerOptions('last_updated_before_filter'),
-            'return_images' => $request->providerOptions('return_images'),
-            'return_related_questions' => $request->providerOptions('return_related_questions'),
-            'language_preference' => $request->providerOptions('language_preference'),
-            'reasoning_effort' => $request->providerOptions('reasoning_effort'),
-        ]));
+        ]);
+
+        if ($filters === []) {
+            return $tools;
+        }
+
+        // A filter with no web_search tool to carry it would otherwise vanish.
+        // Declaring the tool is what the migration guide says to do, and it is
+        // what the caller plainly meant by setting a search filter at all.
+        if ($tools === null || $tools === []) {
+            return [['type' => 'web_search', 'filters' => $filters]];
+        }
+
+        $found = false;
+
+        foreach ($tools as $index => $tool) {
+            if (($tool['type'] ?? null) !== 'web_search') {
+                continue;
+            }
+
+            $found = true;
+            $tools[$index]['filters'] = array_merge($filters, $tool['filters'] ?? []);
+        }
+
+        return $found ? $tools : [...$tools, ['type' => 'web_search', 'filters' => $filters]];
+    }
+
+    /**
+     * `reasoning_effort` is `reasoning.effort` on the Agent API.
+     *
+     * Another strict-decode 400 in the old allowlist, and another one worth
+     * translating rather than dropping: effort is what a caller pays for.
+     * An explicit `reasoning` object wins.
+     *
+     * @return array<string, mixed>|null
+     */
+    protected function reasoning(TextRequest|StructuredRequest $request): ?array
+    {
+        /** @var array<string, mixed>|null $reasoning */
+        $reasoning = $request->providerOptions('reasoning');
+
+        if ($reasoning !== null) {
+            return $reasoning;
+        }
+
+        $effort = $request->providerOptions('reasoning_effort');
+
+        return $effort === null ? null : ['effort' => $effort];
+    }
+
+    /**
+     * Refuse the three Sonar options the Agent API has no answer for.
+     *
+     * `search_mode`, `return_images` and `return_related_questions` are not
+     * renamed and not nested — Perplexity's own migration guide records them as
+     * having no equivalent. Forwarding them was a 400; dropping them silently
+     * would be worse, because the caller asked for something and got a
+     * successful response that does not contain it.
+     *
+     * So this refuses, names the option, and says what to do instead — the same
+     * shape as `assertToolsAreReachable`, for the same reason.
+     */
+    protected function assertSonarOnlyOptionsAreNotSet(TextRequest|StructuredRequest $request): void
+    {
+        $unsupported = [
+            'search_mode' => "the Agent API has no search_mode. Use a preset instead: 'fast' maps to ->withProviderOptions(['preset' => 'fast']) and 'pro' to 'low'.",
+            'return_images' => 'the Agent API does not return images, and there is no equivalent option.',
+            'return_related_questions' => 'the Agent API has no related-questions flag. Ask for them in the prompt, or through a structured output schema.',
+        ];
+
+        foreach ($unsupported as $option => $advice) {
+            if ($request->providerOptions($option) === null) {
+                continue;
+            }
+
+            throw new PrismException(sprintf(
+                'Perplexity provider option [%s] is a Sonar chat/completions option: %s '
+                .'Sending it produced an HTTP 400, because the Agent API rejects unknown fields '
+                .'rather than ignoring them.',
+                $option,
+                $advice,
+            ));
+        }
     }
 
     /**
