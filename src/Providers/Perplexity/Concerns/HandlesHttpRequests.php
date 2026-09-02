@@ -119,7 +119,23 @@ trait HandlesHttpRequests
             }
 
             $found = true;
-            $tools[$index]['filters'] = array_merge($filters, $tool['filters'] ?? []);
+            $existing = $tool['filters'] ?? [];
+
+            // A scalar here used to reach `array_merge` and surface as a raw
+            // TypeError — an unhandled 500 in the calling app rather than a
+            // provider option it can catch. Refused by name for the same reason
+            // the three below are: `tools` can be model-supplied, and a bad
+            // value has to say which option was bad.
+            if (! is_array($existing)) {
+                throw new PrismException(sprintf(
+                    'Perplexity provider option [tools][%s][filters] must be an array of search '
+                    .'filters, %s given.',
+                    $index,
+                    get_debug_type($existing),
+                ));
+            }
+
+            $tools[$index]['filters'] = array_merge($filters, $existing);
         }
 
         return $found ? $tools : [...$tools, ['type' => 'web_search', 'filters' => $filters]];
@@ -159,17 +175,35 @@ trait HandlesHttpRequests
      *
      * So this refuses, names the option, and says what to do instead — the same
      * shape as `assertToolsAreReachable`, for the same reason.
+     *
+     * The two booleans are refused only when they are TRUE. `return_images:
+     * false` asks for exactly what the Agent API already does, so the caller's
+     * intent is met and an exception would reject a request that is in effect
+     * correct. That is not a hypothetical: all three are commonly declared to a
+     * model as tool parameters, so a model supplying the no-op value would take
+     * down a run it did nothing wrong in — the same model-triggerable path that
+     * made prism#31 a production incident rather than a config bug.
+     *
+     * `search_mode` NAMES a mode rather than toggling one. It has no value
+     * meaning "do nothing", so its presence is the ask and any value is refused.
+     *
+     * A falsy value that is not `false` — `0`, `''` — is still refused. These
+     * are declared booleans, `false` is the only no-op spelling valid for the
+     * type, and quietly accepting the others would be the silent-drop failure
+     * this whole method exists to avoid.
      */
     protected function assertSonarOnlyOptionsAreNotSet(TextRequest|StructuredRequest $request): void
     {
         $unsupported = [
-            'search_mode' => "the Agent API has no search_mode. Use a preset instead: 'fast' maps to ->withProviderOptions(['preset' => 'fast']) and 'pro' to 'low'.",
-            'return_images' => 'the Agent API does not return images, and there is no equivalent option.',
-            'return_related_questions' => 'the Agent API has no related-questions flag. Ask for them in the prompt, or through a structured output schema.',
+            'search_mode' => ['boolean' => false, 'advice' => "the Agent API has no search_mode. Use a preset instead: 'fast' maps to ->withProviderOptions(['preset' => 'fast']) and 'pro' to 'low'."],
+            'return_images' => ['boolean' => true, 'advice' => 'the Agent API does not return images, and there is no equivalent option.'],
+            'return_related_questions' => ['boolean' => true, 'advice' => 'the Agent API has no related-questions flag. Ask for them in the prompt, or through a structured output schema.'],
         ];
 
-        foreach ($unsupported as $option => $advice) {
-            if ($request->providerOptions($option) === null) {
+        foreach ($unsupported as $option => ['boolean' => $isBoolean, 'advice' => $advice]) {
+            $value = $request->providerOptions($option);
+
+            if ($value === null || ($isBoolean && $value === false)) {
                 continue;
             }
 

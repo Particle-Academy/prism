@@ -171,6 +171,55 @@ it('REFUSES the three options the Agent API has no answer for', function (string
         ->toThrow(PrismException::class, $option);
 })->with(['search_mode', 'return_images', 'return_related_questions']);
 
+it('lets the two BOOLEANS through when they are false, because that is what the API already does', function (string $option): void {
+    // `return_images: false` asks for exactly what the Agent API does anyway,
+    // so the caller's intent is already met and an exception would reject a
+    // request that is in effect correct. All three of these are commonly
+    // declared to a model as tool parameters, which makes this the same
+    // model-triggerable path that made #31 a production incident rather than a
+    // config bug -- a model passing the no-op value would take down a run it
+    // did nothing wrong in.
+    FixtureResponse::fakeResponseSequence('v1/agent', 'perplexity/agent-generate-text-with-a-prompt');
+
+    Prism::text()->using(Provider::Perplexity, 'sonar')
+        ->withProviderOptions([$option => false])->withPrompt('Hi')->asText();
+
+    Http::assertSent(function ($request) use ($option): bool {
+        expect($request->data())->not->toHaveKey($option);
+
+        return true;
+    });
+})->with(['return_images', 'return_related_questions']);
+
+it('still REFUSES search_mode when it is false, because it names a mode rather than toggling one', function (): void {
+    // The asymmetry is deliberate and pinned here so it cannot be "tidied" into
+    // consistency later: search_mode has no value meaning "do nothing", so its
+    // presence IS the ask.
+    expect(fn () => Prism::text()->using(Provider::Perplexity, 'sonar')
+        ->withProviderOptions(['search_mode' => false])->withPrompt('Hi')->asText())
+        ->toThrow(PrismException::class, 'search_mode');
+});
+
+it('REFUSES a falsy value that is not false, rather than guessing at it', function (int|string $value): void {
+    // These are declared booleans; `false` is the only no-op spelling valid for
+    // the type. Quietly accepting 0 or '' would be the silent-drop failure the
+    // refusal exists to avoid.
+    expect(fn () => Prism::text()->using(Provider::Perplexity, 'sonar')
+        ->withProviderOptions(['return_images' => $value])->withPrompt('Hi')->asText())
+        ->toThrow(PrismException::class, 'return_images');
+})->with([0, '']);
+
+it('names the option when a declared tool carries a non-array filters', function (): void {
+    // This reached array_merge and surfaced as a raw TypeError -- an unhandled
+    // 500 in the calling app rather than a provider option it could catch. The
+    // `tools` option can be model-supplied, so a bad value has to say which one.
+    expect(fn () => Prism::text()->using(Provider::Perplexity, 'sonar')->withProviderOptions([
+        'tools' => [['type' => 'web_search', 'filters' => 'oops']],
+        'search_domain_filter' => ['example.com'],
+    ])->withPrompt('Hi')->asText())
+        ->toThrow(PrismException::class, 'filters');
+});
+
 it('still sends language_preference, which the Agent API DOES accept', function (): void {
     // Not every Sonar-era name moved. Removing this one along with its
     // neighbours would have been the opposite mistake, and just as invisible.
