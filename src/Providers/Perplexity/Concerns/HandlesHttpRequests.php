@@ -203,7 +203,13 @@ trait HandlesHttpRequests
         foreach ($unsupported as $option => ['boolean' => $isBoolean, 'advice' => $advice]) {
             $value = $request->providerOptions($option);
 
-            if ($value === null || ($isBoolean && $value === false)) {
+            // Never set at all.
+            if ($value === null) {
+                continue;
+            }
+
+            // Set to the value that asks for what the Agent API already does.
+            if ($isBoolean && $value === false) {
                 continue;
             }
 
