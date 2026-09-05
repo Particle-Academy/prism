@@ -321,6 +321,51 @@ it('adds rate limit data to the responseMeta', function (): void {
     expect($response->meta->rateLimits[0]->resetsAt)->toEqual($requests_reset);
 });
 
+it('does not destroy a paid-for response when a reset header cannot be read', function (): void {
+    // `new Carbon('soon')` raises InvalidFormatException, and rate limits are
+    // parsed on the SUCCESS path -- after the model has answered and the call
+    // has been billed. Before this was guarded, an unreadable reset header threw
+    // straight through `asText()`, so a quota HINT destroyed the response it was
+    // attached to.
+    //
+    // The header is not necessarily the provider's, either: whatever proxy or
+    // gateway sits in front of the API can set it, so a 200 does not make the
+    // value trusted input.
+    //
+    // '1m30s' is not a contrived string. It is the compound duration OpenAI
+    // really sends, and nothing stops it appearing here.
+    FixtureResponse::fakeResponseSequence(
+        'v1/messages',
+        'anthropic/generate-text-with-a-prompt',
+        [
+            'anthropic-ratelimit-requests-limit' => 1000,
+            'anthropic-ratelimit-requests-remaining' => 500,
+            'anthropic-ratelimit-requests-reset' => 'soon',
+            'anthropic-ratelimit-tokens-limit' => 96000,
+            'anthropic-ratelimit-tokens-remaining' => 15000,
+            'anthropic-ratelimit-tokens-reset' => '1m30s',
+        ]
+    );
+
+    $response = Prism::text()
+        ->using('anthropic', 'claude-3-5-sonnet-20240620')
+        ->withPrompt('Who are you?')
+        ->asText();
+
+    // The response survives, which is the whole point.
+    expect($response->text)->not->toBeEmpty();
+
+    // And the quota it COULD read is still reported. Failing to null loses the
+    // reset instant only -- the same value a provider sending no reset header
+    // at all would give -- rather than losing the whole bucket.
+    expect($response->meta->rateLimits)->toHaveCount(2);
+    expect($response->meta->rateLimits[0]->name)->toEqual('requests');
+    expect($response->meta->rateLimits[0]->limit)->toEqual(1000);
+    expect($response->meta->rateLimits[0]->remaining)->toEqual(500);
+    expect($response->meta->rateLimits[0]->resetsAt)->toBeNull();
+    expect($response->meta->rateLimits[1]->resetsAt)->toBeNull();
+});
+
 it('handles unix timestamp rate limit reset headers', function (): void {
     // Unix timestamps have second precision, so we truncate microseconds for comparison.
     $requests_reset = Carbon::now()->addSeconds(30)->startOfSecond();
