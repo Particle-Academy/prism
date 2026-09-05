@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Tests\Telemetry;
 
+use Carbon\Carbon;
 use Generator;
 use Illuminate\Support\Facades\Event;
 use Prism\Prism\Enums\FinishReason;
@@ -21,6 +22,8 @@ use Prism\Prism\Telemetry\Telemetry;
 use Prism\Prism\Telemetry\TelemetryContext;
 use Prism\Prism\Testing\TextResponseFake;
 use Prism\Prism\Testing\TextStepFake;
+use Prism\Prism\ValueObjects\Meta;
+use Prism\Prism\ValueObjects\ProviderRateLimit;
 use Prism\Prism\ValueObjects\ToolCall;
 use Prism\Prism\ValueObjects\ToolResult;
 use Prism\Prism\ValueObjects\Usage;
@@ -89,6 +92,112 @@ it('includes request and response content when capture_content is enabled', func
 
     Event::assertDispatched(GenerationStarted::class, fn (GenerationStarted $e): bool => $e->request !== null);
     Event::assertDispatched(GenerationCompleted::class, fn (GenerationCompleted $e): bool => $e->response !== null);
+});
+
+it('carries the provider rate limits with capture_content OFF, which is the default', function (): void {
+    // G-45. Quota headroom is not content: a bucket is a name, two integers and
+    // a reset instant, all of them read off a response header the provider
+    // chose. While they travelled only on the gated `$response`, a SUCCESSFUL
+    // generation exported none of them under the default config -- so an
+    // operator saw the numbers only once a 429 had already happened (that path
+    // carries them on the exception) and never while there was headroom left to
+    // act on.
+    //
+    // Asserted together with `$response === null` on purpose: the point is not
+    // that rate limits arrive, it is that they arrive WHILE THE CONTENT GATE IS
+    // SHUT. A version of this test that enabled capture would pass against the
+    // defect.
+    Event::fake();
+
+    Prism::fake([
+        TextResponseFake::make()
+            ->withText('x')
+            ->withMeta(new Meta('id', 'm', rateLimits: [
+                new ProviderRateLimit('requests', limit: 1000, remaining: 999, resetsAt: Carbon::createFromTimestamp(1788611696)),
+                new ProviderRateLimit('tokens', limit: 40000, remaining: 39000),
+            ])),
+    ]);
+
+    Prism::text()->using('anthropic', 'm')->withPrompt('secret prompt')->asText();
+
+    Event::assertDispatched(GenerationCompleted::class, function (GenerationCompleted $e): bool {
+        expect($e->response)->toBeNull()
+            ->and($e->rateLimits)->toHaveCount(2)
+            ->and($e->rateLimits[0]->name)->toBe('requests')
+            ->and($e->rateLimits[0]->limit)->toBe(1000)
+            ->and($e->rateLimits[0]->remaining)->toBe(999)
+            ->and($e->rateLimits[0]->resetsAt?->getTimestamp())->toBe(1788611696)
+            ->and($e->rateLimits[1]->name)->toBe('tokens');
+
+        return true;
+    });
+});
+
+it('carries no rate limits when the provider reported none', function (): void {
+    // Absent and present-and-empty have to stay different downstream: a
+    // consumer that writes an empty bucket list claims it asked and was told
+    // nothing. Most providers report no quota headers at all.
+    Event::fake();
+
+    Prism::fake([TextResponseFake::make()->withText('x')]);
+
+    Prism::text()->using('anthropic', 'm')->withPrompt('q')->asText();
+
+    Event::assertDispatched(GenerationCompleted::class, fn (GenerationCompleted $e): bool => $e->rateLimits === []);
+});
+
+it('carries the rate limits of each STEP, also with capture off', function (): void {
+    // The terminal response's Meta describes the LAST provider call. In a tool
+    // loop the per-step buckets are what show quota being spent across the run,
+    // and they were gated by the same switch for the same wrong reason.
+    Event::fake();
+
+    Prism::fake([
+        TextResponseFake::make()
+            ->withText('done')
+            ->withSteps(collect([
+                TextStepFake::make()
+                    ->withUsage(new Usage(1, 1))
+                    ->withMeta(new Meta('s1', 'm', rateLimits: [new ProviderRateLimit('requests', limit: 10, remaining: 9)])),
+                TextStepFake::make()
+                    ->withUsage(new Usage(2, 2))
+                    ->withMeta(new Meta('s2', 'm', rateLimits: [new ProviderRateLimit('requests', limit: 10, remaining: 8)])),
+            ])),
+    ]);
+
+    Prism::text()->using('anthropic', 'm')->withPrompt('q')->asText();
+
+    Event::assertDispatched(StepCompleted::class, fn (StepCompleted $e): bool => $e->context->stepIndex === 0
+        && $e->step === null
+        && count($e->rateLimits) === 1
+        && $e->rateLimits[0]->remaining === 9);
+
+    Event::assertDispatched(StepCompleted::class, fn (StepCompleted $e): bool => $e->context->stepIndex === 1
+        && $e->step === null
+        && count($e->rateLimits) === 1
+        && $e->rateLimits[0]->remaining === 8);
+});
+
+it('drops anything in Meta::$rateLimits that is not a ProviderRateLimit', function (): void {
+    // `Meta::$rateLimits` is typed by docblock alone, and a docblock is not a
+    // check. The events declare `ProviderRateLimit[]`, so the filter is what
+    // makes that a true statement instead of a second docblock -- a listener
+    // reading `->name` on whatever arrived would fatal inside the dispatcher.
+    Event::fake();
+
+    $meta = new Meta('id', 'm', rateLimits: [
+        new ProviderRateLimit('requests', limit: 5),
+        ['name' => 'tokens', 'limit' => 5],
+        'tokens',
+        null,
+    ]);
+
+    Prism::fake([TextResponseFake::make()->withText('x')->withMeta($meta)]);
+
+    Prism::text()->using('anthropic', 'm')->withPrompt('q')->asText();
+
+    Event::assertDispatched(GenerationCompleted::class, fn (GenerationCompleted $e): bool => count($e->rateLimits) === 1
+        && $e->rateLimits[0]->name === 'requests');
 });
 
 it('emits a StepCompleted event per response step', function (): void {

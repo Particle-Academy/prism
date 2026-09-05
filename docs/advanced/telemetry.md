@@ -45,9 +45,9 @@ listeners.
 | Event | Dispatched when | Key payload (beyond `$context`) |
 |---|---|---|
 | `GenerationStarted` | a generation begins | `$request` |
-| `StepCompleted` | each step finishes | `$finishReason`, `$usage`, `$step` |
+| `StepCompleted` | each step finishes | `$finishReason`, `$usage`, `$rateLimits`, `$step` |
 | `ToolInvoked` | a tool call resolves | `$toolName`, `$toolCallId`, `$durationMs`, `$toolCall`, `$toolResult` |
-| `GenerationCompleted` | the generation finishes | `$durationMs`, `$finishReason`, `$usage`, `$response` |
+| `GenerationCompleted` | the generation finishes | `$durationMs`, `$finishReason`, `$usage`, `$rateLimits`, `$response` |
 | `GenerationFailed` | the generation throws | `$durationMs`, `$exception` |
 
 Every event carries a `TelemetryContext` (see [below](#the-telemetry-context))
@@ -70,6 +70,7 @@ Event::listen(function (GenerationCompleted $event): void {
         'finish_reason' => $event->finishReason?->value,
         'prompt_tokens' => $event->usage?->promptTokens,
         'completion_tokens' => $event->usage?->completionTokens,
+        'rate_limits' => array_map(fn ($limit) => $limit->toArray(), $event->rateLimits),
     ]);
 });
 ```
@@ -115,8 +116,13 @@ your backend.
 ## Capturing prompt & completion content
 
 By default telemetry records **structure and metrics only** — timings, token
-usage, finish reasons, and model — never the prompt or completion text, because
-that content can contain PII.
+usage, finish reasons, model, and the provider's rate-limit buckets — never the
+prompt or completion text, because that content can contain PII.
+
+`capture_content` gates **content and nothing else**. `$usage` and `$rateLimits`
+are always populated: a token count and a quota bucket are numbers the provider
+reported about the call, and quota headroom is precisely the signal you want
+before you hit a 429 rather than after it.
 
 Opt in with `capture_content`, and only where the telemetry sink is trusted:
 

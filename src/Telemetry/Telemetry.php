@@ -22,6 +22,8 @@ use Prism\Prism\Streaming\Events\ToolCallEvent;
 use Prism\Prism\Streaming\Events\ToolResultEvent;
 use Prism\Prism\Structured\Response as StructuredResponse;
 use Prism\Prism\Text\Response as TextResponse;
+use Prism\Prism\ValueObjects\Meta;
+use Prism\Prism\ValueObjects\ProviderRateLimit;
 use Prism\Prism\ValueObjects\ToolCall;
 use Prism\Prism\ValueObjects\ToolResult;
 use Prism\Prism\ValueObjects\Usage;
@@ -99,6 +101,7 @@ class Telemetry
                     $step->finishReason,
                     $step->usage,
                     self::capturesContent() ? $step : null,
+                    self::rateLimitsOf($step),
                 ));
 
                 $index++;
@@ -111,6 +114,7 @@ class Telemetry
             $finishReason,
             $usage,
             self::capturesContent() ? $response : null,
+            self::rateLimitsOf($response),
         ));
     }
 
@@ -229,6 +233,51 @@ class Telemetry
         }
 
         self::completed($context, $capturesContent ? new StreamContent($fullText, $systemPrompts, $messages, truncated: $fullTruncated || $itemsTruncated) : null, $lastEnd?->finishReason, $lastEnd?->usage);
+    }
+
+    /**
+     * The provider's quota buckets for a response or a step, read off its Meta.
+     *
+     * UNCONDITIONAL, and deliberately outside `capturesContent()`. A bucket is a
+     * name, two integers and a reset instant, taken from a response header the
+     * provider chose; there is nothing of the user's in it, and nothing of the
+     * model's either. Content is what the gate exists for, and this is not
+     * content.
+     *
+     * That distinction is the whole entry: while these travelled only on the
+     * gated `$response`, a successful generation exported no quota at all under
+     * the default config, so the numbers appeared exactly when a caller was
+     * already rate limited (the 429 path carries them on the exception) and
+     * never while there was still headroom to act on. See G-45.
+     *
+     * The filter is not defensive noise. `Meta::$rateLimits` is typed by
+     * docblock alone, and this method is what makes the events' own
+     * `ProviderRateLimit[]` a true statement rather than a second docblock.
+     *
+     * @return array<int, ProviderRateLimit>
+     */
+    protected static function rateLimitsOf(mixed $subject): array
+    {
+        if (! is_object($subject) || ! property_exists($subject, 'meta')) {
+            return [];
+        }
+
+        $meta = $subject->meta;
+
+        if (! $meta instanceof Meta) {
+            return [];
+        }
+
+        return array_values(array_filter(
+            $meta->rateLimits,
+            // PHPStan reads `Meta::$rateLimits` as already typed and calls this
+            // instanceof always-true. It is true of the docblock and not of the
+            // runtime: PHP does not enforce an array's element type, and this
+            // list is assembled by eighteen provider readers from raw headers.
+            // The ignore is the point of the check, not an exception to it.
+            /** @phpstan-ignore instanceof.alwaysTrue */
+            fn (mixed $rateLimit): bool => $rateLimit instanceof ProviderRateLimit,
+        ));
     }
 
     /**
