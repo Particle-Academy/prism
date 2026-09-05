@@ -391,6 +391,39 @@ it('handles unix timestamp rate limit reset headers', function (): void {
     expect($response->meta->rateLimits[0]->resetsAt)->toEqual($requests_reset);
 });
 
+it('reads the rate limits a title-casing proxy handed back', function (): void {
+    // HTTP field names are case-insensitive (RFC 9110 5.1) and a gateway that
+    // title-cases them is ordinary rather than hostile. The prefix used to be
+    // matched against the raw wire case, so this response reported NO rate
+    // limits at all -- and an empty list is also what a response that
+    // legitimately carried none looks like, which makes the failure invisible
+    // at the moment it happens and permanent afterwards.
+    $requests_reset = Carbon::now()->addSeconds(30);
+
+    FixtureResponse::fakeResponseSequence(
+        'v1/messages',
+        'anthropic/generate-text-with-a-prompt',
+        [
+            'Anthropic-RateLimit-Requests-Limit' => 1000,
+            'Anthropic-RateLimit-Requests-Remaining' => 500,
+            'Anthropic-RateLimit-Requests-Reset' => $requests_reset->toISOString(),
+        ]
+    );
+
+    $response = Prism::text()
+        ->using('anthropic', 'claude-3-5-sonnet-20240620')
+        ->withPrompt('Who are you?')
+        ->asText();
+
+    expect($response->meta->rateLimits)->toHaveCount(1);
+    // The BUCKET NAME is folded too, so a caller matching on 'requests' finds it
+    // whatever case the proxy chose.
+    expect($response->meta->rateLimits[0]->name)->toEqual('requests');
+    expect($response->meta->rateLimits[0]->limit)->toEqual(1000);
+    expect($response->meta->rateLimits[0]->remaining)->toEqual(500);
+    expect($response->meta->rateLimits[0]->resetsAt)->toEqual($requests_reset);
+});
+
 describe('Anthropic citations', function (): void {
     it('applies the citations request level providerOptions to all documents', function (): void {
         Prism::fake();

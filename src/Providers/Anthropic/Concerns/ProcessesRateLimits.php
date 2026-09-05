@@ -8,6 +8,7 @@ use Illuminate\Http\Client\Response;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Str;
+use Prism\Prism\Support\HeaderNames;
 use Prism\Prism\ValueObjects\ProviderRateLimit;
 
 trait ProcessesRateLimits
@@ -19,7 +20,13 @@ trait ProcessesRateLimits
     {
         $rate_limits = [];
 
-        foreach ($response->getHeaders() as $headerName => $headerValues) {
+        // Folded to lower case first. HTTP field names are case-insensitive
+        // (RFC 9110 5.1), and `getHeaders()` hands back whatever case the wire
+        // carried -- so an `Anthropic-RateLimit-...` from a title-casing gateway
+        // used to match nothing and return an empty list, which is also what a
+        // response with no quota headers looks like. Order survives the fold,
+        // and order is part of the answer here.
+        foreach (HeaderNames::folded($response->getHeaders()) as $headerName => $headerValues) {
             if (Str::startsWith($headerName, 'anthropic-ratelimit-') === false) {
                 continue;
             }
