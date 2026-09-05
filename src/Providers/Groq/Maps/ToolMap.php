@@ -15,20 +15,18 @@ class ToolMap
      */
     public static function Map(array $tools): array
     {
-        return array_map(function (Tool $tool): array {
-            return [
-                'type' => 'function',
-                'function' => [
-                    'name' => $tool->name(),
-                    'description' => $tool->description(),
-                    'parameters' => [
-                        'type' => 'object',
-                        'properties' => JsonMap::ofMaps(static::relaxTypes($tool->parametersAsArray())),
-                        'required' => $tool->requiredParameters(),
-                    ],
+        return array_map(fn (Tool $tool): array => [
+            'type' => 'function',
+            'function' => [
+                'name' => $tool->name(),
+                'description' => $tool->description(),
+                'parameters' => [
+                    'type' => 'object',
+                    'properties' => JsonMap::ofMaps(static::relaxTypes($tool->parametersAsArray())),
+                    'required' => $tool->requiredParameters(),
                 ],
-            ];
-        }, $tools);
+            ],
+        ], $tools);
     }
 
     /**
