@@ -78,6 +78,9 @@ trait MapsBatchResults
             cacheWriteInputTokens: data_get($usageData, 'cache_creation_input_tokens') !== null
                 ? (int) data_get($usageData, 'cache_creation_input_tokens')
                 : null,
+            thoughtTokens: data_get($usageData, 'output_tokens_details.thinking_tokens') !== null
+                ? (int) data_get($usageData, 'output_tokens_details.thinking_tokens')
+                : null,
             cacheReadInputTokens: data_get($usageData, 'cache_read_input_tokens') !== null
                 ? (int) data_get($usageData, 'cache_read_input_tokens')
                 : null,

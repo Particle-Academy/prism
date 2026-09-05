@@ -286,6 +286,45 @@ it('can calculate cache usage correctly', function (): void {
     expect($response->usage->cacheReadInputTokens)->ToBe(100);
 });
 
+it('reports the thinking tokens Anthropic actually sends', function (): void {
+    // Reported by a consumer against the live API on claude-opus-5: Anthropic
+    // puts reasoning at `usage.output_tokens_details.thinking_tokens`, and every
+    // Anthropic handler here built Usage without it. So thoughtTokens was null
+    // on every call, and a turn that reasoned hard was indistinguishable from
+    // one that did not think at all -- which is the question adaptive thinking
+    // makes worth asking, since the model now decides per request.
+    //
+    // The numbers are the ones measured in that report.
+    FixtureResponse::fakeResponseSequence('v1/messages', 'anthropic/generate-text-with-thinking');
+
+    $response = Prism::text()
+        ->using('anthropic', 'claude-opus-5')
+        ->withPrompt('Think about this.')
+        ->asText();
+
+    expect($response->usage->thoughtTokens)->toBe(1240);
+
+    // And a BREAKDOWN of output, not an addition to it. A consumer pricing
+    // `completionTokens + thoughtTokens` double-counts the expensive half, so
+    // the relationship is asserted rather than left to the docblock.
+    expect($response->usage->completionTokens)->toBe(2820);
+    expect($response->usage->thoughtTokens)->toBeLessThan($response->usage->completionTokens);
+});
+
+it('leaves thoughtTokens null when Anthropic reports no thinking', function (): void {
+    // The control. Without it the assertion above passes on an implementation
+    // that hardcodes 1240, and null must keep meaning "this turn did not think"
+    // rather than "nobody read the field".
+    FixtureResponse::fakeResponseSequence('v1/messages', 'anthropic/generate-text-with-a-prompt');
+
+    $response = Prism::text()
+        ->using('anthropic', 'claude-3-5-sonnet-20240620')
+        ->withPrompt('Who are you?')
+        ->asText();
+
+    expect($response->usage->thoughtTokens)->toBeNull();
+});
+
 it('adds rate limit data to the responseMeta', function (): void {
     $requests_reset = Carbon::now()->addSeconds(30);
 
