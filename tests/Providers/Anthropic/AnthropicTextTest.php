@@ -501,6 +501,32 @@ describe('Anthropic citations', function (): void {
         ]]);
     });
 
+    it('does not invent a citations entry when the response cites nothing', function (): void {
+        // The control the citation tests never had. Every other test in this
+        // group sends a response that HAS citations, so all of them passed
+        // against a guard that added a citations entry to literally every
+        // Anthropic response -- one MessagePartWithCitations per content block,
+        // each holding an empty citation list and a copy of the output text.
+        //
+        // The cause was `data_get($data, 'content.*.citations', []) === []`:
+        // a wildcard yields one entry PER BLOCK, null where the key is absent,
+        // so an ordinary answer produced [null] and never []. A caller could
+        // not tell "this answer cites sources" from "this answer exists".
+        //
+        // Found by the prism-parity anthropic-text-response suite on its first
+        // run, where prism-ts and prism-py both disagreed with this package and
+        // agreed with each other.
+        FixtureResponse::fakeResponseSequence('v1/messages', 'anthropic/generate-text-with-a-prompt');
+
+        $response = Prism::text()
+            ->using(Provider::Anthropic, 'claude-3-5-sonnet-latest')
+            ->withPrompt('Who are you?')
+            ->asText();
+
+        expect($response->additionalContent)->not->toHaveKey('citations');
+        expect($response->steps->first()->additionalContent)->not->toHaveKey('citations');
+    });
+
     it('adds citations to additionalContent on response steps and assistant message for PDF documents', function (): void {
         FixtureResponse::fakeResponseSequence('v1/messages', 'anthropic/generate-text-with-pdf-citations');
 
