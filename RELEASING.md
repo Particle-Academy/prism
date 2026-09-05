@@ -13,9 +13,21 @@ proving the tag was tested, and proving the package actually became installable.
 2. Tag it and push:
 
    ```
-   git tag v0.2.0
+   git tag -a v0.2.0        # annotated: the message BECOMES the release notes
    git push origin v0.2.0
    ```
+
+   **The tag annotation is the changelog.** These packages ship no CHANGELOG
+   file, so what you write in the tag message is what a consumer reads on the
+   release page and what arrives in their inbox. The workflow publishes it
+   verbatim with `--notes-from-tag`.
+
+   A lightweight tag — `git tag v0.2.0` with no `-a` and no message — FAILS the
+   release step rather than publishing an empty release. If a version is worth
+   cutting, it is worth a sentence saying why.
+
+   Say what breaks, what it fixes, and what a consumer has to do. Anyone holding
+   a pinned digest or matching on an error code learns it here or not at all.
 
 Composer takes the version from the tag, so there is nothing to bump in
 `composer.json` — and a `version` key there is refused, because it reintroduces
