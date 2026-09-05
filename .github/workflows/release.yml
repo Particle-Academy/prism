@@ -102,7 +102,24 @@ jobs:
             echo "Release ${GITHUB_REF_NAME} already exists; leaving it alone."
             exit 0
           fi
-          gh release create "${GITHUB_REF_NAME}" --title "${GITHUB_REF_NAME}" --notes-from-tag --verify-tag
+          # The annotation is read HERE and passed as a file, rather than left
+          # to `--notes-from-tag`. That flag ran on v0.116.0 and published the
+          # last COMMIT message instead of the 2491-character tag body: in an
+          # Actions checkout `gh` does not resolve the annotation, and it does
+          # not say so -- it silently substitutes something plausible.
+          #
+          # `git tag -l --format=%(contents)` reads the annotated tag object
+          # directly, which is why the workflow checks out with fetch-depth: 0.
+          # An empty result fails the step rather than publishing a release with
+          # nothing in it.
+          git tag -l --format='%(contents)' "${GITHUB_REF_NAME}" > /tmp/release-notes.md
+
+          if [ ! -s /tmp/release-notes.md ]; then
+            echo "::error::${GITHUB_REF_NAME} carries no annotation. Tag with 'git tag -a' -- the message IS the release notes."
+            exit 1
+          fi
+
+          gh release create "${GITHUB_REF_NAME}" --title "${GITHUB_REF_NAME}" --notes-file /tmp/release-notes.md --verify-tag
 
   distribution:
     name: Verify it is installable
