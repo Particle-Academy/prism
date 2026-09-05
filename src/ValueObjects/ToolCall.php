@@ -55,33 +55,6 @@ class ToolCall implements Arrayable
     }
 
     /**
-     * @throws PrismException
-     */
-    protected function decodeArguments(bool $preservingContainerTypes = false): mixed
-    {
-        if (! is_string($this->arguments) || $this->arguments === '' || $this->arguments === '0') {
-            return [];
-        }
-
-        try {
-            return Json::decode($this->arguments, $preservingContainerTypes);
-        } catch (JsonException) {
-            // Some providers (e.g. DeepSeek when streaming) emit raw control
-            // characters inside string values, which RFC 8259 requires to be
-            // escaped. Escape them in place — rather than stripping them, which
-            // would corrupt intentional newlines/tabs — and decode again.
-            try {
-                return Json::decode(
-                    self::escapeControlCharactersInStrings($this->arguments),
-                    $preservingContainerTypes
-                );
-            } catch (JsonException $e) {
-                throw PrismException::malformedToolCallArguments($this->name, $e);
-            }
-        }
-    }
-
-    /**
      * Whether the model supplied any arguments at all.
      *
      * Mirrors Tool::hasParameters(). A provider that OMITS the arguments key
@@ -156,6 +129,33 @@ class ToolCall implements Arrayable
             'reasoning_id' => $this->reasoningId,
             'reasoning_summary' => $this->reasoningSummary,
         ];
+    }
+
+    /**
+     * @throws PrismException
+     */
+    protected function decodeArguments(bool $preservingContainerTypes = false): mixed
+    {
+        if (! is_string($this->arguments) || $this->arguments === '' || $this->arguments === '0') {
+            return [];
+        }
+
+        try {
+            return Json::decode($this->arguments, $preservingContainerTypes);
+        } catch (JsonException) {
+            // Some providers (e.g. DeepSeek when streaming) emit raw control
+            // characters inside string values, which RFC 8259 requires to be
+            // escaped. Escape them in place — rather than stripping them, which
+            // would corrupt intentional newlines/tabs — and decode again.
+            try {
+                return Json::decode(
+                    self::escapeControlCharactersInStrings($this->arguments),
+                    $preservingContainerTypes
+                );
+            } catch (JsonException $e) {
+                throw PrismException::malformedToolCallArguments($this->name, $e);
+            }
+        }
     }
 
     /**
