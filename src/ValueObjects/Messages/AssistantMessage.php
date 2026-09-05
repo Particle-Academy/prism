@@ -7,6 +7,7 @@ namespace Prism\Prism\ValueObjects\Messages;
 use Illuminate\Contracts\Support\Arrayable;
 use Prism\Prism\Concerns\HasProviderOptions;
 use Prism\Prism\Contracts\Message;
+use Prism\Prism\Support\JsonMap;
 use Prism\Prism\ValueObjects\ToolApprovalRequest;
 use Prism\Prism\ValueObjects\ToolCall;
 
@@ -39,7 +40,7 @@ class AssistantMessage implements Arrayable, Message
             'type' => 'assistant',
             'content' => $this->content,
             'tool_calls' => array_map(fn (ToolCall $toolCall): array => $toolCall->toArray(), $this->toolCalls),
-            'additional_content' => $this->additionalContent,
+            'additional_content' => JsonMap::of($this->additionalContent),
             'tool_approval_requests' => array_map(fn (ToolApprovalRequest $request): array => $request->toArray(), $this->toolApprovalRequests),
         ];
     }

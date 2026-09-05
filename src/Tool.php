@@ -19,9 +19,11 @@ use Prism\Prism\Schema\EnumSchema;
 use Prism\Prism\Schema\NumberSchema;
 use Prism\Prism\Schema\ObjectSchema;
 use Prism\Prism\Schema\StringSchema;
+use Prism\Prism\Support\JsonMap;
 use Prism\Prism\Tools\LaravelMcpTool;
 use Prism\Prism\ValueObjects\ToolError;
 use Prism\Prism\ValueObjects\ToolOutput;
+use stdClass;
 use Throwable;
 use TypeError;
 
@@ -295,6 +297,25 @@ class Tool
         return Arr::mapWithKeys($this->parameters, fn (Schema $schema, string $name): array => [
             $name => $schema->toArray(),
         ]);
+    }
+
+    /**
+     * The parameters as a JSON Schema `properties` OBJECT.
+     *
+     * `properties` is a map, and a tool with no parameters made it an empty
+     * one — which PHP renders as `[]`, and which a provider validating the
+     * schema rejects. Each tool map used to carry its own
+     * `=== [] ? new \stdClass` guard, and the ones that forgot sent `[]`.
+     */
+    public function parametersAsObject(): stdClass
+    {
+        // Each VALUE is a JSON Schema, and a JSON Schema is an object by
+        // definition — including the empty one, which means "any value" and
+        // which a RawSchema built from an MCP server's `{}` would otherwise
+        // send as a list. That is evidence from the field's own declaration,
+        // not a guess about empty arrays in general: `required: []` sits
+        // inside a property and is not touched.
+        return JsonMap::ofMaps($this->parametersAsArray());
     }
 
     public function name(): string

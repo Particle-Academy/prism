@@ -25,6 +25,7 @@ use Prism\Prism\ValueObjects\Messages\SystemMessage;
 use Prism\Prism\ValueObjects\Messages\ToolResultMessage;
 use Prism\Prism\ValueObjects\Messages\UserMessage;
 use Prism\Prism\ValueObjects\ProviderTool;
+use stdClass;
 use Tests\Fixtures\FixtureResponse;
 
 beforeEach(function (): void {
@@ -522,9 +523,11 @@ describe('provider tools', function (): void {
             $data = $request->data();
 
             expect($data['tools'][0])->toHaveKey('file_search');
-            expect($data['tools'][0]['file_search'])->toBeArray();
-            expect($data['tools'][0]['file_search'])->toHaveKey('file_search_store_names');
-            expect($data['tools'][0]['file_search']['file_search_store_names'])->toBe(['fileSearchStores/prism-test-store-k48zypdei7oj']);
+            // A provider tool's options are a MAP, so they go out as a JSON
+            // object even when empty — see Prism\Prism\Support\JsonMap.
+            expect($data['tools'][0]['file_search'])->toBeInstanceOf(stdClass::class);
+            expect($data['tools'][0]['file_search'])->toHaveProperty('file_search_store_names');
+            expect($data['tools'][0]['file_search']->file_search_store_names)->toBe(['fileSearchStores/prism-test-store-k48zypdei7oj']);
 
             return true;
         });

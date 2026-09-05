@@ -35,7 +35,7 @@ readonly class ToolApprovalRequestEvent extends StreamEvent
             'approval_id' => $this->approvalId,
             'tool_id' => $this->toolCall->id,
             'tool_name' => $this->toolCall->name,
-            'arguments' => $this->toolCall->arguments(),
+            'arguments' => $this->toolCall->argumentsAsObject(),
             'message_id' => $this->messageId,
         ];
     }

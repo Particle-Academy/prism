@@ -12,15 +12,15 @@ it('maps tools', function (): void {
         ->withStringParameter('city', 'the city to get weather for')
         ->using(fn (): string => '[Weather results]');
 
-    expect(ToolMap::map([$tool]))->toBe([[
+    expect(ToolMap::map([$tool]))->toEqual([[
         'type' => 'function',
         'function' => [
             'name' => $tool->name(),
             'description' => $tool->description(),
             'parameters' => [
                 'type' => 'object',
-                'properties' => [
-                    'city' => [
+                'properties' => (object) [
+                    'city' => (object) [
                         'description' => 'the city to get weather for',
                         'type' => 'string',
                     ],
@@ -41,15 +41,15 @@ it('maps tools with strict mode', function (): void {
             'strict' => true,
         ]);
 
-    expect(ToolMap::map([$tool]))->toBe([[
+    expect(ToolMap::map([$tool]))->toEqual([[
         'type' => 'function',
         'function' => [
             'name' => $tool->name(),
             'description' => $tool->description(),
             'parameters' => [
                 'type' => 'object',
-                'properties' => [
-                    'city' => [
+                'properties' => (object) [
+                    'city' => (object) [
                         'description' => 'the city to get weather for',
                         'type' => 'string',
                     ],

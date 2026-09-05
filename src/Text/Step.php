@@ -7,6 +7,7 @@ namespace Prism\Prism\Text;
 use Illuminate\Contracts\Support\Arrayable;
 use Prism\Prism\Contracts\Message;
 use Prism\Prism\Enums\FinishReason;
+use Prism\Prism\Support\JsonMap;
 use Prism\Prism\ValueObjects\Messages\AssistantMessage;
 use Prism\Prism\ValueObjects\Messages\SystemMessage;
 use Prism\Prism\ValueObjects\Messages\ToolResultMessage;
@@ -64,7 +65,7 @@ readonly class Step implements Arrayable
             'meta' => $this->meta->toArray(),
             'messages' => array_map($this->messageToArray(...), $this->messages),
             'system_prompts' => array_map(fn (SystemMessage $systemMessage): array => $systemMessage->toArray(), $this->systemPrompts),
-            'additional_content' => $this->additionalContent,
+            'additional_content' => JsonMap::of($this->additionalContent),
             'raw' => $this->raw,
             'tool_approval_requests' => array_map(fn (ToolApprovalRequest $request): array => $request->toArray(), $this->toolApprovalRequests),
         ];

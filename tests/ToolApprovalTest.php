@@ -1259,7 +1259,7 @@ describe('ToolApprovalRequestEvent', function (): void {
         expect($array['approval_id'])->toBe('approval-1')
             ->and($array['tool_name'])->toBe('test_tool')
             ->and($array['tool_id'])->toBe('call-1')
-            ->and($array['arguments'])->toBe(['key' => 'value'])
+            ->and($array['arguments'])->toEqual((object) ['key' => 'value'])
             ->and($array['message_id'])->toBe('msg-1');
     });
 });

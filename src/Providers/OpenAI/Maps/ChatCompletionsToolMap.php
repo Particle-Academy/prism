@@ -25,7 +25,7 @@ class ChatCompletionsToolMap
                 'description' => $tool->description(),
                 'parameters' => [
                     'type' => 'object',
-                    'properties' => $tool->parametersAsArray(),
+                    'properties' => $tool->parametersAsObject(),
                     'required' => $tool->requiredParameters(),
                 ],
             ],

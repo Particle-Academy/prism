@@ -15,8 +15,6 @@ class ToolMap
     public static function map(array $tools): array
     {
         return array_map(function (Tool $tool): array {
-            $properties = $tool->parametersAsArray();
-
             return [
                 'type' => 'function',
                 'function' => [
@@ -24,7 +22,7 @@ class ToolMap
                     'description' => $tool->description(),
                     'parameters' => [
                         'type' => 'object',
-                        'properties' => $properties === [] ? new \stdClass : $properties,
+                        'properties' => $tool->parametersAsObject(),
                         'required' => $tool->requiredParameters(),
                     ],
                 ],

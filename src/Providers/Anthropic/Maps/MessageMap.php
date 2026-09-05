@@ -9,6 +9,7 @@ use Prism\Prism\Contracts\Message;
 use Prism\Prism\Exceptions\PrismException;
 use Prism\Prism\Providers\Anthropic\Concerns\NormalizesCacheControl;
 use Prism\Prism\Providers\Support\Payload;
+use Prism\Prism\Support\Json;
 use Prism\Prism\ValueObjects\Media\Document;
 use Prism\Prism\ValueObjects\Media\Image;
 use Prism\Prism\ValueObjects\Messages\AssistantMessage;
@@ -185,7 +186,7 @@ class MessageMap
                 'type' => 'tool_use',
                 'id' => $toolCall->id,
                 'name' => $toolCall->name,
-                'input' => $toolCall->arguments() === [] ? new \stdClass : $toolCall->arguments(),
+                'input' => $toolCall->argumentsAsObject(),
             ], $message->toolCalls)
             : [];
 
@@ -195,7 +196,7 @@ class MessageMap
                     'type' => $toolCall['type'] ?? 'server_tool_use',
                     'id' => $toolCall['id'] ?? null,
                     'name' => $toolCall['name'] ?? null,
-                    'input' => isset($toolCall['input']) && $toolCall['input'] !== '' ? json_decode((string) $toolCall['input'], true) : new \stdClass,
+                    'input' => isset($toolCall['input']) && $toolCall['input'] !== '' ? Json::decode((string) $toolCall['input'], preservingContainerTypes: true) : new \stdClass,
                 ]);
             }
         }

@@ -15,13 +15,13 @@ it('maps tools', function (): void {
         ->withStringParameter('query', 'the detailed search query')
         ->using(fn (): string => '[Search results]');
 
-    expect(ToolMap::map([$tool]))->toBe([[
+    expect(ToolMap::map([$tool]))->toEqual([[
         'name' => 'search',
         'description' => 'Searching the web',
         'input_schema' => [
             'type' => 'object',
-            'properties' => [
-                'query' => [
+            'properties' => (object) [
+                'query' => (object) [
                     'description' => 'the detailed search query',
                     'type' => 'string',
                 ],
@@ -39,13 +39,13 @@ it('sets the cache typeif cacheType providerOptions is set on tool', function (m
         ->using(fn (): string => '[Search results]')
         ->withProviderOptions(['cacheType' => $cacheType, 'cacheTtl' => '1h']);
 
-    expect(ToolMap::map([$tool]))->toBe([[
+    expect(ToolMap::map([$tool]))->toEqual([[
         'name' => 'search',
         'description' => 'Searching the web',
         'input_schema' => [
             'type' => 'object',
-            'properties' => [
-                'query' => [
+            'properties' => (object) [
+                'query' => (object) [
                     'description' => 'the detailed search query',
                     'type' => 'string',
                 ],
@@ -67,13 +67,13 @@ it('sets eager_input_streaming when eager_input_streaming provider option is tru
         ->using(fn (): string => '[Search results]')
         ->withProviderOptions(['eager_input_streaming' => true]);
 
-    expect(ToolMap::map([$tool]))->toBe([[
+    expect(ToolMap::map([$tool]))->toEqual([[
         'name' => 'search',
         'description' => 'Searching the web',
         'input_schema' => [
             'type' => 'object',
-            'properties' => [
-                'query' => [
+            'properties' => (object) [
+                'query' => (object) [
                     'description' => 'the detailed search query',
                     'type' => 'string',
                 ],

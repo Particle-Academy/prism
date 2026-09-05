@@ -19,6 +19,7 @@ use Prism\Prism\Streaming\Events\TextDeltaEvent;
 use Prism\Prism\Streaming\Events\ToolCallEvent;
 use Prism\Prism\Streaming\Events\ToolResultEvent;
 use Prism\Prism\ValueObjects\ProviderTool;
+use stdClass;
 use Tests\Fixtures\FixtureResponse;
 
 beforeEach(function (): void {
@@ -116,7 +117,7 @@ it('can generate text stream using searchGrounding', function (): void {
         // Verify tools configuration has google_search when searchGrounding is true
         $hasGoogleSearch = isset($data['tools']) &&
             isset($data['tools'][0]['google_search']) &&
-            $data['tools'][0]['google_search'] instanceof \stdClass;
+            $data['tools'][0]['google_search'] instanceof stdClass;
 
         // Verify tools are configured as expected (google_search, not function_declarations)
         $toolsConfigCorrect = ! isset($data['tools'][0]['function_declarations']);
@@ -224,9 +225,11 @@ it('can generate text stream using file_search provider tool with options', func
         $data = $request->data();
 
         expect($data['tools'][0])->toHaveKey('file_search');
-        expect($data['tools'][0]['file_search'])->toBeArray();
-        expect($data['tools'][0]['file_search'])->toHaveKey('file_search_store_names');
-        expect($data['tools'][0]['file_search']['file_search_store_names'])->toBe(['fileSearchStores/test-store-456']);
+        // A provider tool's options are a MAP, so they go out as a JSON object
+        // even when empty — see Prism\Prism\Support\JsonMap.
+        expect($data['tools'][0]['file_search'])->toBeInstanceOf(stdClass::class);
+        expect($data['tools'][0]['file_search'])->toHaveProperty('file_search_store_names');
+        expect($data['tools'][0]['file_search']->file_search_store_names)->toBe(['fileSearchStores/test-store-456']);
 
         return true;
     });

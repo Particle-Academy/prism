@@ -18,14 +18,12 @@ class ToolMap
     public static function map(array $tools): array
     {
         return array_map(function (PrismTool $tool): array {
-            $properties = $tool->parametersAsArray();
-
             return array_filter([
                 'name' => $tool->name(),
                 'description' => $tool->description(),
                 'input_schema' => [
                     'type' => 'object',
-                    'properties' => $properties === [] ? new \stdClass : $properties,
+                    'properties' => $tool->parametersAsObject(),
                     'required' => $tool->requiredParameters(),
                 ],
                 'cache_control' => self::normalizeCacheControl($tool),

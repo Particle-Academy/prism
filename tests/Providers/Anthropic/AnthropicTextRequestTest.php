@@ -124,14 +124,14 @@ it('sends correct tools in payload', function (): void {
         $payload = $request->data();
 
         expect($payload)->toHaveKey('tools');
-        expect($payload['tools'])->toBe([
+        expect($payload['tools'])->toEqual([
             [
                 'name' => 'get_weather',
                 'description' => 'Get current weather',
                 'input_schema' => [
                     'type' => 'object',
-                    'properties' => [
-                        'location' => [
+                    'properties' => (object) [
+                        'location' => (object) [
                             'description' => 'The city name',
                             'type' => 'string',
                         ],

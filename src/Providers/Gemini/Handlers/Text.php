@@ -102,7 +102,7 @@ class Text
         if ($request->providerTools() !== []) {
             $tools = array_map(
                 fn (ProviderTool $providerTool): array => [
-                    $providerTool->type => $providerTool->options !== [] ? $providerTool->options : (object) [],
+                    $providerTool->type => $providerTool->optionsAsObject(),
                 ],
                 $request->providerTools()
             );
