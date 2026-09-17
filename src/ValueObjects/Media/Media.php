@@ -400,18 +400,50 @@ class Media implements Arrayable
         $content = $response->body();
 
         if (! $content) {
-            throw new InvalidArgumentException("{$this->url} returns no content.");
+            throw new InvalidArgumentException($this->safeUrl().' returns no content.');
         }
 
         $mimeType = (new finfo(FILEINFO_MIME_TYPE))->buffer($content);
 
         if (! $mimeType) {
-            throw new InvalidArgumentException("Could not determine mime type for {$this->url}.");
+            throw new InvalidArgumentException('Could not determine mime type for '.$this->safeUrl().'.');
         }
 
         $this->rawContent = $content;
 
         return $this;
+    }
+
+    /**
+     * The URL with the secret-bearing parts taken out, for a message that gets logged.
+     *
+     * An exception message is logged and shipped to an error tracker as a
+     * matter of course, and a URL carries credentials often enough that it
+     * belongs in neither: userinfo holds them outright
+     * (`https://user:pass@host/…`), and a presigned object-storage URL puts a
+     * bearer-equivalent token in the query string. Scheme, host and path say
+     * WHICH fetch failed, which is the whole job of the message.
+     *
+     * A query string that was present is marked rather than dropped silently —
+     * "there was one, and it is not shown" is a different fact from "there was
+     * none", and the difference matters when reading the failure.
+     */
+    protected function safeUrl(): string
+    {
+        $parts = parse_url((string) $this->url);
+
+        if ($parts === false || ! isset($parts['host'])) {
+            return '[url without a host]';
+        }
+
+        return sprintf(
+            '%s%s%s%s%s',
+            isset($parts['scheme']) ? $parts['scheme'].'://' : '',
+            $parts['host'],
+            isset($parts['port']) ? ':'.$parts['port'] : '',
+            $parts['path'] ?? '',
+            isset($parts['query']) ? '?[redacted]' : '',
+        );
     }
 
     /**

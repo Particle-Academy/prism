@@ -338,3 +338,48 @@ describe('the stored form', function (): void {
         Http::assertSentCount(0);
     });
 });
+
+describe('a failed fetch names the url WITHOUT its secrets', function (): void {
+    /*
+    | An exception message is logged and shipped to an error tracker as a matter
+    | of course. A URL carries credentials often enough that it belongs in
+    | neither: userinfo holds them outright, and a presigned object-storage URL
+    | puts a bearer-equivalent token in the query string. Reported as #45 from
+    | the v0.119.0 release audit.
+    */
+
+    it('drops userinfo and the query string from the empty-body message', function (): void {
+        Http::fake(['*' => Http::response('')]);
+
+        $media = Media::fromUrl('https://alice:hunter2@files.example.com/a/report.pdf?token=SECRET123&x=1');
+
+        expect(fn (): Media => $media->fetchUrlContent())
+            ->toThrow(InvalidArgumentException::class, 'https://files.example.com/a/report.pdf?[redacted] returns no content.');
+
+        try {
+            $media->fetchUrlContent();
+        } catch (InvalidArgumentException $e) {
+            expect($e->getMessage())
+                ->not->toContain('hunter2')
+                ->not->toContain('alice')
+                ->not->toContain('SECRET123');
+        }
+    });
+
+    it('reduces a url to scheme, host, port and path', function (string $url, string $expected): void {
+        Http::fake(['*' => Http::response('')]);
+
+        expect(fn (): Media => Media::fromUrl($url)->fetchUrlContent())
+            ->toThrow(InvalidArgumentException::class, $expected.' returns no content.');
+    })->with([
+        'plain' => ['https://files.example.com/a/report.pdf', 'https://files.example.com/a/report.pdf'],
+        'userinfo' => ['https://alice:hunter2@files.example.com/a', 'https://files.example.com/a'],
+        'query' => ['https://files.example.com/a?token=SECRET123', 'https://files.example.com/a?[redacted]'],
+        'fragment' => ['https://files.example.com/a#part', 'https://files.example.com/a'],
+        // A port is diagnostic and carries nothing secret, so it stays.
+        'port kept' => ['http://localhost:9000/bucket/key', 'http://localhost:9000/bucket/key'],
+        // Nothing to reduce means nothing to show: a url with no host to name
+        // is reported as such rather than echoed whole.
+        'no host' => ['file:///etc/passwd', '[url without a host]'],
+    ]);
+});
