@@ -13,6 +13,7 @@ permissions:
 jobs:
   test:
     runs-on: ${{ matrix.os }}
+    needs: third-party
     timeout-minutes: 5
     strategy:
       fail-fast: true
