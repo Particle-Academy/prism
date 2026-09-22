@@ -8,6 +8,8 @@ use Illuminate\Support\Facades\Http;
 use Prism\Prism\Enums\CacheStability;
 use Prism\Prism\Enums\Provider;
 use Prism\Prism\Facades\Prism;
+use Prism\Prism\Schema\ObjectSchema;
+use Prism\Prism\Schema\StringSchema;
 use Prism\Prism\ValueObjects\Messages\AssistantMessage;
 use Prism\Prism\ValueObjects\Messages\UserMessage;
 
@@ -175,4 +177,77 @@ it('sends the request unchanged when nothing is declared stable', function (): v
 
     Http::assertNotSent(fn ($request): bool => str_contains((string) $request->url(), 'cachedContents'));
     Http::assertSent(fn ($request): bool => str_contains(json_encode($request->data(), JSON_UNESCAPED_SLASHES) ?: '', 'Changes every turn'));
+});
+
+it('resolves the prefix for a structured generation too', function (): void {
+    // Text was the first handler to do this, and a caching feature that works
+    // on one of three entry points is a feature a caller cannot rely on.
+    Http::fake([
+        '*cachedContents*' => Http::response([
+            'name' => 'cachedContents/structured',
+            'model' => 'models/gemini-2.0-flash',
+            'usageMetadata' => ['totalTokenCount' => 10],
+            'expireTime' => '2026-03-01T11:24:58.504522Z',
+        ]),
+        '*' => Http::response([
+            'candidates' => [[
+                'content' => ['parts' => [['text' => '{"answer":"yes"}']], 'role' => 'model'],
+                'finishReason' => 'STOP',
+            ]],
+            'usageMetadata' => ['promptTokenCount' => 10, 'candidatesTokenCount' => 3],
+        ]),
+    ]);
+
+    Prism::structured()
+        ->using(Provider::Gemini, 'gemini-2.0-flash')
+        ->withSchema(new ObjectSchema('result', 'The result', [new StringSchema('answer', 'The answer')], ['answer']))
+        ->withMessages(hintedMessages())
+        ->withProviderOptions(['cacheStablePrefix' => true])
+        ->asStructured();
+
+    Http::assertSent(fn ($request): bool => $request->url() === 'https://generativelanguage.googleapis.com/v1beta/cachedContents');
+
+    Http::assertSent(function ($request): bool {
+        if (str_contains((string) $request->url(), 'cachedContents')) {
+            return false;
+        }
+
+        $body = json_encode($request->data(), JSON_UNESCAPED_SLASHES) ?: '';
+
+        return str_contains($body, 'cachedContents/structured')
+            && ! str_contains($body, 'The manual, which never changes');
+    });
+});
+
+it('resolves the prefix for a streamed generation too', function (): void {
+    Http::fake([
+        '*cachedContents*' => Http::response([
+            'name' => 'cachedContents/streamed',
+            'model' => 'models/gemini-2.0-flash',
+            'usageMetadata' => ['totalTokenCount' => 10],
+            'expireTime' => '2026-03-01T11:24:58.504522Z',
+        ]),
+        '*' => Http::response("data: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"An answer.\"}],\"role\":\"model\"},\"finishReason\":\"STOP\"}],\"usageMetadata\":{\"promptTokenCount\":10,\"candidatesTokenCount\":3}}\n\n"),
+    ]);
+
+    foreach (Prism::text()
+        ->using(Provider::Gemini, 'gemini-2.0-flash')
+        ->withMessages(hintedMessages())
+        ->withProviderOptions(['cacheStablePrefix' => true])
+        ->asStream() as $ignored) {
+        // Drain it: the request is not sent until the generator is consumed.
+    }
+
+    Http::assertSent(fn ($request): bool => $request->url() === 'https://generativelanguage.googleapis.com/v1beta/cachedContents');
+
+    Http::assertSent(function ($request): bool {
+        if (str_contains((string) $request->url(), 'cachedContents')) {
+            return false;
+        }
+
+        $body = json_encode($request->data(), JSON_UNESCAPED_SLASHES) ?: '';
+
+        return str_contains($body, 'cachedContents/streamed')
+            && ! str_contains($body, 'The manual, which never changes');
+    });
 });

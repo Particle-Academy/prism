@@ -12,6 +12,7 @@ use Prism\Prism\Concerns\HandlesStructuredJson;
 use Prism\Prism\Concerns\ManagesStructuredSteps;
 use Prism\Prism\Enums\FinishReason;
 use Prism\Prism\Exceptions\PrismException;
+use Prism\Prism\Providers\Gemini\Concerns\CachesStablePrefix;
 use Prism\Prism\Providers\Gemini\Concerns\ValidatesResponse;
 use Prism\Prism\Providers\Gemini\Maps\CitationMapper;
 use Prism\Prism\Providers\Gemini\Maps\FinishReasonMap;
@@ -33,6 +34,7 @@ use Prism\Prism\ValueObjects\Usage;
 
 class Structured
 {
+    use CachesStablePrefix;
     use CallsTools;
     use HandlesStructuredJson;
     use ManagesStructuredSteps;
@@ -79,6 +81,14 @@ class Structured
     public function sendRequest(Request $request): array
     {
         $providerOptions = $request->providerOptions();
+
+        // The declared-stable prefix becomes the cached resource, exactly as
+        // it does for a plain text generation. See the trait: opt-in.
+        [$messages, $cachedContentName] = $this->resolveStablePrefix(
+            $request->messages(),
+            $providerOptions,
+            $request->model(),
+        );
 
         $hasBothToolTypes = $request->tools() !== [] && $request->providerTools() !== [];
 
@@ -127,8 +137,8 @@ class Structured
         $response = $this->client->post(
             "{$request->model()}:generateContent",
             Arr::whereNotNull([
-                ...(new MessageMap($request->messages(), $request->systemPrompts()))(),
-                'cachedContent' => $providerOptions['cachedContentName'] ?? null,
+                ...(new MessageMap($messages, $request->systemPrompts()))(),
+                'cachedContent' => $cachedContentName,
                 'generationConfig' => Arr::whereNotNull([
                     'response_mime_type' => 'application/json',
                     // response_json_schema takes standard JSON Schema, which the

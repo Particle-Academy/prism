@@ -12,6 +12,7 @@ use Prism\Prism\Concerns\CallsTools;
 use Prism\Prism\Enums\FinishReason;
 use Prism\Prism\Exceptions\PrismException;
 use Prism\Prism\Exceptions\PrismStreamDecodeException;
+use Prism\Prism\Providers\Gemini\Concerns\CachesStablePrefix;
 use Prism\Prism\Providers\Gemini\Maps\FinishReasonMap;
 use Prism\Prism\Providers\Gemini\Maps\MessageMap;
 use Prism\Prism\Providers\Gemini\Maps\ToolConfigMap;
@@ -40,6 +41,7 @@ use Throwable;
 
 class Stream
 {
+    use CachesStablePrefix;
     use CallsTools;
 
     protected StreamState $state;
@@ -457,6 +459,14 @@ class Stream
     {
         $providerOptions = $request->providerOptions();
 
+        // The declared-stable prefix becomes the cached resource, exactly as
+        // it does for a plain text generation. See the trait: opt-in.
+        [$messages, $cachedContentName] = $this->resolveStablePrefix(
+            $request->messages(),
+            $providerOptions,
+            $request->model(),
+        );
+
         $hasSearchGrounding = (bool) ($providerOptions['searchGrounding'] ?? false);
         $hasBothToolTypes = $request->tools() !== [] && ($request->providerTools() !== [] || $hasSearchGrounding);
 
@@ -509,8 +519,8 @@ class Stream
             ->post(
                 "{$request->model()}:streamGenerateContent?alt=sse",
                 Arr::whereNotNull([
-                    ...(new MessageMap($request->messages(), $request->systemPrompts()))(),
-                    'cachedContent' => $providerOptions['cachedContentName'] ?? null,
+                    ...(new MessageMap($messages, $request->systemPrompts()))(),
+                    'cachedContent' => $cachedContentName,
                     'generationConfig' => Arr::whereNotNull([
                         'temperature' => $request->temperature(),
                         'topP' => $request->topP(),
