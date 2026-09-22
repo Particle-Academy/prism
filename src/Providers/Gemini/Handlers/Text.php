@@ -9,6 +9,7 @@ use Illuminate\Http\Client\Response as ClientResponse;
 use Illuminate\Support\Arr;
 use Prism\Prism\Concerns\CallsTools;
 use Prism\Prism\Enums\FinishReason;
+use Prism\Prism\Providers\Gemini\Concerns\CachesStablePrefix;
 use Prism\Prism\Providers\Gemini\Concerns\ValidatesResponse;
 use Prism\Prism\Providers\Gemini\Maps\CitationMapper;
 use Prism\Prism\Providers\Gemini\Maps\FinishReasonMap;
@@ -29,7 +30,7 @@ use Prism\Prism\ValueObjects\Usage;
 
 class Text
 {
-    use CallsTools, ValidatesResponse;
+    use CachesStablePrefix, CallsTools, ValidatesResponse;
 
     protected ResponseBuilder $responseBuilder;
 
@@ -66,6 +67,14 @@ class Text
     protected function sendRequest(Request $request): ClientResponse
     {
         $providerOptions = $request->providerOptions();
+
+        // A declared-stable prefix becomes the cached resource this provider
+        // references by name, and only the rest is sent. Opt-in: see the trait.
+        [$messages, $cachedContentName] = $this->resolveStablePrefix(
+            $request->messages(),
+            $providerOptions,
+            $request->model(),
+        );
 
         $thinkingConfig = $providerOptions['thinkingConfig'] ?? null;
 
@@ -118,8 +127,8 @@ class Text
         $response = $this->client->post(
             "{$request->model()}:generateContent",
             Arr::whereNotNull([
-                ...(new MessageMap($request->messages(), $request->systemPrompts()))(),
-                'cachedContent' => $providerOptions['cachedContentName'] ?? null,
+                ...(new MessageMap($messages, $request->systemPrompts()))(),
+                'cachedContent' => $cachedContentName,
                 'generationConfig' => $generationConfig !== [] ? $generationConfig : null,
                 'tools' => $tools !== [] ? $tools : null,
                 'tool_config' => $toolConfig,
