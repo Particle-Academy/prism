@@ -134,15 +134,14 @@ class MessageMap
 
         return [
             'role' => 'user',
-            'content' => [
+            'content' => self::cacheFinalContentBlock([
                 Payload::compact([
                     'type' => 'text',
                     'text' => $message->text(),
-                    'cache_control' => $cacheControl,
                 ]),
-                ...self::mapImageParts($message->images(), $cacheControl),
-                ...self::mapDocumentParts($message->documents(), $cacheControl, $requestProviderOptions),
-            ],
+                ...self::mapImageParts($message->images()),
+                ...self::mapDocumentParts($message->documents(), requestProviderOptions: $requestProviderOptions),
+            ], $cacheControl),
         ];
     }
 
@@ -165,10 +164,7 @@ class MessageMap
 
         if (isset($message->additionalContent['citations'])) {
             foreach ($message->additionalContent['citations'] as $part) {
-                $content[] = Payload::compact([
-                    ...CitationsMapper::mapToAnthropic($part),
-                    'cache_control' => $cacheControl,
-                ]);
+                $content[] = Payload::compact(CitationsMapper::mapToAnthropic($part));
             }
         } elseif ($message->content !== '') {
 
@@ -177,7 +173,6 @@ class MessageMap
             $content[] = Payload::compact([
                 'type' => 'text',
                 'text' => $message->content,
-                'cache_control' => $cacheControl,
             ]);
         }
 
@@ -213,8 +208,25 @@ class MessageMap
 
         return [
             'role' => 'assistant',
-            'content' => array_merge($content, $toolCalls),
+            'content' => self::cacheFinalContentBlock(array_merge($content, $toolCalls), $cacheControl),
         ];
+    }
+
+    /**
+     * @param  array<int, array<string, mixed>>  $content
+     * @param  array<string, mixed>|null  $cacheControl
+     * @return array<int, array<string, mixed>>
+     */
+    protected static function cacheFinalContentBlock(array $content, ?array $cacheControl): array
+    {
+        $last = array_key_last($content);
+
+        // Thinking blocks cannot carry an explicit cache breakpoint.
+        if ($cacheControl !== null && $last !== null && ! in_array($content[$last]['type'] ?? null, ['thinking', 'redacted_thinking'], true)) {
+            $content[$last]['cache_control'] = $cacheControl;
+        }
+
+        return $content;
     }
 
     /**
