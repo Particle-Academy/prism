@@ -84,6 +84,18 @@ readonly class AdvertisedTool implements Arrayable
     }
 
     /**
+     * @return array<string, mixed>
+     */
+    #[\Override]
+    public function toArray(): array
+    {
+        return [
+            'name' => $this->name,
+            'digest' => $this->digest,
+        ];
+    }
+
+    /**
      * Sort every map key, at every depth, leaving lists in their order.
      *
      * A digest is only comparable if two languages building the same tool
@@ -111,17 +123,5 @@ readonly class AdvertisedTool implements Arrayable
         ksort($mapped);
 
         return $mapped;
-    }
-
-    /**
-     * @return array<string, mixed>
-     */
-    #[\Override]
-    public function toArray(): array
-    {
-        return [
-            'name' => $this->name,
-            'digest' => $this->digest,
-        ];
     }
 }
