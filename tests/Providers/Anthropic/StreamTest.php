@@ -1109,3 +1109,69 @@ describe('usage across a multi-step stream', function (): void {
             ->and([$steps[2]->usage?->promptTokens, $steps[2]->usage?->completionTokens])->toBe([200, 36]);
     });
 });
+
+describe('usage when a message_start carries no usage block', function (): void {
+    // Found by the pre-publish audit of the fix above, in the fix itself.
+    //
+    // message_delta turns its output count into an increment against the
+    // baseline message_start recorded. That baseline outlived its message: a
+    // message_start WITHOUT a usage block -- which the handler explicitly
+    // guards for -- left the PREVIOUS message's baseline in place, and the
+    // next delta subtracted another step's output from the running total.
+    //
+    // Traced by hand on this fixture, where step 2's message_start carries no
+    // usage: the total's output would fall from 96 to 71, and step 2's own
+    // delta would come out at MINUS 25 -- a negative token count on a value
+    // consumers bill on.
+    //
+    //   step 1   465 in /  96 out
+    //   step 2     ? in /  71 out   (no usage at message_start)
+    //   step 3   200 in /  36 out
+    //   total    665 in / 203 out
+    function streamedTurnWithAStartMissingUsage(): array
+    {
+        FixtureResponse::fakeStreamResponses('v1/messages', 'anthropic/stream-usage-missing-at-start');
+
+        $tools = [
+            Tool::as('weather')
+                ->for('useful when you need to search for current weather conditions')
+                ->withStringParameter('city', 'The city that you want the weather for')
+                ->using(fn (string $city): string => "The weather will be 75° and sunny in {$city}"),
+            Tool::as('search')
+                ->for('useful for searching current events or data')
+                ->withStringParameter('query', 'The detailed search query')
+                ->using(fn (string $query): string => "Search results for: {$query}"),
+        ];
+
+        return iterator_to_array(
+            Prism::text()
+                ->using(Provider::Anthropic, 'claude-3-7-sonnet-20250219')
+                ->withTools($tools)
+                ->withMaxSteps(3)
+                ->withPrompt('What time is the tigers game today and should I wear a coat?')
+                ->asStream(),
+            false,
+        );
+    }
+
+    it('keeps every step output in the total', function (): void {
+        $end = collect(streamedTurnWithAStartMissingUsage())
+            ->last(fn ($event): bool => $event instanceof StreamEndEvent);
+
+        expect($end->usage->promptTokens)->toBe(665)
+            ->and($end->usage->completionTokens)->toBe(203);
+    });
+
+    it('never reports a negative step', function (): void {
+        $steps = collect(streamedTurnWithAStartMissingUsage())
+            ->filter(fn ($event): bool => $event instanceof StepFinishEvent)
+            ->values();
+
+        foreach ($steps as $step) {
+            expect($step->usage?->promptTokens)->toBeGreaterThanOrEqual(0)
+                ->and($step->usage?->completionTokens)->toBeGreaterThanOrEqual(0);
+        }
+
+        expect($steps[1]->usage?->completionTokens)->toBe(71);
+    });
+});

@@ -144,6 +144,16 @@ class Stream
         $this->state->withMessageId($message['id'] ?? EventID::generate());
 
         $usageData = $message['usage'] ?? [];
+
+        // A baseline for THIS message, always -- a zero one when the start
+        // carries no usage block. Left alone, the previous message's baseline
+        // survived into this one and message_delta subtracted ANOTHER step's
+        // output from the running total: on a three-step turn whose second
+        // start had no usage, the total fell from 96 to 71 and that step's own
+        // usage came out at minus 25. Found by the pre-publish audit of the fix
+        // that introduced the baseline.
+        $this->messageStartUsage = new Usage(0, 0);
+
         if (! empty($usageData)) {
             $this->messageStartUsage = new Usage(
                 promptTokens: $usageData['input_tokens'] ?? 0,
@@ -267,10 +277,12 @@ class Stream
         if (
             ! empty($usageData)
             && isset($usageData['output_tokens'])
-            && $this->state->usage() instanceof Usage
             && $this->messageStartUsage instanceof Usage
         ) {
-            $total = $this->state->usage();
+            // A turn whose FIRST start carried no usage has no total yet; the
+            // delta still has output to record, so it starts from zero rather
+            // than being dropped.
+            $total = $this->state->usage() ?? new Usage(0, 0);
             $started = $this->messageStartUsage;
             $finalOutput = (int) $usageData['output_tokens'];
             $finalThought = isset($usageData['output_tokens_details']['thinking_tokens'])
