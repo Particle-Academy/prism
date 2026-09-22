@@ -22,6 +22,7 @@ use Prism\Prism\Concerns\HasTools;
 use Prism\Prism\Contracts\Schema;
 use Prism\Prism\Enums\TelemetryOperation;
 use Prism\Prism\Exceptions\PrismException;
+use Prism\Prism\Support\CacheHints;
 use Prism\Prism\Telemetry\Telemetry;
 use Prism\Prism\ValueObjects\Messages\UserMessage;
 
@@ -95,6 +96,8 @@ class PendingRequest
         if (! $this->schema instanceof Schema) {
             throw new PrismException('A schema is required for structured output');
         }
+
+        CacheHints::warnIfMisordered($messages);
 
         return new Request(
             systemPrompts: $this->systemPrompts,

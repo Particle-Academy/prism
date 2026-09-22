@@ -26,6 +26,7 @@ use Prism\Prism\Streaming\Adapters\BroadcastAdapter;
 use Prism\Prism\Streaming\Adapters\DataProtocolAdapter;
 use Prism\Prism\Streaming\Adapters\SSEAdapter;
 use Prism\Prism\Streaming\Events\StreamEvent;
+use Prism\Prism\Support\CacheHints;
 use Prism\Prism\Telemetry\Telemetry;
 use Prism\Prism\Telemetry\TelemetryContext;
 use Prism\Prism\Tool;
@@ -159,6 +160,8 @@ class PendingRequest
         if ($this->prompt !== null && $this->prompt !== '') {
             $messages[] = new UserMessage($this->prompt, $this->additionalContent);
         }
+
+        CacheHints::warnIfMisordered($messages);
 
         $tools = $this->tools;
 
