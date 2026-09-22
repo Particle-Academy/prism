@@ -78,6 +78,10 @@ class Stream
         $text = '';
         $toolCalls = [];
 
+        // The latest usage THIS response reported. Recorded once, at whichever
+        // exit the response takes -- see recordResponseUsage().
+        $responseUsage = null;
+
         while (! $response->getBody()->eof()) {
             $data = $this->parseNextDataLine($response->getBody());
 
@@ -97,12 +101,15 @@ class Stream
             // which Z does not document (and Prism never sends `tool_stream`, so
             // tool calls are not streamed piece by piece). Measured on both
             // shapes: one lost it, one did not. Reading it here makes the shape
-            // irrelevant. Once only -- Z sends usage once per response.
-            $usage = $this->extractUsage($data);
-
-            if ($usage instanceof Usage) {
-                $this->state->addUsage($usage);
-            }
+            // irrelevant.
+            //
+            // KEPT, NOT SUMMED. Z.ai sends usage once, but `Z_URL` is
+            // configurable and an OpenAI-compatible server may report RUNNING
+            // TOTALS on several chunks; adding each one over-counted such a
+            // server, which the old finish-chunk-only read did not. The latest
+            // report is the response's total either way, and it is recorded
+            // once, when the response ends.
+            $responseUsage = $this->extractUsage($data) ?? $responseUsage;
 
             if ($this->state->shouldEmitStreamStart()) {
                 yield new StreamStartEvent(
@@ -141,6 +148,8 @@ class Stream
                             messageId: $this->state->messageId(),
                         );
                     }
+
+                    $this->recordResponseUsage($responseUsage);
 
                     yield from $this->handleToolCalls($request, $text, $toolCalls, $depth);
 
@@ -194,6 +203,11 @@ class Stream
             }
         }
 
+        // Every path out of the loop from here -- tool calls or a finished
+        // step -- records this response's usage exactly once. The in-loop
+        // tool-call return above is the only other exit, and it records its own.
+        $this->recordResponseUsage($responseUsage);
+
         if ($toolCalls !== []) {
             yield from $this->handleToolCalls($request, $text, $toolCalls, $depth);
 
@@ -209,6 +223,19 @@ class Stream
         );
 
         yield $this->emitStreamEndEvent();
+    }
+
+    /**
+     * Add one response's usage to the turn's running total.
+     *
+     * One response, one call: the running total accumulates across the steps
+     * of a tool loop, and each step contributes its own response's usage once.
+     */
+    protected function recordResponseUsage(?Usage $usage): void
+    {
+        if ($usage instanceof Usage) {
+            $this->state->addUsage($usage);
+        }
     }
 
     protected function emitStreamEndEvent(): StreamEndEvent

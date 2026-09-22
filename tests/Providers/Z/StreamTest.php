@@ -406,3 +406,26 @@ describe('usage on a turn that ends in a tool call', function (): void {
             ->toBe([195, 117, 43]);
     });
 });
+
+it('counts usage once per response when a server reports it on more than one chunk', function (): void {
+    // Found by the pre-publish audit of the change that reads usage from
+    // whichever chunk carries it. Reading it from EVERY such chunk and summing
+    // them over-counts a server that reports running totals as it goes -- and
+    // `Z_URL` is configurable, so the backend need not be Z.ai itself. The old
+    // code read usage only on the finish chunk and did not have this problem;
+    // the fix must not trade one billing error for another.
+    //
+    // Two cumulative reports, 50 then 117 completion tokens. The response used
+    // 117, not 167.
+    FixtureResponse::fakeStreamResponses('chat/completions', 'z/stream-cumulative-usage');
+
+    $events = iterator_to_array(
+        Prism::text()->using(Provider::Z, 'glm-4.6')->withPrompt('Weather?')->asStream(),
+        false,
+    );
+
+    $usage = collect($events)->last(fn ($event): bool => $event instanceof StreamEndEvent)?->usage;
+
+    expect([$usage?->promptTokens, $usage?->completionTokens, $usage?->cacheReadInputTokens])
+        ->toBe([195, 117, 43]);
+});
