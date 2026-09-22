@@ -6,6 +6,7 @@ namespace Tests\ValueObjects\Media;
 
 use Illuminate\Support\Facades\Http;
 use Prism\Prism\Exceptions\PrismException;
+use Prism\Prism\Exceptions\PrismUrlRefused;
 use Prism\Prism\Support\HostResolver;
 use Prism\Prism\ValueObjects\Media\Image;
 
@@ -140,4 +141,48 @@ it('leaves the unguarded fetch unguarded, which is the documented contract', fun
     ]);
 
     expect(Image::fromUrl('http://127.0.0.1/x.png')->fetchUrlContent()->hasRawContent())->toBeTrue();
+});
+
+it('carries a machine-readable code for every refusal', function (string $url, string $code): void {
+    // The sentence is for a human and may be reworded freely. The CODE is the
+    // contract: a consumer branches on it to decide whether to widen an
+    // allow-list, surface a hard stop, or report an SSRF attempt. Without one,
+    // every caller is left matching on prose -- and the three languages word
+    // these differently on purpose, so prose cannot be compared across a port
+    // either. Same reasoning, and the same spelling, as prism-browser's
+    // `private_address_refused`.
+    resolvesTo(['evil.test' => ['10.0.0.5'], 'nowhere.test' => []]);
+    Http::fake();
+
+    try {
+        Image::fromUrl($url)->fetchPublicUrlContent();
+        expect(false)->toBeTrue('the guard should have refused '.$url);
+    } catch (PrismUrlRefused $refused) {
+        expect($refused->code())->toBe($code);
+    }
+})->with([
+    'scheme' => ['file:///etc/passwd', 'scheme_not_allowed'],
+    'metadata endpoint' => ['http://169.254.169.254/latest/meta-data/', 'private_address_refused'],
+    'loopback' => ['http://127.0.0.1/x.png', 'private_address_refused'],
+    'name resolving private' => ['http://evil.test/x.png', 'private_address_refused'],
+    'unresolvable' => ['http://nowhere.test/x.png', 'host_did_not_resolve'],
+]);
+
+it('says a refused REDIRECT is a redirect, not just a bad address', function (): void {
+    // A different code from the address refusals, because it is a different
+    // finding: the URL the caller passed was fine, and the SERVER aimed them
+    // at the metadata endpoint. A consumer seeing this has learned something
+    // about the host they were given, not about their own input.
+    resolvesTo(['public.test' => ['93.184.216.34']]);
+
+    Http::fake([
+        'public.test/*' => Http::response('', 302, ['Location' => 'http://169.254.169.254/latest/meta-data/']),
+    ]);
+
+    try {
+        Image::fromUrl('http://public.test/x.png')->fetchPublicUrlContent();
+        expect(false)->toBeTrue('the guard should have refused the redirect');
+    } catch (PrismUrlRefused $refused) {
+        expect($refused->code())->toBe('redirect_refused');
+    }
 });

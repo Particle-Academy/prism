@@ -12,7 +12,7 @@ use Illuminate\Support\Facades\Storage;
 use InvalidArgumentException;
 use Prism\Prism\Concerns\CopiesWithProviderOptions;
 use Prism\Prism\Concerns\HasProviderOptions;
-use Prism\Prism\Exceptions\PrismException;
+use Prism\Prism\Exceptions\PrismUrlRefused;
 use Prism\Prism\Support\HostResolver;
 use Prism\Prism\Support\PublicUrl;
 
@@ -441,7 +441,7 @@ class Media implements Arrayable
      * request, which only connection-level pinning closes. See
      * {@see PublicUrl}.
      *
-     * @throws PrismException when the URL, or a redirect from it, is not public
+     * @throws PrismUrlRefused when the URL, or a redirect from it, is not public
      */
     public function fetchPublicUrlContent(int $maxRedirects = 5): static
     {
@@ -454,7 +454,20 @@ class Media implements Arrayable
         $response = null;
 
         for ($hop = 0; $hop <= $maxRedirects; $hop++) {
-            PublicUrl::assert($url, $resolver);
+            try {
+                PublicUrl::assert($url, $resolver);
+            } catch (PrismUrlRefused $refused) {
+                // A refusal on a LATER hop is a different finding from one on
+                // the URL the caller passed: their input was fine and the
+                // SERVER aimed them somewhere internal. A consumer seeing
+                // `redirect_refused` has learned something about the host they
+                // were given, not about their own input, so the two do not
+                // share a code.
+                throw $hop === 0 ? $refused : new PrismUrlRefused(
+                    'redirect_refused',
+                    $this->safeUrl().' redirected to somewhere a guarded fetch will not follow: '.$refused->getMessage(),
+                );
+            }
 
             /** @var Response $response */
             $response = Http::withoutRedirecting()->get($url);
@@ -476,7 +489,7 @@ class Media implements Arrayable
                 : rtrim((string) preg_replace('#(?<!/)/[^/]*$#', '', $url), '/').'/'.ltrim($location, '/');
 
             if ($hop === $maxRedirects) {
-                throw new PrismException($this->safeUrl().' redirected more than '.$maxRedirects.' times.');
+                throw new PrismUrlRefused('too_many_redirects', $this->safeUrl().' redirected more than '.$maxRedirects.' times.');
             }
         }
 

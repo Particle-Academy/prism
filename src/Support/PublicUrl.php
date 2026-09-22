@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace Prism\Prism\Support;
 
-use Prism\Prism\Exceptions\PrismException;
+use Prism\Prism\Exceptions\PrismUrlRefused;
 
 /**
  * Refuses a URL that would reach somewhere only the server can reach.
@@ -36,24 +36,24 @@ use Prism\Prism\Exceptions\PrismException;
 class PublicUrl
 {
     /**
-     * @throws PrismException when the URL is not one a public client could reach
+     * @throws PrismUrlRefused when the URL is not one a public client could reach
      */
     public static function assert(string $url, HostResolver $resolver): void
     {
         $parts = parse_url($url);
 
         if ($parts === false || ! isset($parts['scheme'], $parts['host'])) {
-            throw new PrismException('A guarded fetch needs an absolute http or https URL.');
+            throw new PrismUrlRefused('scheme_not_allowed', 'A guarded fetch needs an absolute http or https URL.');
         }
 
         if (! in_array(strtolower($parts['scheme']), ['http', 'https'], true)) {
-            throw new PrismException('A guarded fetch refuses the scheme '.$parts['scheme'].'; only http and https are fetched.');
+            throw new PrismUrlRefused('scheme_not_allowed', 'A guarded fetch refuses the scheme '.$parts['scheme'].'; only http and https are fetched.');
         }
 
         $host = trim($parts['host'], '[]');
 
         if ($host === '') {
-            throw new PrismException('A guarded fetch needs an absolute http or https URL.');
+            throw new PrismUrlRefused('scheme_not_allowed', 'A guarded fetch needs an absolute http or https URL.');
         }
 
         if (filter_var($host, FILTER_VALIDATE_IP) !== false) {
@@ -65,7 +65,7 @@ class PublicUrl
         $addresses = $resolver->resolve($host);
 
         if ($addresses === []) {
-            throw new PrismException($host.' did not resolve to a public address.');
+            throw new PrismUrlRefused('host_did_not_resolve', $host.' did not resolve to a public address.');
         }
 
         // EVERY address, not the first. A host that answers with one public
@@ -76,7 +76,7 @@ class PublicUrl
     }
 
     /**
-     * @throws PrismException
+     * @throws PrismUrlRefused
      */
     protected static function assertPublicAddress(string $address, string $host): void
     {
@@ -84,7 +84,7 @@ class PublicUrl
         // NO_RES_RANGE covers loopback, link-local (169.254/16, where the
         // metadata endpoint lives), and the rest of the reserved space.
         if (filter_var($address, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE) === false) {
-            throw new PrismException($host.' is a private or reserved address, which a guarded fetch will not request.');
+            throw new PrismUrlRefused('private_address_refused', $host.' is a private or reserved address, which a guarded fetch will not request.');
         }
     }
 }
