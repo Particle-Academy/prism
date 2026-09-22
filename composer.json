@@ -20,6 +20,7 @@
     "require": {
         "php": "^8.2",
         "ext-fileinfo": "*",
+        "ext-filter": "*",
         "ext-mbstring": "*",
         "ext-openssl": "*",
         "laravel/framework": "^12.61.1|^13.12.0",
