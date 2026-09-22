@@ -54,7 +54,7 @@
         "rector/rector": "2.3.3",
         "orchestra/testbench": "^10|^11",
         "mockery/mockery": "^1.6",
-        "laravel/mcp": "^0.6.0"
+        "laravel/mcp": "^0.6.0|^1.0"
     },
     "autoload-dev": {
         "psr-4": {
