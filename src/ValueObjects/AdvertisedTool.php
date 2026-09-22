@@ -6,6 +6,7 @@ namespace Prism\Prism\ValueObjects;
 
 use Illuminate\Contracts\Support\Arrayable;
 use Prism\Prism\Tool;
+use stdClass;
 
 /**
  * A tool the model was offered, reduced to what a listener may always see.
@@ -64,10 +65,32 @@ readonly class AdvertisedTool implements Arrayable
      */
     public static function digestOf(Tool $tool): string
     {
+        $parameters = $tool->parametersAsArray();
+
         $canonical = self::canonical([
             'name' => $tool->name(),
             'description' => $tool->description(),
-            'parameters' => $tool->parametersAsArray(),
+            // AN EMPTY PARAMETER MAP IS `{}`, NOT `[]`, AND PHP CANNOT TELL.
+            // `parametersAsArray()` returns [] for a tool that takes no
+            // arguments, which json_encode writes as a LIST -- so `parameters`
+            // changed JSON TYPE with its contents, and the digest became a
+            // PHP-ism that no other language reproduces. That broke the only
+            // thing this value is for: a TypeScript service and a PHP service
+            // instrumenting one agent disagreed about whether the tool set had
+            // changed, silently, and in the direction that reports a change
+            // where none happened. A tool with no parameters is also the
+            // commonest tool shape there is.
+            //
+            // Finding F-3 in a new place, and shipped in v0.124.0 because every
+            // test asserted PHP against PHP. `prism-parity`'s otel-0023 is the
+            // row that now fails when this regresses.
+            //
+            // The substitution is TOP-LEVEL ONLY and the residue is irreducible:
+            // a parameter whose own schema is empty hits the same ambiguity one
+            // level down, and a blanket "empty array becomes an object" rule
+            // would corrupt genuine empty LISTS -- `required: []` is a list and
+            // must stay one.
+            'parameters' => $parameters === [] ? new stdClass : $parameters,
         ]);
 
         // JSON_THROW_ON_ERROR is deliberately absent: telemetry must never

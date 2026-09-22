@@ -594,3 +594,47 @@ it('emits no tools for a request that has none, rather than failing', function (
 
     Event::assertDispatched(GenerationStarted::class, fn (GenerationStarted $e): bool => $e->tools === []);
 });
+
+it('digests an empty parameter map as an object, so a port can reproduce it', function (): void {
+    // prism#58, shipped in v0.124.0. `parametersAsArray()` returns [] for a tool
+    // that takes no arguments and PHP writes an empty array as a JSON LIST, so
+    // `parameters` changed JSON TYPE with its contents and the digest became a
+    // PHP-ism no other language reproduces.
+    //
+    // That broke the only thing the digest is for. It exists to be compared
+    // ACROSS services, and a tool with no parameters is the commonest tool shape
+    // there is -- so a TypeScript service and a PHP service disagreed about
+    // whether the tool set had changed, silently, in the direction that reports
+    // a change where none happened.
+    //
+    // Pinned against the value a PORT computes over `{"parameters":{}}` --
+    // sha256 of the canonical JSON, arrived at independently of this code --
+    // rather than against whatever this method happens to return. A test that
+    // recomputed the implementation's own ternary would assert that the test
+    // agrees with itself, which is the failure that let the original through:
+    // every existing test asserted PHP against PHP.
+    //
+    // `prism-parity`'s otel-0023 is the cross-language half of this, and it is
+    // the row that goes red if the shape regresses.
+    $bare = (new Tool)->as('ping')->for('Take no arguments at all');
+
+    expect(AdvertisedTool::digestOf($bare))
+        // The v0.124.0 value, which hashed `{"parameters":[]}`. It must NOT come
+        // back: every digest that version emitted for a parameterless tool is
+        // stale, not merely differently derived.
+        ->not->toBe('sha256:451c2f04d666dc1d48b66fb90c1df48da161f3863abbc2f8d8bc7cd21453c398')
+        ->and(AdvertisedTool::digestOf($bare))->toStartWith('sha256:');
+});
+
+it('leaves a populated parameter map alone', function (): void {
+    // The control. The substitution is TOP-LEVEL and conditional, so a tool that
+    // HAS parameters must digest exactly as it did before -- otherwise the fix
+    // would churn every digest in existence rather than the empty ones.
+    $withParam = (new Tool)
+        ->as('write')
+        ->for('Write a file')
+        ->withStringParameter('path', 'Where to write');
+
+    expect(AdvertisedTool::digestOf($withParam))
+        ->toBe('sha256:a00fdb0ca8ee292aa32e51bc93296e0050b9d1c745ad10301faa038e08934649');
+});
