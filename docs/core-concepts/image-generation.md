@@ -1,10 +1,10 @@
 # Image Generation
 
-Generate stunning images from text prompts using AI-powered models. Prism provides a clean, consistent API for image generation across different providers, starting with comprehensive OpenAI support.
+Generate or edit images using a supported provider and model. Provider options control output format, size and other model-specific settings.
 
 ## Getting Started
 
-Creating images with Prism is as simple as describing what you want:
+Select a provider and model, then supply a prompt:
 
 ```php
 use Prism\Prism\Facades\Prism;
@@ -25,8 +25,6 @@ Currently, Prism supports image generation through:
 - **OpenAI**: DALL-E 2, DALL-E 3, and GPT-Image-1 models
 - **Gemini**: Gemini 2.0 Flash Preview Image Generation, Imagen 4, Imagen 3
 - **Qwen**: Qwen-Image (generation), Qwen-Image-Edit (editing & multi-image fusion)
-
-Additional providers will be added in future releases as the ecosystem evolves.
 
 ## Basic Usage
 
@@ -326,7 +324,7 @@ $response = Prism::image()
 
 ## Testing
 
-Prism provides convenient fakes for testing image generation:
+Use fakes to test image generation without external API calls:
 
 ```php
 use Prism\Prism\Facades\Prism;
@@ -346,4 +344,4 @@ test('can generate images', function () {
 });
 ```
 
-Need help with a specific provider or use case? Check the [openai documentation](/providers/openai), [gemini documentation](/providers/gemini), or [qwen documentation](/providers/qwen) for detailed configuration options and examples.
+See the [OpenAI](/providers/openai), [Gemini](/providers/gemini) and [Qwen](/providers/qwen) guides for provider-specific options.

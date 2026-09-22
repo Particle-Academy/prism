@@ -1,10 +1,7 @@
 # Telemetry
 
-Prism can emit a neutral, structured **telemetry event stream** across the full
-generation lifecycle — generation started, each step, each tool call, and
-generation completed or failed — as plain Laravel events. It is **off by
-default** and a complete no-op until you enable it, so it never adds overhead
-you didn't ask for.
+Prism emits Laravel events for the generation lifecycle, including steps,
+tool calls, completion and failure. Telemetry is disabled by default.
 
 Use it to trace and measure generations — latency, token usage, cost, finish
 reasons, tool calls — wired into your own logging and metrics, or exported to an
@@ -44,7 +41,7 @@ listeners.
 
 | Event | Dispatched when | Key payload (beyond `$context`) |
 |---|---|---|
-| `GenerationStarted` | a generation begins | `$request` |
+| `GenerationStarted` | a generation begins | `$request`, `$tools` |
 | `StepCompleted` | each step finishes | `$finishReason`, `$usage`, `$rateLimits`, `$step` |
 | `ToolInvoked` | a tool call resolves | `$toolName`, `$toolCallId`, `$durationMs`, `$toolCall`, `$toolResult` |
 | `GenerationCompleted` | the generation finishes | `$durationMs`, `$finishReason`, `$usage`, `$rateLimits`, `$response` |
@@ -119,10 +116,21 @@ By default telemetry records **structure and metrics only** — timings, token
 usage, finish reasons, model, and the provider's rate-limit buckets — never the
 prompt or completion text, because that content can contain PII.
 
-`capture_content` gates **content and nothing else**. `$usage` and `$rateLimits`
-are always populated: a token count and a quota bucket are numbers the provider
-reported about the call, and quota headroom is precisely the signal you want
-before you hit a 429 rather than after it.
+`capture_content` controls prompt and response content. Usage and rate-limit
+metadata remain available when provided by the API.
+
+When telemetry is enabled, `GenerationStarted::$tools` also carries each
+advertised tool's name and a SHA-256 digest of its declaration (name, description
+and parameters), even when `capture_content` is off. Full descriptions and
+parameter schemas remain behind the content gate. These fingerprints help
+diagnose cache misses caused by changes to the tool list in a provider's prompt
+prefix.
+
+Use stable, application-defined tool names. If you derive a tool name from user
+data, such as a user-owned document's title, that name is exposed to telemetry
+listeners on every generation that advertises the tool, even with content capture
+disabled. The digest is a fingerprint, not a copy of the declaration; it still
+allows comparison with known or guessed declarations.
 
 Opt in with `capture_content`, and only where the telemetry sink is trusted:
 
@@ -130,8 +138,7 @@ Opt in with `capture_content`, and only where the telemetry sink is trusted:
 PRISM_TELEMETRY_CAPTURE_CONTENT=true
 ```
 
-Captured content is bounded so telemetry can never turn a streaming response into
-unbounded process memory:
+Configure capture limits to bound the amount of retained content:
 
 - `content_max_length` (default `65_536`) caps per-item text length.
 - `content_max_items` (default `256`) caps how many message items are captured.
@@ -171,6 +178,5 @@ backend.
 composer require particle-academy/prism-opentelemetry
 ```
 
-With telemetry enabled and the bridge installed, your Prism generations render as
-rich, nested traces — no changes to your generation code beyond flipping the
-telemetry switch.
+With telemetry enabled and the bridge installed, generations are exported as
+nested traces.

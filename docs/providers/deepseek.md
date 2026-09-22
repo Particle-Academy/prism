@@ -8,8 +8,6 @@
 ]
 ```
 
-## Provider-specific options
-
 ## Streaming
 
 DeepSeek supports streaming responses in real-time. All standard streaming methods are supported:

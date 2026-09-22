@@ -1,10 +1,10 @@
 # Testing
 
-Want to make sure your Prism integrations work flawlessly? Let's dive into testing! Prism provides a powerful fake implementation that makes it a breeze to test your AI‑powered features.
+Use Prism's fake provider to test application behavior without making requests to an external API.
 
 ## Basic Test Setup
 
-First, let's look at how to set up basic response faking:
+Configure a fake response:
 
 ```php
 use Prism\Prism\Facades\Prism;
@@ -460,5 +460,4 @@ $response = new Response(
 );
 ```
 
-This approach is perfectly valid—but for most tests the fake builders are shorter and
-easier to read.
+Use real response classes when the fake builders do not expose the properties your test needs.

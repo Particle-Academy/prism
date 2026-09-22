@@ -1,6 +1,6 @@
 # Structured Output
 
-Want your AI responses as neat and tidy as a Marie Kondo-approved closet? Structured output lets you define exactly how you want your data formatted, making it perfect for building APIs, processing forms, or any time you need data in a specific shape.
+Structured output returns data in a schema-defined format. Use it for extraction, classification and other tasks that require machine-readable responses.
 
 ## Quick Start
 
@@ -46,7 +46,7 @@ echo $review['summary'];  // "A mind-bending..."
 
 Different AI providers handle structured output in two main ways:
 
-1. **Structured Mode**: Some providers support strict schema validation, ensuring responses perfectly match your defined structure.
+1. **Structured Mode**: Some providers support strict schema validation, constraining output to the supported schema.
 2. **JSON Mode**: Other providers simply guarantee valid JSON output that approximately matches your schema.
 
 > [!NOTE]
@@ -96,8 +96,6 @@ $response = Prism::structured()
 > [!NOTE]
 > JSON Schema mode is only supported by newer models. If you use a model that does not support it, use the default JSON Object mode (or `StructuredMode::Auto`) instead. Check the [Qwen structured output documentation](https://www.alibabacloud.com/help/en/model-studio/qwen-structured-output) for the full list of supported models.
 
-### Anthropic: Tool Calling Mode
-Anthropic doesn't have native structured output, but Prism provides two approaches. For more reliable JSON parsing, especially with complex content or non-English text, use tool calling mode:
 ### Anthropic
 Anthropic uses native structured outputs by default (Claude Sonnet 4.5+), providing guaranteed schema compliance through constrained decoding. For older models, you can use tool calling mode as a fallback:
 

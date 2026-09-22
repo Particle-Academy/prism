@@ -12,7 +12,7 @@
 ```
 ## Prompt caching
 
-Anthropic's prompt caching feature allows you to drastically reduce latency and your API bill when repeatedly re-using blocks of content within five minutes or one hour of each other, depending on the Anthropic compatible TTL option you provide.
+Prompt caching reuses eligible content across requests. Configure a five-minute or one-hour TTL according to the provider's caching requirements.
 
 There are two ways to enable prompt caching:
 - Automatic caching
@@ -407,7 +407,7 @@ $response = Prism::text()
 
 You can access the chunked output with its citations via the additionalContent property on a response, which returns an array of `MessagePartWithCitations`s.
 
-As a rough worked example, let's assume you want to implement footnotes. You'll need to loop through those chunks and (1) re-construct the message with links to the footnotes; and (2) build an array of footnotes to loop through in your frontend.
+To render footnotes, iterate over the chunks, add citation links to the text and collect the corresponding footnotes:
 
 ```php
 use Prism\Prism\ValueObjects\MessagePartWithCitations;
@@ -470,13 +470,12 @@ $response = Prism::text()
     ->asText();
 ```
 
-`anthropic_beta` **merges** with any beta features set in your config, rather
-than replacing them, and accepts either a comma-separated string or an array. So
-adding context management will not switch off another beta you already rely on.
+`anthropic_beta` accepts a comma-separated string or an array and merges with
+the beta features in your configuration.
 
-### Reading what was actually cleared
+### Context management results
 
-What Anthropic did comes back on `additionalContent`:
+Read the applied edits from `additionalContent`:
 
 ```php
 $applied = $response->additionalContent['context_management'] ?? null;
@@ -488,13 +487,8 @@ foreach ($applied['applied_edits'] ?? [] as $edit) {
 }
 ```
 
-**The counts live inside each `applied_edits` entry, not on the block above
-them.** Reading them one level too high returns nothing and raises nothing — you
-get `applied_edits: 1, cleared_input_tokens: 0`, which reads as "the edit ran and
-cleared nothing" rather than as a mistake in your own code.
-
-Three states are worth distinguishing, and only two of them are visible if you
-check for truthiness alone:
+Read token counts from each `applied_edits` entry, not its parent object.
+Distinguish an absent result from an empty list of edits:
 
 | `additionalContent['context_management']` | meaning |
 |---|---|
@@ -502,19 +496,14 @@ check for truthiness alone:
 | present, `applied_edits` empty | the edit ran and had nothing to clear yet |
 | present, `applied_edits` populated | the transcript was edited |
 
-The first is a configuration failure that otherwise looks exactly like a quiet
-success: the request succeeds, the bill is unchanged, and nothing reports a
-problem.
+If the field is absent, check the request options and required beta header.
 
 `cleared_input_tokens` accumulates over a conversation rather than reporting a
 per-turn delta.
 
-::: warning Verifying the figure yourself
-A before/after comparison of per-step input tokens will **under-report** what was
-cleared, because the turn that triggered the edit also grew the transcript by its
-own assistant message and a fresh tool result. Subtracting two consecutive step
-totals measures the clearing minus that growth. Add the growth back before
-concluding the reported number is wrong.
+::: info Comparing token counts
+Per-step input totals include newly added messages and tool results. Their
+difference is not a direct measure of the tokens cleared by context management.
 :::
 
 ## Considerations
@@ -555,10 +544,6 @@ $response = Prism::structured()
     ->asStructured();
 ```
 
-**Benefits of native structured outputs:**
-- **Always valid JSON**: No more parsing errors or malformed responses
-- **Type safe**: Guaranteed field types and required fields
-
 **Limitations:**
 - Only available on Claude Sonnet 4.5+ and Claude Opus 4.1+
 - Cannot be used with citations
@@ -589,15 +574,8 @@ $response = Prism::structured()
     ->asStructured();
 ```
 
-**Benefits of tool calling mode:**
-- More reliable JSON parsing, especially with quotes and special characters
-- Better handling of non-English content (Chinese, Japanese, etc.)
-- Reduced risk of malformed JSON responses
-- Compatible with thinking mode
-
 **Limitations:**
 - Cannot be used with citations (citations are not supported in tool calling mode)
-- Slightly more complex under the hood but identical API usage
 
 #### Combining Custom Tools with Structured Output
 
@@ -672,11 +650,8 @@ $response = Prism::text()
     ->asText();
 ```
 
-**Benefits of strict tool use:**
-- Functions receive correctly-typed arguments every time
-- No need to validate tool inputs
-- Eliminates runtime errors from type mismatches
-- Production-ready agents that work consistently
+Strict mode constrains generated arguments to the provider-supported schema.
+Application validation and authorization are still required before executing tools.
 
 ### Schema Limitations
 

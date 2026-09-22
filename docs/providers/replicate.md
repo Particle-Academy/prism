@@ -46,7 +46,7 @@ Traditional polling approach:
 
 **When to use**: Disable sync mode (`use_sync_mode: false`) for very long-running predictions (>60s) to avoid timeouts.
 
-Prism handles all complexity automatically, providing a clean synchronous interface regardless of mode.
+Both modes return through Prism's synchronous request API.
 
 ## Supported Features
 
@@ -131,7 +131,7 @@ foreach ($stream as $chunk) {
 
 ### ✅ Image Generation
 
-Generate images using state-of-the-art diffusion models.
+Generate images with a supported model.
 
 ```php
 use Prism\Prism\Facades\Prism;
@@ -296,7 +296,7 @@ Replicate models are versioned using SHA-256 hashes. Prism automatically maps fr
 
 **Best practice:** Use the short name (without version hash) to automatically get the latest stable version.
 
-**NOTE:** When you are not using an Official Maintend Replicate model you need to used the hash version.
+For models that are not officially maintained by Replicate, include the version hash.
 
 ## Async Predictions & Polling
 
@@ -407,21 +407,6 @@ $prism = Prism::text()
     ->generate();
 ```
 
-## Advanced: Webhooks (Future)
-
-> **Note:** Webhook support is planned but not yet implemented.
-
-Replicate supports webhooks for async notifications when predictions complete:
-
-```php
-// Future API
-'replicate' => [
-    'webhook_url' => 'https://your-app.com/webhooks/replicate',
-]
-
-// Prediction will POST to webhook_url when complete
-```
-
 ## Cost Optimization Tips
 
 1. **Use smaller models when possible**: `meta-llama-3.1-8b-instruct` is much cheaper than `405b-instruct`
@@ -443,13 +428,3 @@ Prism automatically handles 429 responses with `PrismRateLimitedException`.
 - [Replicate API Reference](https://replicate.com/docs/reference/http)
 - [Replicate Models](https://replicate.com/explore)
 - [Get API Token](https://replicate.com/account)
-
-## Testing
-
-Prism provides comprehensive test coverage for Replicate:
-
-```bash
-./vendor/bin/pest tests/Providers/Replicate/
-```
-
-**Test fixtures:** All tests use real API response fixtures for consistent, offline testing.

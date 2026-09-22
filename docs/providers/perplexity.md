@@ -1,11 +1,8 @@
 # Perplexity
 
 > [!IMPORTANT]
-> **Prism now talks to Perplexity's Agent API (`POST /v1/agent`).**
->
-> Perplexity retires the Sonar `/chat/completions` endpoints on **2026-09-27**. Prism was
-> updated ahead of that date, so your calls keep working across the cut — but there are
-> behaviour changes worth knowing about, below.
+> Prism uses Perplexity's Agent API (`POST /v1/agent`). Review the model mappings
+> and request behavior below when migrating from Sonar.
 
 ## Migrating from Sonar
 
@@ -24,17 +21,9 @@ A preset name given directly (`fast`, `low`, `medium`, `high`, `xhigh`, `wide-re
 passed through, and anything else is treated as a real model id — `openai/gpt-5.6-sol` is sent
 as `model`, not guessed at as a preset.
 
-### Why `sonar-deep-research` maps to `medium` and not `high`
+### Overriding a preset
 
-Perplexity publishes two mappings that disagree, and only on the expensive rows. Their
-migration overview suggests `high`; their preset documentation shows the presets were
-**renamed**, and the one formerly called *deep-research* is now called *medium*.
-
-Prism follows the rename, because that is the behavioural equivalent. `high` is the tier above
-it — a costlier upgrade rather than a like-for-like replacement, and one that returns a
-perfectly plausible answer while billing more.
-
-If you want a different tier, say so and it wins:
+`sonar-deep-research` maps to `medium`. To select a different tier, set the preset explicitly:
 
 ```php
 Prism::text()
@@ -44,20 +33,17 @@ Prism::text()
 
 ### `withSystemPrompt()` replaces the preset's own prompt
 
-A system prompt is sent as the Agent API's `instructions`, and `instructions` **replaces** a
-preset's built-in system prompt rather than adding to it. A preset is a model *plus* a prompt
-tuned against real workloads, so setting your own discards that half of it. Nothing errors —
-the answers just change.
+`withSystemPrompt()` sets the Agent API's `instructions` field, replacing the
+preset's built-in system prompt rather than appending to it.
 
 Prism only sends `instructions` when you actually set a system prompt, so presets keep their
 own by default.
 
 ### Failures arrive as HTTP 200
 
-A failed or cancelled run returns **HTTP 200** with `status: "failed"` or `"cancelled"` and a
-populated `error`. Prism branches on the run status and throws a `PrismException` for both, so
-you do not have to remember this — but if you read raw responses anywhere, do not trust the
-HTTP code alone.
+A failed or cancelled run can return HTTP 200 with `status: "failed"` or
+`"cancelled"` and an `error`. Prism throws `PrismException` for these statuses.
+When processing raw responses, inspect the run status as well as the HTTP status.
 
 ### What comes back
 
@@ -67,16 +53,15 @@ $response->additionalContent['fetch_url_results'];
 $response->additionalContent['resolved_model'];   // which model the preset actually used
 ```
 
-`resolved_model` is worth reading: a preset can route to a third-party model, and both token
-accounting and data-handling decisions depend on knowing which one served the request.
+`resolved_model` identifies the model selected by the preset. Use it when
+interpreting usage and applying your application's provider policies.
 
 An **empty** `search_results` on a completed run is normal — a preset may answer without
 searching — so do not treat a missing source list as an error.
 
 ### Cost is reported, not estimated
 
-Perplexity prices each request in its own response, so you get the real figure rather than one
-derived from a rate card:
+`cost` contains the provider-reported request cost:
 
 ```php
 $response->usage->cost;   // e.g. 0.005, or null if the response carried none

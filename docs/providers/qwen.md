@@ -1,9 +1,9 @@
 # Qwen
 
-Alibaba Cloud's Qwen models are available through the [DashScope (Model Studio)](https://www.alibabacloud.com/help/en/model-studio/) API. Prism uses the **DashScope native API** (not the OpenAI-compatible mode) for all Qwen interactions, providing the most complete and up-to-date feature support.
+Access Alibaba Cloud's Qwen models through the [DashScope (Model Studio)](https://www.alibabacloud.com/help/en/model-studio/) API.
 
 > [!NOTE]
-> This provider uses DashScope's native API (`/api/v1`) endpoints. While DashScope also offers an OpenAI-compatible interface (`/compatible-mode/v1`), the native API provides better feature coverage, more active maintenance from Alibaba Cloud, and a consistent experience across all capabilities (text, embeddings, images).
+> Prism uses DashScope's native `/api/v1` endpoints. Configure a native API base URL, not the `/compatible-mode/v1` endpoint.
 
 ## Configuration
 
@@ -244,7 +244,7 @@ return Prism::text()
 
 ### Streaming with Tools
 
-Streaming works seamlessly with tool calling. The stream will emit tool call and tool result events during multi-step interactions:
+Streaming supports tool calling. The stream will emit tool call and tool result events during multi-step interactions:
 
 ```php
 $response = Prism::text()

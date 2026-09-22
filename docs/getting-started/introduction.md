@@ -4,11 +4,10 @@ import ProviderSupport from '../components/ProviderSupport.vue'
 
 # Introduction
 
-Large Language Models (LLMs) have revolutionized how we interact with artificial intelligence, enabling applications to understand, generate, and manipulate human language with unprecedented sophistication. These powerful models open up exciting possibilities for developers, from creating chatbots and content generators to building complex AI-driven applications.
+Prism provides a unified PHP interface for language-model APIs in Laravel applications.
+Use it to generate text, stream responses, call tools and work with multimodal input.
 
-Prism **simplifies the process of integrating LLMs into your Laravel projects**, providing a unified interface to work with various AI providers. This allows you to focus on crafting innovative AI features for your users, rather than getting bogged down in the intricacies of different APIs and implementation details.
-
-Here's a quick example of how you can generate text using Prism:
+Generate text by selecting a provider and model:
 
 ::: code-group
 ```php [Anthropic]
@@ -77,11 +76,11 @@ echo $response->text;
 ```
 :::
 
-Prism draws significant inspiration from the [Vercel AI SDK](https://sdk.vercel.ai/docs/ai-sdk-core), adapting its powerful concepts and developer-friendly approach to the Laravel ecosystem.
+Prism's API is inspired by the [Vercel AI SDK](https://sdk.vercel.ai/docs/ai-sdk-core).
 
 ## Key Features
 
-- **Unified Provider Interface**: Switch seamlessly between AI providers like OpenAI, Anthropic, and Ollama without changing your application code.
+- **Unified Provider Interface**: Use a consistent request API across providers such as OpenAI, Anthropic and Ollama. Available features and options vary by provider.
 - **Tool System**: Extend AI capabilities by defining custom tools that can interact with your application's business logic.
 - **Image Support**: Work with multi-modal models that can process both text and images.
 
@@ -97,7 +96,7 @@ prism()
 
 ## Providers
 
-We currently offer first-party support for these leading AI providers:
+Prism includes integrations for the following providers:
 
 - [Anthropic](/providers/anthropic.md)
 - [DeepSeek](/providers/deepseek.md)
@@ -110,10 +109,8 @@ We currently offer first-party support for these leading AI providers:
 - [xAI](/providers/xai.md)
 - [Perplexity](/providers/perplexity.md)
 
-Each provider brings its own strengths to the table, and Prism makes it easy to use them all through a consistent, elegant interface.
-
 ## Provider Support
 
-Make sure you check the dedicated provider pages for considerations, limitations, and options. Support may be model dependant, check with your provider for model specific features and support.
+See each provider's page for supported features, configuration and limitations. Availability also depends on the selected model.
 
 <ProviderSupport />

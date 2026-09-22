@@ -1,6 +1,6 @@
 # Vertex AI
 
-Google Vertex AI provides enterprise-grade access to Google's Gemini models with enhanced security, compliance, and integration with Google Cloud services.
+Access Google's Gemini models through Vertex AI with Google Cloud authentication and regional endpoints.
 
 ## Configuration
 
@@ -31,7 +31,7 @@ You can obtain an access token using the Google Cloud CLI:
 gcloud auth print-access-token
 ```
 
-#### 2. Service Account Credentials (Recommended for production)
+#### 2. Service Account Credentials
 
 Provide the path to your service account JSON key file:
 

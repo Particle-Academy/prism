@@ -361,7 +361,7 @@ Prism::text()
 
 ## Image Generation
 
-OpenAI provides powerful image generation capabilities through multiple models. Prism supports all of OpenAI's image generation models with their full feature sets.
+Use the image generation API with a supported OpenAI model. Available options depend on the model.
 
 ### Supported Models
 
@@ -385,7 +385,7 @@ echo $image->url; // Generated image URL
 
 ### DALL-E 3 Options
 
-DALL-E 3 is the most advanced model with the highest quality output:
+Configure DALL-E 3 output options:
 
 ```php
 $response = Prism::image()
@@ -524,7 +524,7 @@ if ($image->hasUrl()) {
 
 ## Audio Processing
 
-OpenAI provides comprehensive audio processing capabilities through their TTS (Text-to-Speech) and Whisper (Speech-to-Text) models. Prism supports all of OpenAI's audio models with their full feature sets.
+Use OpenAI's text-to-speech and speech-to-text APIs through Prism's audio builder.
 
 
 ### Text-to-Speech
@@ -737,7 +737,7 @@ For more information on the available options, please refer to the [OpenAI API d
 
 ## Moderation
 
-OpenAI provides powerful content moderation capabilities through their moderation API. Prism supports both text and image moderation with OpenAI.
+The OpenAI integration supports text and image moderation.
 
 ### Supported Models
 

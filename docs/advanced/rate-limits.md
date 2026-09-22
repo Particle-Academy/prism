@@ -1,10 +1,6 @@
 # Handling Rate Limits
 
-Hitting issues with rate limits? We've got you covered!
-
-In this guide we will look at handling:
-- situations where you actually hit a rate limit (i.e. HTTP 429); and
-- dynamic rate limiting (figuring out when you can make your next request, from a successful request).
+Handle rate-limit errors and use provider quota information to schedule requests.
 
 ## Provider support
 
@@ -52,9 +48,7 @@ catch (PrismRateLimitedException $e) {
 
 ### Figuring out which rate limit you have hit
 
-In a simple world, they'd only be one rate limit. 
-
-However most providers implement various rate limits (e.g. request, input tokens, output tokens, etc.) and provide you with information on all of them on all requests, regardless of which you have hit.
+Providers can enforce separate limits for requests, input tokens and output tokens. A response may report several limits, including ones that have not been exhausted.
 
 For simple rate limits like "requests", the `remaining` property on `ProviderRateLimit` will be 0 if you have hit it. These are easy to find:
 
@@ -90,9 +84,7 @@ catch (PrismRateLimitedException $e) {
 }
 ```
 
-To help with approximating input token usage, we plan to implement Anthopic's token counting endpoint in a future release. 
-
-For providers that don't have a token counting endpoint, you could either roll your own token counter or use something like [tiktoken](https://github.com/openai/tiktoken) if you are comfortable calling out to Python.
+Estimate token use with a tokenizer appropriate for your model when the provider does not expose a token-counting endpoint.
 
 Once you know which rate limit you have hit, you'll want to ensure your app does not continue making requests until after the `ProviderRateLimit` `resetsAt` property. 
 
@@ -123,8 +115,8 @@ Armed with that information, you'll probably want to [update your app's rate lim
 
 ## What should you do with rate limit information?
 
-You'll likely want to implement a rate limiter within your app. Thankfully Laravel, as always, makes this very easy!
+Apply rate limits in your application or queue to delay requests until capacity is available.
 
 You should take a look at the [rate limiting](https://laravel.com/docs/11.x/rate-limiting) docs, and if you are firing requests from your queue, check out the [job middleware](https://laravel.com/docs/11.x/queues#job-middleware) docs.
 
-You should implement a rate limiter / job middleware for each of the provider rate limits your application typically hits. 
+You should implement a rate limiter / job middleware for each of the provider rate limits your application typically hits.

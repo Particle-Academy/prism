@@ -103,7 +103,7 @@ Reasoning models return content in a structured format with two types of blocks:
 1. **Thinking blocks** - The model's internal reasoning process (stored in `additionalContent['thinking']`)
 2. **Text blocks** - The final self-contained answer (stored in `text`)
 
-Prism automatically separates these for you, making both easily accessible.
+Prism exposes thinking and text content separately.
 
 ## Streaming
 
@@ -120,11 +120,11 @@ For complete streaming documentation, see [Streaming Output](/core-concepts/stre
 
 ## Audio Processing
 
-Mistral provides advanced speech-to-text capabilities through their Voxtral models, offering state-of-the-art transcription accuracy with native multilingual support and audio understanding features.
+Use Mistral's Voxtral models for speech-to-text requests.
 
 ### Speech-to-Text
 
-Mistral's Voxtral models deliver exceptional speech recognition performance, outperforming industry standards like Whisper large-v3 across multiple languages and acoustic environments.
+Select a Voxtral transcription model and supply an audio file:
 
 #### Basic STT Usage
 

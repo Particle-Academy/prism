@@ -1,6 +1,6 @@
 # Batch Processing
 
-The Batch API lets you submit large numbers of requests for asynchronous processing. Instead of sending each prompt one at a time and waiting for a response, you queue them all at once and collect the results later. This makes batch processing significantly cheaper and better suited for offline workloads like dataset generation, bulk classification, or nightly report jobs.
+Submit multiple requests for asynchronous processing and retrieve their results later. Batch processing is suitable for offline workloads such as classification, dataset generation and scheduled reports. Pricing and completion windows depend on the provider.
 
 > [!IMPORTANT]
 > For deeper background, see the official provider documentation:

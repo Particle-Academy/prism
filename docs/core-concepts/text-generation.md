@@ -1,10 +1,10 @@
 # Text Generation
 
-Prism provides a powerful interface for generating text using Large Language Models (LLMs). This guide covers everything from basic usage to advanced features like multi-modal interactions and response handling.
+Generate text with a configured provider and model. Requests can include system prompts, conversation history and supported media.
 
 ## Basic Text Generation
 
-At its simplest, you can generate text with just a few lines of code:
+Select a provider and model, set a prompt, and call `asText()`:
 
 ```php
 use Prism\Prism\Facades\Prism;
@@ -46,7 +46,7 @@ $response = Prism::text()
     ->asText();
 ```
 
-You an also pass a View to the `withPrompt` method.
+You can also pass a View to the `withPrompt` method.
 
 ## Multi-Modal Input
 
@@ -154,7 +154,7 @@ $response = Prism::text()
 
 ### Threads
 
-Rebuilding the whole message array on every request gets old fast. If your conversation already lives somewhere — a database table, a cache entry, a session — implement `Thread` and hand Prism the conversation instead:
+Implement `Thread` to supply conversation history from your application's storage:
 
 ```php
 use Prism\Prism\Contracts\Message;
@@ -170,7 +170,7 @@ class Conversation extends Model implements Thread
 }
 ```
 
-Then pass it in. A thread is the history, and `withPrompt()` is the turn you're taking now — so unlike `withMessages()`, the two work together:
+Pass the thread with `withThread()` and the new user message with `withPrompt()`. Unlike `withMessages()`, these methods can be used together:
 
 ```php
 $response = Prism::text()
@@ -180,19 +180,19 @@ $response = Prism::text()
     ->asText();
 ```
 
-Prism only ever reads from a thread, so saving a turn stays yours to do. Everything you need is on the response: `$response->messages` is the full exchange, tool calls and tool results included, which means a conversation interrupted mid-tool-loop can be stored and resumed exactly where it stopped.
+Prism reads from a thread but does not write to it. Persist `$response->messages` in your application to record the exchange, including tool calls and results.
 
 ```php
 $conversation->record($response->messages);
 ```
 
-`messages()` returns an `iterable`, so a generator can page a long history out of storage instead of hydrating every row up front. Prism still materialises the final list — the provider payload needs the whole conversation — so this lowers the cost of reading history, not the peak memory of sending it. Long threads cost tokens on every call, so trim them somewhere.
+`messages()` returns an `iterable`, allowing incremental reads from storage. Prism still materializes the complete message list for the provider request. Limit the history you supply to manage memory use and input tokens.
 
 > [!WARNING]
 > A thread is replayed as context, and `Message` includes `SystemMessage` — so anything that can write to your conversation store can put instructions in front of the model. Treat stored history as untrusted input: restrict who can write it, and don't persist a `SystemMessage` you didn't author.
 
 > [!NOTE]
-> Prism ships the interface, not an implementation — no migrations, no tables, no config. What storage you use is up to you. `withThread()` works on both `Prism::text()` and `Prism::structured()`.
+> Prism provides the `Thread` interface; your application supplies storage. `withThread()` works with both `Prism::text()` and `Prism::structured()`.
 
 ## Generation Parameters
 
@@ -243,7 +243,7 @@ This allows for complete or partial override of the providers configuration. Thi
 
 ## Response Handling
 
-The response object provides rich access to the generation results:
+Read text, usage and metadata from the response:
 
 ```php
 use Prism\Prism\Facades\Prism;
@@ -316,7 +316,7 @@ total input billed. This is consistent everywhere.
 
 ## Handling Completions with Callbacks
 
-Need to perform actions after text generation completes? Pass a callback directly to `asText()` to handle the response without interrupting the return flow. This is perfect for persisting conversations, tracking analytics, or logging AI interactions.
+Pass a callback to `asText()` to process the completed response before it is returned, for example to persist messages or record usage.
 
 ### Basic Example
 

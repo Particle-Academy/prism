@@ -1,6 +1,6 @@
 # Audio Processing
 
-Transform text into speech and speech into text using AI-powered audio models. Prism provides a unified API for audio processing across different providers, enabling both text-to-speech (TTS) and speech-to-text (STT) functionality.
+Prism provides text-to-speech (TTS) and speech-to-text (STT) requests through a shared API. Supported operations and formats depend on the provider and model.
 
 ## Getting Started
 
@@ -50,8 +50,6 @@ Currently, Prism supports audio processing through:
 
 - **OpenAI**: TTS-1, TTS-1-HD (text-to-speech) and Whisper-1 (speech-to-text)
 - **Groq**: PlayAI TTS models (text-to-speech) and Whisper Large V3 models (speech-to-text)
-
-Additional providers will be added in future releases as the ecosystem evolves.
 
 ## Basic Usage
 
@@ -191,7 +189,7 @@ print_r($response->additionalContent);
 
 ## Voice Selection
 
-Prism provides a dedicated `withVoice()` method for selecting voices in text-to-speech, making voice selection a first-class citizen in the API:
+Select a text-to-speech voice with `withVoice()`:
 
 ```php
 $response = Prism::audio()
@@ -364,7 +362,7 @@ try {
 
 ## Testing
 
-Prism provides convenient fakes for testing audio functionality:
+Use fakes to test audio functionality without external API calls:
 
 ```php
 use Prism\Prism\Facades\Prism;
@@ -410,4 +408,3 @@ test('can transcribe speech-to-text', function () {
     expect($response->text)->toBe('This is a fake transcription');
 });
 ```
-

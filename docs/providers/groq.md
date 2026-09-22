@@ -10,7 +10,7 @@
 
 ## Streaming
 
-Groq's ultra-fast LPU architecture provides exceptional streaming performance. All standard streaming methods are supported:
+The Groq integration supports the standard streaming methods:
 
 ```php
 return Prism::text()
@@ -23,7 +23,7 @@ For complete streaming documentation, see [Streaming Output](/core-concepts/stre
 
 ## Audio Processing
 
-Groq provides high-performance audio processing capabilities through their ultra-fast Language Processing Unit (LPU) architecture, enabling both text-to-speech (TTS) and speech-to-text (STT) functionality with exceptional speed and quality.
+The Groq integration supports text-to-speech and speech-to-text requests.
 
 ### Text-to-Speech
 
@@ -78,7 +78,7 @@ file_put_contents('arabic_speech.wav', base64_decode($response->audio->base64));
 
 ### Speech-to-Text
 
-Groq provides ultra-fast speech recognition using Whisper models, offering exceptional speed with real-time factors of up to 299x.
+Use a supported Whisper model to transcribe audio:
 
 #### Basic STT Usage
 
