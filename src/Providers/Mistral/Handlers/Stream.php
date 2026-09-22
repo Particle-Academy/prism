@@ -475,7 +475,7 @@ class Stream
 
             foreach ($content as $block) {
                 if (data_get($block, 'type') === 'thinking') {
-                    foreach (data_get($block, 'thinking', []) as $thinkingBlock) {
+                    foreach (data_get($block, 'thinking') ?? [] as $thinkingBlock) {
                         $thinking .= data_get($thinkingBlock, 'text', '');
                     }
                 }

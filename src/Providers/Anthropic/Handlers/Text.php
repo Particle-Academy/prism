@@ -246,7 +246,7 @@ class Text
         $providerToolCalls = [];
         $providerToolResults = [];
 
-        foreach (data_get($data, 'content', []) as $content) {
+        foreach (data_get($data, 'content') ?? [] as $content) {
             $type = data_get($content, 'type');
 
             if ($type === 'server_tool_use') {

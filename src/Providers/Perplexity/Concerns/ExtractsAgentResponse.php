@@ -57,7 +57,7 @@ trait ExtractsAgentResponse
         $text = '';
 
         foreach ($this->outputItemsOfType($data, 'message') as $item) {
-            foreach (data_get($item, 'content', []) as $content) {
+            foreach (data_get($item, 'content') ?? [] as $content) {
                 if (data_get($content, 'type') === 'output_text') {
                     $text .= (string) data_get($content, 'text', '');
                 }
@@ -85,7 +85,7 @@ trait ExtractsAgentResponse
         $results = [];
 
         foreach ($this->outputItemsOfType($data, 'search_results') as $item) {
-            foreach (data_get($item, 'results', []) as $result) {
+            foreach (data_get($item, 'results') ?? [] as $result) {
                 $results[] = $result;
             }
         }
@@ -102,7 +102,7 @@ trait ExtractsAgentResponse
         $results = [];
 
         foreach ($this->outputItemsOfType($data, 'fetch_url_results') as $item) {
-            foreach (data_get($item, 'results', []) as $result) {
+            foreach (data_get($item, 'results') ?? [] as $result) {
                 $results[] = $result;
             }
         }

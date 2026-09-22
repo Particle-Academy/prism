@@ -354,3 +354,26 @@ describe('reported cost', function (): void {
         expect($response->usage->cost)->toBeNull();
     });
 });
+
+it('treats a null content or results as empty rather than failing the generation', function (): void {
+    // prism#61, reported from a consumer's queue worker. `data_get($item,
+    // 'content', [])` returns the `[]` default only when the key is ABSENT; an
+    // output item carrying `"content": null` or `"results": null` handed
+    // `foreach` a null and threw -- and the whole generation failed, which the
+    // consumer saw as "provider could not be reached" although Perplexity had
+    // answered. Intermittent by response shape, so it looked like flakiness.
+    //
+    // The fixture keeps the real answer and the real sources, and adds a
+    // null-bearing `search_results`, `fetch_url_results` and `message` item.
+    // Both halves of the outcome are asserted: nothing throws, AND the rest of
+    // the response comes back as it would have.
+    FixtureResponse::fakeResponseSequence('v1/agent', 'perplexity/agent-null-content-and-results');
+
+    $response = Prism::text()
+        ->using(Provider::Perplexity, 'sonar')
+        ->withPrompt("How's the weather in southern Brazil?")
+        ->asText();
+
+    expect($response->text)->toContain('Southern Brazil in mid-November')
+        ->and($response->additionalContent['search_results'])->not->toBeEmpty();
+});
