@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Prism\Prism\ValueObjects\Messages;
 
 use Illuminate\Contracts\Support\Arrayable;
+use Prism\Prism\Concerns\CopiesWithProviderOptions;
 use Prism\Prism\Concerns\HasProviderOptions;
 use Prism\Prism\Contracts\Message;
 use Prism\Prism\Support\JsonMap;
@@ -20,6 +21,7 @@ use Prism\Prism\ValueObjects\Media\Video;
  */
 class UserMessage implements Arrayable, Message
 {
+    use CopiesWithProviderOptions;
     use HasProviderOptions;
 
     /**

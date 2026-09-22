@@ -10,6 +10,7 @@ use Error;
 use Illuminate\Container\Container;
 use Illuminate\Support\Arr;
 use InvalidArgumentException;
+use Prism\Prism\Concerns\CopiesWithProviderOptions;
 use Prism\Prism\Concerns\HasProviderOptions;
 use Prism\Prism\Contracts\Schema;
 use Prism\Prism\Exceptions\PrismException;
@@ -29,6 +30,7 @@ use TypeError;
 
 class Tool
 {
+    use CopiesWithProviderOptions;
     use HasProviderOptions;
 
     protected string $name = '';

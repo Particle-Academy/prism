@@ -10,6 +10,7 @@ use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Storage;
 use InvalidArgumentException;
+use Prism\Prism\Concerns\CopiesWithProviderOptions;
 use Prism\Prism\Concerns\HasProviderOptions;
 
 /**
@@ -17,6 +18,7 @@ use Prism\Prism\Concerns\HasProviderOptions;
  */
 class Media implements Arrayable
 {
+    use CopiesWithProviderOptions;
     use HasProviderOptions;
 
     /**
