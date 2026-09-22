@@ -12,6 +12,9 @@ use Illuminate\Support\Facades\Storage;
 use InvalidArgumentException;
 use Prism\Prism\Concerns\CopiesWithProviderOptions;
 use Prism\Prism\Concerns\HasProviderOptions;
+use Prism\Prism\Exceptions\PrismException;
+use Prism\Prism\Support\HostResolver;
+use Prism\Prism\Support\PublicUrl;
 
 /**
  * @implements Arrayable<string, mixed>
@@ -412,6 +415,85 @@ class Media implements Arrayable
         }
 
         $this->rawContent = $content;
+
+        return $this;
+    }
+
+    /**
+     * Fetch the URL, but only if it reaches somewhere the public internet can.
+     *
+     * FOR A URL YOU DO NOT TRUST -- one from a request, or from model output.
+     * `fetchUrlContent()` is unguarded by design and stays that way; this is
+     * the variant to reach for when the URL's origin is not yours, and the
+     * migration that prompted it is the dangerous one: code that broke when
+     * implicit fetching was removed gets an explicit fetch added wherever it
+     * failed, often on exactly such a URL.
+     *
+     * Refused: a non-http scheme, a private, loopback or reserved address, a
+     * NAME that resolves to one (the bypass an allow-list of URL strings
+     * misses, since an attacker owns their own DNS), and -- the one worth
+     * stating -- a REDIRECT into any of those. Redirects are followed by
+     * default, so a public host answering `302 http://169.254.169.254/` would
+     * defeat a guard that only checked the URL it was handed. Each hop is
+     * checked before it is requested.
+     *
+     * NOT A SANDBOX. A name can resolve differently between the check and the
+     * request, which only connection-level pinning closes. See
+     * {@see PublicUrl}.
+     *
+     * @throws PrismException when the URL, or a redirect from it, is not public
+     */
+    public function fetchPublicUrlContent(int $maxRedirects = 5): static
+    {
+        if (! $this->url) {
+            return $this;
+        }
+
+        $resolver = resolve(HostResolver::class);
+        $url = $this->url;
+        $response = null;
+
+        for ($hop = 0; $hop <= $maxRedirects; $hop++) {
+            PublicUrl::assert($url, $resolver);
+
+            /** @var Response $response */
+            $response = Http::withoutRedirecting()->get($url);
+
+            if (! $response->redirect()) {
+                break;
+            }
+
+            $location = $response->header('Location');
+
+            if ($location === '') {
+                break;
+            }
+
+            // A relative Location keeps the host it came from, which was just
+            // checked; an absolute one is checked on the next pass.
+            $url = str_contains($location, '://')
+                ? $location
+                : rtrim((string) preg_replace('#(?<!/)/[^/]*$#', '', $url), '/').'/'.ltrim($location, '/');
+
+            if ($hop === $maxRedirects) {
+                throw new PrismException($this->safeUrl().' redirected more than '.$maxRedirects.' times.');
+            }
+        }
+
+        $content = $response instanceof Response ? $response->body() : '';
+
+        if (! $content) {
+            throw new InvalidArgumentException($this->safeUrl().' returns no content.');
+        }
+
+        $mimeType = (new finfo(FILEINFO_MIME_TYPE))->buffer($content);
+
+        if (! $mimeType) {
+            throw new InvalidArgumentException('Could not determine mime type for '.$this->safeUrl().'.');
+        }
+
+        $this->rawContent = $content;
+        $this->mimeType = $mimeType;
 
         return $this;
     }
