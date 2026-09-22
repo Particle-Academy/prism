@@ -5,7 +5,10 @@ declare(strict_types=1);
 namespace Prism\Prism\Providers\Anthropic\Maps;
 
 use Exception;
+use Illuminate\Support\Arr;
+use Prism\Prism\Contracts\DeclaresCacheStability;
 use Prism\Prism\Contracts\Message;
+use Prism\Prism\Enums\CacheStability;
 use Prism\Prism\Exceptions\PrismException;
 use Prism\Prism\Providers\Anthropic\Concerns\NormalizesCacheControl;
 use Prism\Prism\Providers\Support\Payload;
@@ -38,6 +41,8 @@ class MessageMap
             fn (Message $message): array => self::mapMessage($message, $requestProviderOptions),
             $messages
         );
+
+        $mappedMessages = self::applyCacheHints($messages, $mappedMessages);
 
         if (isset($requestProviderOptions['tool_result_cache_type'])) {
             $lastToolResultIndex = null;
@@ -210,6 +215,70 @@ class MessageMap
             'role' => 'assistant',
             'content' => self::cacheFinalContentBlock(array_merge($content, $toolCalls), $cacheControl),
         ];
+    }
+
+    /**
+     * Turn a portable stability declaration into Anthropic's breakpoint.
+     *
+     * THE RULE IS A DEFINITION, NOT A HEURISTIC. A breakpoint says "everything
+     * before this is the same next turn", so it belongs after the last STABLE
+     * message that precedes the first VOLATILE one. Deriving it means a caller
+     * says what they know -- which parts change -- without counting markers or
+     * learning that Anthropic allows four.
+     *
+     * Exactly one breakpoint is derived, and only when the caller placed none
+     * themselves. Someone who has written `cacheType` is working in Anthropic's
+     * idiom already; adding to their marks would spend one of the four they are
+     * budgeting. A volatile-first conversation gets nothing, because nothing
+     * stable precedes it -- there is no prefix to cache.
+     *
+     * @param  array<int, Message>  $messages
+     * @param  array<int, array<string, mixed>>  $mapped
+     * @return array<int, array<string, mixed>>
+     */
+    protected static function applyCacheHints(array $messages, array $mapped): array
+    {
+        // A caller who has already placed a breakpoint is working in
+        // Anthropic's idiom and budgeting against its limit of four. Read from
+        // the MAPPED payload rather than from the messages, so any route to a
+        // mark -- a message's `cacheType`, a tool result's, a request option --
+        // counts as the caller having taken charge.
+        if (str_contains(json_encode($mapped) ?: '', 'cache_control')) {
+            return $mapped;
+        }
+
+        $messages = array_values($messages);
+        $breakpoint = null;
+
+        foreach ($messages as $index => $message) {
+            if (! $message instanceof DeclaresCacheStability) {
+                continue;
+            }
+
+            $stability = $message->cacheStability();
+
+            if ($stability === CacheStability::Volatile) {
+                break;
+            }
+
+            if ($stability === CacheStability::Stable) {
+                $breakpoint = $index;
+            }
+        }
+
+        if ($breakpoint === null || ! isset($mapped[$breakpoint]['content'])) {
+            return $mapped;
+        }
+
+        $hinted = $messages[$breakpoint];
+        $ttl = $hinted instanceof DeclaresCacheStability ? $hinted->cacheTtl() : null;
+
+        $mapped[$breakpoint]['content'] = self::cacheFinalContentBlock(
+            $mapped[$breakpoint]['content'],
+            Arr::whereNotNull(['type' => 'ephemeral', 'ttl' => $ttl]),
+        );
+
+        return $mapped;
     }
 
     /**

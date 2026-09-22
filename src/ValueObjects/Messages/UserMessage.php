@@ -6,7 +6,9 @@ namespace Prism\Prism\ValueObjects\Messages;
 
 use Illuminate\Contracts\Support\Arrayable;
 use Prism\Prism\Concerns\CopiesWithProviderOptions;
+use Prism\Prism\Concerns\HasCacheHint;
 use Prism\Prism\Concerns\HasProviderOptions;
+use Prism\Prism\Contracts\DeclaresCacheStability;
 use Prism\Prism\Contracts\Message;
 use Prism\Prism\Support\JsonMap;
 use Prism\Prism\ValueObjects\Media\Audio;
@@ -19,9 +21,10 @@ use Prism\Prism\ValueObjects\Media\Video;
 /**
  * @implements Arrayable<string, mixed>
  */
-class UserMessage implements Arrayable, Message
+class UserMessage implements Arrayable, DeclaresCacheStability, Message
 {
     use CopiesWithProviderOptions;
+    use HasCacheHint;
     use HasProviderOptions;
 
     /**

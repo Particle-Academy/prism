@@ -6,7 +6,9 @@ namespace Prism\Prism\ValueObjects\Messages;
 
 use Illuminate\Contracts\Support\Arrayable;
 use Prism\Prism\Concerns\CopiesWithProviderOptions;
+use Prism\Prism\Concerns\HasCacheHint;
 use Prism\Prism\Concerns\HasProviderOptions;
+use Prism\Prism\Contracts\DeclaresCacheStability;
 use Prism\Prism\Contracts\Message;
 use Prism\Prism\ValueObjects\ToolApprovalResponse;
 use Prism\Prism\ValueObjects\ToolResult;
@@ -14,9 +16,10 @@ use Prism\Prism\ValueObjects\ToolResult;
 /**
  * @implements Arrayable<string, mixed>
  */
-class ToolResultMessage implements Arrayable, Message
+class ToolResultMessage implements Arrayable, DeclaresCacheStability, Message
 {
     use CopiesWithProviderOptions;
+    use HasCacheHint;
     use HasProviderOptions;
 
     /**
