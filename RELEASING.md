@@ -54,5 +54,8 @@ repository's tags on its own afterwards, and re-running that job then passes.
 
 This is not hypothetical. `prism-human-plus` was tagged, released on GitHub and
 uninstallable for days because nobody had submitted it, and nothing anywhere
-reported a problem. `prism-memory`, `prism-workspace` and `prism-browser` are in
-that state now.
+reported a problem. `prism-memory`, `prism-workspace` and `prism-browser` were
+named here as being in that state; all three have since been submitted and
+Packagist serves them. Check before believing this paragraph about any package —
+`curl -s -o /dev/null -w '%{http_code}' https://repo.packagist.org/p2/<vendor>/<package>.json`
+answers it in one line, and a list of names in a document does not.
