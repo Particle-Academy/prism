@@ -350,3 +350,59 @@ it('excludes cached tokens from streamed promptTokens', function (): void {
         ->and($endEvent->usage->promptTokens)->toBe(40)
         ->and($endEvent->usage->cacheReadInputTokens)->toBe(60);
 });
+
+describe('usage on a turn that ends in a tool call', function (): void {
+    // Z.ai documents that `finish_reason` and `usage` BOTH appear only on the
+    // last chunk of a stream (docs.z.ai/guides/capabilities/streaming). So on a
+    // tool-calling turn, usage always rides on the `finish_reason: "tool_calls"`
+    // chunk. What the docs do NOT show is whether that chunk also carries the
+    // tool call itself -- and Prism never sends `tool_stream`, so Z uses its
+    // default of not streaming tool calls piece by piece.
+    //
+    // Both shapes are asserted, because the handler read usage only in the
+    // branch for chunks WITHOUT a tool-call delta, and returned from the other
+    // branch first. Which shape Z sends decides whether usage was lost; the fix
+    // must not depend on it.
+    //
+    // 238 prompt tokens including 43 cached, 117 completion. Z's own mapper
+    // reports that as 195 in / 117 out / 43 cache-read.
+    function zToolTurnUsage(string $fixture): mixed
+    {
+        FixtureResponse::fakeStreamResponses('chat/completions', $fixture);
+
+        $events = iterator_to_array(
+            Prism::text()
+                ->using(Provider::Z, 'glm-4.6')
+                ->withPrompt('What is the weather in Detroit?')
+                ->withTools([
+                    Tool::as('weather')
+                        ->for('useful when you need to search for current weather conditions')
+                        ->withStringParameter('city', 'The city that you want the weather for')
+                        ->using(fn (string $city): string => 'The weather will be 75° and sunny'),
+                ])
+                ->asStream(),
+            false,
+        );
+
+        return collect($events)->last(fn ($event): bool => $event instanceof StreamEndEvent)?->usage;
+    }
+
+    it('records usage when the tool call arrives on the same last chunk as finish_reason', function (): void {
+        // The shape that lost it: the tool-call branch saw finish_reason
+        // "tool_calls", handled the calls and returned before usage was read.
+        $usage = zToolTurnUsage('z/stream-tool-call-on-final-chunk');
+
+        expect([$usage?->promptTokens, $usage?->completionTokens, $usage?->cacheReadInputTokens])
+            ->toBe([195, 117, 43]);
+    });
+
+    it('records usage when the tool call arrived in earlier chunks', function (): void {
+        // The control, and the shape the existing fixture has. Here the last
+        // chunk carries no tool-call delta, so the old code already read usage
+        // -- which means the fix must not now read it TWICE.
+        $usage = zToolTurnUsage('z/stream-with-required-tool-call');
+
+        expect([$usage?->promptTokens, $usage?->completionTokens, $usage?->cacheReadInputTokens])
+            ->toBe([195, 117, 43]);
+    });
+});

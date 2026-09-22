@@ -85,6 +85,25 @@ class Stream
                 continue;
             }
 
+            // Usage is read from WHICHEVER chunk carries it, before any branch
+            // below can return or `continue` past it.
+            //
+            // Z.ai documents that `finish_reason` and `usage` appear only on the
+            // LAST chunk, so on a tool-calling turn usage rides on the
+            // `finish_reason: "tool_calls"` chunk. This handler used to read it
+            // only in the branch for chunks WITHOUT a tool-call delta -- and the
+            // tool-call branch returns first. Whether that lost the step's usage
+            // depended on whether Z also put the tool call on that last chunk,
+            // which Z does not document (and Prism never sends `tool_stream`, so
+            // tool calls are not streamed piece by piece). Measured on both
+            // shapes: one lost it, one did not. Reading it here makes the shape
+            // irrelevant. Once only -- Z sends usage once per response.
+            $usage = $this->extractUsage($data);
+
+            if ($usage instanceof Usage) {
+                $this->state->addUsage($usage);
+            }
+
             if ($this->state->shouldEmitStreamStart()) {
                 yield new StreamStartEvent(
                     id: EventID::generate(),
@@ -172,12 +191,6 @@ class Stream
                 }
 
                 $this->state->withFinishReason($finishReason);
-
-                $usage = $this->extractUsage($data);
-
-                if ($usage instanceof Usage) {
-                    $this->state->addUsage($usage);
-                }
             }
         }
 
