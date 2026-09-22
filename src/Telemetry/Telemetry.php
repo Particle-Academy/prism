@@ -22,6 +22,8 @@ use Prism\Prism\Streaming\Events\ToolCallEvent;
 use Prism\Prism\Streaming\Events\ToolResultEvent;
 use Prism\Prism\Structured\Response as StructuredResponse;
 use Prism\Prism\Text\Response as TextResponse;
+use Prism\Prism\Tool;
+use Prism\Prism\ValueObjects\AdvertisedTool;
 use Prism\Prism\ValueObjects\Meta;
 use Prism\Prism\ValueObjects\ProviderRateLimit;
 use Prism\Prism\ValueObjects\ToolCall;
@@ -81,9 +83,48 @@ class Telemetry
 
         self::stack()->push($context);
 
-        event(new GenerationStarted($context, self::capturesContent() ? $request : null));
+        event(new GenerationStarted(
+            $context,
+            self::capturesContent() ? $request : null,
+            self::advertisedTools($request),
+        ));
 
         return $context;
+    }
+
+    /**
+     * The tools a request offers, as names and digests.
+     *
+     * Derived HERE rather than by each listener, because this is the only place
+     * that still has the request when the content gate is off — one line below,
+     * it is replaced with null. A listener asking the same question would be
+     * asking it of nothing.
+     *
+     * Duck-typed on `tools()` for the same reason the rest of this class is:
+     * embeddings, images and audio requests have no tools and are not special
+     * cases, they simply do not answer the question.
+     *
+     * @return list<AdvertisedTool>
+     */
+    protected static function advertisedTools(mixed $request): array
+    {
+        if (! is_object($request) || ! method_exists($request, 'tools')) {
+            return [];
+        }
+
+        $tools = $request->tools();
+
+        if (! is_array($tools)) {
+            return [];
+        }
+
+        // array_values, not array_filter's result directly: the order is the
+        // order the tools were SENT, which a provider's cached prefix depends
+        // on, and a filtered array keeps the original keys.
+        return array_values(array_map(
+            AdvertisedTool::from(...),
+            array_filter($tools, fn (mixed $tool): bool => $tool instanceof Tool),
+        ));
     }
 
     public static function completed(?TelemetryContext $context, mixed $response = null, ?FinishReason $finishReason = null, ?Usage $usage = null): void

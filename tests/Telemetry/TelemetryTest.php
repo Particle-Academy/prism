@@ -22,6 +22,8 @@ use Prism\Prism\Telemetry\Telemetry;
 use Prism\Prism\Telemetry\TelemetryContext;
 use Prism\Prism\Testing\TextResponseFake;
 use Prism\Prism\Testing\TextStepFake;
+use Prism\Prism\Tool;
+use Prism\Prism\ValueObjects\AdvertisedTool;
 use Prism\Prism\ValueObjects\Media\Image;
 use Prism\Prism\ValueObjects\Messages\UserMessage;
 use Prism\Prism\ValueObjects\Meta;
@@ -491,4 +493,104 @@ describe('media inside captured streaming content', function (): void {
         expect($image['base64'])->toBe(base64_encode('SECRET-FILE-BYTES'))
             ->and($image)->not->toHaveKey('omitted_bytes');
     });
+});
+
+it('carries tool names and digests even with capture_content OFF', function (): void {
+    // The tool array is part of the prefix a provider CACHES, so a consumer
+    // diffing spans to explain a cache miss needs it. It was unreachable: the
+    // tools live on the request, and the request is nulled when capture is off
+    // -- which is the default, and therefore the state every production span is
+    // exported in.
+    //
+    // G-45 in a second place. Quota headroom had the same shape: only useful
+    // BEFORE the problem, and gated behind a switch nobody enables in
+    // production, so it was absent exactly when it was wanted.
+    Event::fake();
+
+    Prism::fake([TextResponseFake::make()->withText('x')]);
+
+    Prism::text()
+        ->using('anthropic', 'm')
+        ->withPrompt('secret prompt')
+        ->withTools([
+            (new Tool)->as('search')->for('Search the docs')->using(fn (): string => 'ok'),
+            (new Tool)->as('write')->for('Write a file')->using(fn (): string => 'ok'),
+        ])
+        ->asText();
+
+    Event::assertDispatched(GenerationStarted::class, function (GenerationStarted $e): bool {
+        // The content gate is still shut. That is the point: these two
+        // assertions have to hold on the SAME event.
+        expect($e->request)->toBeNull();
+
+        expect($e->tools)->toHaveCount(2)
+            ->and($e->tools[0]->name)->toBe('search')
+            ->and($e->tools[1]->name)->toBe('write')
+            ->and($e->tools[0]->digest)->toStartWith('sha256:')
+            ->and($e->tools[0]->digest)->not->toBe($e->tools[1]->digest);
+
+        return true;
+    });
+});
+
+it('keeps the tools in the order they were sent, because a reorder is a cache miss', function (): void {
+    // A provider caches the tools array AS SERIALISED, so the same tools in a
+    // different order is a different prefix and a miss. Sorting this list is
+    // the reflex -- a set comparison feels more canonical -- and it would make
+    // exactly that case invisible, in the reassuring direction.
+    Event::fake();
+
+    Prism::fake([TextResponseFake::make()->withText('x')]);
+
+    Prism::text()
+        ->using('anthropic', 'm')
+        ->withPrompt('q')
+        ->withTools([
+            (new Tool)->as('zebra')->for('Last alphabetically, first in the array')->using(fn (): string => 'ok'),
+            (new Tool)->as('alpha')->for('First alphabetically, last in the array')->using(fn (): string => 'ok'),
+        ])
+        ->asText();
+
+    Event::assertDispatched(GenerationStarted::class, function (GenerationStarted $e): bool {
+        expect(array_map(fn (AdvertisedTool $tool): string => $tool->name, $e->tools))
+            ->toBe(['zebra', 'alpha']);
+
+        return true;
+    });
+});
+
+it('changes a tool digest when its description changes but its name does not', function (): void {
+    // The case a name list cannot answer. A rewritten description changes what
+    // the model is told the tool does, and changes the cached prefix, while
+    // every name stays identical.
+    $before = AdvertisedTool::from(
+        (new Tool)->as('search')->for('Search the docs')->using(fn (): string => 'ok')
+    );
+
+    $after = AdvertisedTool::from(
+        (new Tool)->as('search')->for('Search the docs and the changelog')->using(fn (): string => 'ok')
+    );
+
+    expect($before->name)->toBe($after->name)
+        ->and($before->digest)->not->toBe($after->digest);
+});
+
+it('gives one tool the same digest twice, so a stable prefix reads as stable', function (): void {
+    // The control. Without it the test above passes against a digest that is
+    // random per call, which would report every turn as a cache miss -- the
+    // same failure as reporting none, pointing the other way.
+    $tool = fn (): Tool => (new Tool)->as('search')->for('Search the docs')->using(fn (): string => 'ok');
+
+    expect(AdvertisedTool::from($tool())->digest)->toBe(AdvertisedTool::from($tool())->digest);
+});
+
+it('emits no tools for a request that has none, rather than failing', function (): void {
+    // Embeddings, images and audio requests do not answer `tools()` at all.
+    Event::fake();
+
+    Prism::fake([TextResponseFake::make()->withText('x')]);
+
+    Prism::text()->using('anthropic', 'm')->withPrompt('q')->asText();
+
+    Event::assertDispatched(GenerationStarted::class, fn (GenerationStarted $e): bool => $e->tools === []);
 });
