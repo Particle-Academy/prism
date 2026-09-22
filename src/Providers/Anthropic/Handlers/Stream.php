@@ -46,6 +46,16 @@ class Stream
 
     protected AnthropicStreamState $state;
 
+    /**
+     * What `message_start` reported for the message in flight.
+     *
+     * Kept so `message_delta` can turn its final output count into an
+     * INCREMENT on the running total rather than a replacement for it -- the
+     * difference between a multi-step turn reporting every step's output and
+     * reporting only the last one's.
+     */
+    protected ?Usage $messageStartUsage = null;
+
     public function __construct(protected PendingRequest $client)
     {
         $this->state = new AnthropicStreamState;
@@ -98,7 +108,8 @@ class Stream
         $this->state->markStepFinished();
         yield new StepFinishEvent(
             id: EventID::generate(),
-            timestamp: time()
+            timestamp: time(),
+            usage: $this->state->takeStepUsage(),
         );
 
         yield $this->emitStreamEndEvent();
@@ -134,13 +145,15 @@ class Stream
 
         $usageData = $message['usage'] ?? [];
         if (! empty($usageData)) {
-            $this->state->addUsage(new Usage(
+            $this->messageStartUsage = new Usage(
                 promptTokens: $usageData['input_tokens'] ?? 0,
                 completionTokens: $usageData['output_tokens'] ?? 0,
                 cacheWriteInputTokens: $usageData['cache_creation_input_tokens'] ?? null,
                 cacheReadInputTokens: $usageData['cache_read_input_tokens'] ?? null,
                 thoughtTokens: $usageData['output_tokens_details']['thinking_tokens'] ?? null
-            ));
+            );
+
+            $this->state->addUsage($this->messageStartUsage);
         }
 
         // Only emit StreamStartEvent once per streaming session
@@ -237,18 +250,53 @@ class Stream
      */
     protected function handleMessageDelta(array $event): null
     {
-        // Update usage with final data from message_delta
+        // `message_delta` carries THIS MESSAGE's final output count, and the
+        // state holds a RUNNING TOTAL across every step of the turn -- so the
+        // count is an increment on what message_start already added, not a
+        // replacement for the total.
+        //
+        // It used to REPLACE: `completionTokens: $usageData['output_tokens']`.
+        // The prompt side accumulates at message_start, so a three-step turn
+        // came out 1225 in / 36 out when 203 tokens had been generated -- input
+        // right, output only the last step's. Every multi-step streamed turn
+        // under-reported what it generated, and so did everything reading the
+        // StreamEndEvent's usage, which includes consumers' own billing ledgers
+        // as well as telemetry.
         $usageData = $event['usage'] ?? [];
-        // Update completion tokens if provided
-        if (! empty($usageData) && $this->state->usage() instanceof Usage && isset($usageData['output_tokens'])) {
-            $currentUsage = $this->state->usage();
+
+        if (
+            ! empty($usageData)
+            && isset($usageData['output_tokens'])
+            && $this->state->usage() instanceof Usage
+            && $this->messageStartUsage instanceof Usage
+        ) {
+            $total = $this->state->usage();
+            $started = $this->messageStartUsage;
+            $finalOutput = (int) $usageData['output_tokens'];
+            $finalThought = isset($usageData['output_tokens_details']['thinking_tokens'])
+                ? (int) $usageData['output_tokens_details']['thinking_tokens']
+                : null;
+
             $this->state->withUsage(new Usage(
-                promptTokens: $currentUsage->promptTokens,
-                completionTokens: $usageData['output_tokens'],
-                cacheWriteInputTokens: $currentUsage->cacheWriteInputTokens,
-                cacheReadInputTokens: $currentUsage->cacheReadInputTokens,
-                thoughtTokens: $usageData['output_tokens_details']['thinking_tokens'] ?? $currentUsage->thoughtTokens
+                promptTokens: $total->promptTokens,
+                completionTokens: $total->completionTokens - $started->completionTokens + $finalOutput,
+                cacheWriteInputTokens: $total->cacheWriteInputTokens,
+                cacheReadInputTokens: $total->cacheReadInputTokens,
+                thoughtTokens: $finalThought === null
+                    ? $total->thoughtTokens
+                    : ($total->thoughtTokens ?? 0) - ($started->thoughtTokens ?? 0) + $finalThought,
             ));
+
+            // Revised in place, so a second message_delta for the same message
+            // -- which the API is free to send -- increments from the right base
+            // instead of counting this one twice.
+            $this->messageStartUsage = new Usage(
+                promptTokens: $started->promptTokens,
+                completionTokens: $finalOutput,
+                cacheWriteInputTokens: $started->cacheWriteInputTokens,
+                cacheReadInputTokens: $started->cacheReadInputTokens,
+                thoughtTokens: $finalThought ?? $started->thoughtTokens,
+            );
         }
 
         return null;
@@ -521,7 +569,8 @@ class Stream
             $this->state->markStepFinished();
             yield new StepFinishEvent(
                 id: EventID::generate(),
-                timestamp: time()
+                timestamp: time(),
+                usage: $this->state->takeStepUsage(),
             );
 
             $request->addMessage(new AssistantMessage(

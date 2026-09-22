@@ -200,10 +200,13 @@ trait CallsTools
      */
     protected function yieldToolCallsFinishEvents(StreamState $state): Generator
     {
+        // The STEP's usage, not the running total. `$state->usage()` is the
+        // whole turn so far and belongs on the StreamEndEvent below; handed to
+        // a step it showed step N as costing steps 1..N together.
         yield new StepFinishEvent(
             id: EventID::generate(),
             timestamp: time(),
-            usage: $state->usage(),
+            usage: $state->takeStepUsage(),
         );
 
         yield new StreamEndEvent(

@@ -1039,3 +1039,73 @@ describe('approval-required tools', function (): void {
         expect($lastEvent->finishReason)->toBe(FinishReason::ToolCalls);
     });
 });
+
+describe('usage across a multi-step stream', function (): void {
+    // Three steps, each checkable by hand from the fixture's own usage blocks:
+    //
+    //   step 1   input 465   output 96    (stop_reason: tool_use)
+    //   step 2   input 560   output 71    (stop_reason: tool_use)
+    //   step 3   input 200   output 36    (stop_reason: end_turn)
+    //   total    input 1225  output 203
+    //
+    // Expected values come from the FIXTURE, not from running this code -- a
+    // test whose numbers came out of the code it tests proves only that the
+    // code is deterministic.
+    function streamedToolTurn(): array
+    {
+        FixtureResponse::fakeStreamResponses('v1/messages', 'anthropic/stream-with-tools');
+
+        $tools = [
+            Tool::as('weather')
+                ->for('useful when you need to search for current weather conditions')
+                ->withStringParameter('city', 'The city that you want the weather for')
+                ->using(fn (string $city): string => "The weather will be 75° and sunny in {$city}"),
+            Tool::as('search')
+                ->for('useful for searching current events or data')
+                ->withStringParameter('query', 'The detailed search query')
+                ->using(fn (string $query): string => "Search results for: {$query}"),
+        ];
+
+        return iterator_to_array(
+            Prism::text()
+                ->using(Provider::Anthropic, 'claude-3-7-sonnet-20250219')
+                ->withTools($tools)
+                ->withMaxSteps(3)
+                ->withPrompt('What time is the tigers game today and should I wear a coat?')
+                ->asStream(),
+            false,
+        );
+    }
+
+    it('reports the output tokens of EVERY step in the total, not only the last', function (): void {
+        // `handleMessageDelta` REPLACED the running total's completion tokens
+        // with the current step's `output_tokens` instead of adding them. The
+        // prompt side accumulates through addUsage() at message_start, so the
+        // total came out 1225 in / 36 out -- input right, output only the last
+        // step's. A multi-step streamed turn under-reported what it generated,
+        // and the root span of every such generation inherited it.
+        $end = collect(streamedToolTurn())->last(fn ($event): bool => $event instanceof StreamEndEvent);
+
+        expect($end->usage->promptTokens)->toBe(1225)
+            ->and($end->usage->completionTokens)->toBe(203);
+    });
+
+    it('attaches each step its OWN usage, so per-step cost is visible', function (): void {
+        // Streamed StepFinishEvents carried no usage at all, so a telemetry
+        // step span had no token counts while a non-streamed one did. Reported
+        // from production: per-step cost of a streamed multi-step turn was
+        // invisible, and only the root total existed.
+        //
+        // Each step gets its own delta rather than the running total -- a step
+        // that reported the total would show step 2 as costing steps 1 and 2.
+        $steps = collect(streamedToolTurn())
+            ->filter(fn ($event): bool => $event instanceof StepFinishEvent)
+            ->values();
+
+        expect($steps)->toHaveCount(3);
+
+        expect([$steps[0]->usage?->promptTokens, $steps[0]->usage?->completionTokens])->toBe([465, 96])
+            ->and([$steps[1]->usage?->promptTokens, $steps[1]->usage?->completionTokens])->toBe([560, 71])
+            ->and([$steps[2]->usage?->promptTokens, $steps[2]->usage?->completionTokens])->toBe([200, 36]);
+    });
+});
