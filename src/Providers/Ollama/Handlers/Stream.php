@@ -205,7 +205,8 @@ class Stream
                 $this->state->markStepFinished();
                 yield new StepFinishEvent(
                     id: EventID::generate(),
-                    timestamp: time()
+                    timestamp: time(),
+                    usage: $this->state->takeStepUsage(),
                 );
 
                 // Emit stream end event with usage
@@ -309,7 +310,8 @@ class Stream
         $this->state->markStepFinished();
         yield new StepFinishEvent(
             id: EventID::generate(),
-            timestamp: time()
+            timestamp: time(),
+            usage: $this->state->takeStepUsage(),
         );
 
         // Add messages for next turn

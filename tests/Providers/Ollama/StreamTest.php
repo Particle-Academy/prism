@@ -19,6 +19,7 @@ use Prism\Prism\Streaming\Events\TextDeltaEvent;
 use Prism\Prism\Streaming\Events\ThinkingEvent;
 use Prism\Prism\Streaming\Events\ToolCallEvent;
 use Prism\Prism\Streaming\Events\ToolResultEvent;
+use Prism\Prism\ValueObjects\Usage;
 use Tests\Fixtures\FixtureResponse;
 
 beforeEach(function (): void {
@@ -417,4 +418,53 @@ it('sends StreamEndEvent using tools with streaming and max steps = 1', function
 
     $lastEvent = end($events);
     expect($lastEvent)->toBeInstanceOf(StreamEndEvent::class);
+});
+
+it('reports what each step cost, not nothing at all', function (): void {
+    // A streamed step span is built from the StepFinishEvent, so a step event
+    // with no usage makes the per-step cost of a multi-step turn invisible --
+    // reported by a consumer whose step spans carried no token counts at all
+    // while their non-streamed ones did. Ollama counted tokens in its own
+    // state fields, which never reached the usage the step event carries.
+    FixtureResponse::fakeStreamResponses('api/chat', 'ollama/stream-with-tools');
+
+    $response = Prism::text()
+        ->using('ollama', 'qwen3:14b')
+        ->withTools([
+            Tool::as('weather')
+                ->for('useful when you need to search for current weather conditions')
+                ->withStringParameter('city', 'The city that you want the weather for')
+                ->using(fn (string $city): string => "The weather will be 75° and sunny in {$city}"),
+            Tool::as('search')
+                ->for('useful for searching current events or data')
+                ->withStringParameter('query', 'The detailed search query')
+                ->using(fn (string $query): string => 'The tigers game is at 3pm today'),
+        ])
+        ->withMaxSteps(4)
+        ->withPrompt('What is the weather in Detroit?')
+        ->asStream();
+
+    $steps = [];
+    $end = null;
+
+    foreach ($response as $event) {
+        if ($event instanceof StepFinishEvent) {
+            $steps[] = $event;
+        }
+
+        if ($event instanceof StreamEndEvent) {
+            $end = $event;
+        }
+    }
+
+    // Each step reports ITS OWN cost, taken from the fixture that served it --
+    // not the running total, which would count step one twice.
+    expect(array_map(fn (StepFinishEvent $e): ?array => $e->usage instanceof Usage ? [
+        $e->usage->promptTokens,
+        $e->usage->completionTokens,
+    ] : null, $steps))->toBe([[218, 306], [263, 152], [306, 188]]);
+
+    // The turn's total is still whole on the end event: the three steps summed,
+    // which is what the running total was already reporting correctly.
+    expect([$end?->usage?->promptTokens, $end?->usage?->completionTokens])->toBe([787, 646]);
 });

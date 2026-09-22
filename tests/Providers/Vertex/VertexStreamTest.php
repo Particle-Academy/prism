@@ -9,6 +9,7 @@ use Illuminate\Support\Facades\Http;
 use Prism\Prism\Enums\FinishReason;
 use Prism\Prism\Enums\Provider;
 use Prism\Prism\Facades\Prism;
+use Prism\Prism\Streaming\Events\StepFinishEvent;
 use Prism\Prism\Streaming\Events\StreamEndEvent;
 use Prism\Prism\Streaming\Events\StreamStartEvent;
 use Prism\Prism\Streaming\Events\TextDeltaEvent;
@@ -54,6 +55,34 @@ describe('Streaming for Vertex', function (): void {
         // Stream end should have finish reason
         $endEvent = collect($events)->last();
         expect($endEvent->finishReason)->toBe(FinishReason::Stop);
+    });
+
+    it('reports what the step cost, not nothing at all', function (): void {
+        // A streamed step span is built from the StepFinishEvent, so a step
+        // event with no usage leaves the per-step cost of a turn invisible
+        // while the turn total on the end event looks fine. Reported by a
+        // consumer whose streamed step spans carried no token counts.
+        FixtureResponse::fakeStreamResponses('*', 'vertex/stream-basic');
+
+        $steps = [];
+        $end = null;
+
+        foreach (Prism::text()->using(Provider::Vertex, 'gemini-1.5-flash')->withPrompt('Hello')->asStream() as $event) {
+            if ($event instanceof StepFinishEvent) {
+                $steps[] = $event;
+            }
+
+            if ($event instanceof StreamEndEvent) {
+                $end = $event;
+            }
+        }
+
+        expect($steps)->toHaveCount(1);
+
+        // One step, so the step's cost IS the turn's -- and both are the
+        // fixture's numbers rather than nothing.
+        expect([$steps[0]->usage?->promptTokens, $steps[0]->usage?->completionTokens])->toBe([10, 8])
+            ->and([$end?->usage?->promptTokens, $end?->usage?->completionTokens])->toBe([10, 8]);
     });
 
     it('sends streaming requests to the correct Vertex AI endpoint', function (): void {
