@@ -16,6 +16,7 @@ use Prism\Prism\Providers\Gemini\Maps\FinishReasonMap;
 use Prism\Prism\Providers\Gemini\Maps\MessageMap;
 use Prism\Prism\Providers\Gemini\Maps\ToolChoiceMap;
 use Prism\Prism\Providers\Gemini\Maps\ToolMap;
+use Prism\Prism\Providers\Vertex\Concerns\CachesStablePrefix;
 use Prism\Prism\Streaming\EventID;
 use Prism\Prism\Streaming\Events\StepFinishEvent;
 use Prism\Prism\Streaming\Events\StepStartEvent;
@@ -40,6 +41,7 @@ use Throwable;
 
 class Stream
 {
+    use CachesStablePrefix;
     use CallsTools;
 
     protected StreamState $state;
@@ -49,6 +51,8 @@ class Stream
     public function __construct(
         protected PendingRequest $client,
         protected string $model,
+        /** The provider's base URL: it knows the project and region a cached resource hangs off. */
+        protected string $baseUrl = '',
     ) {
         $this->state = new StreamState;
     }
@@ -428,6 +432,14 @@ class Stream
     {
         $providerOptions = $request->providerOptions();
 
+        // The declared-stable prefix becomes a cached resource; only the rest
+        // is sent. Opt-in -- see the trait.
+        [$messages, $cachedContentName] = $this->resolveStablePrefix(
+            $request->messages(),
+            $providerOptions,
+            $this->model,
+        );
+
         $tools = [];
 
         if ($request->providerTools() !== []) {
@@ -471,7 +483,8 @@ class Stream
             ->post(
                 "{$this->model}:streamGenerateContent?alt=sse",
                 Arr::whereNotNull([
-                    ...(new MessageMap($request->messages(), $request->systemPrompts()))(),
+                    ...(new MessageMap($messages, $request->systemPrompts()))(),
+                    'cachedContent' => $cachedContentName,
                     'generationConfig' => Arr::whereNotNull([
                         'temperature' => $request->temperature(),
                         'topP' => $request->topP(),
@@ -521,5 +534,10 @@ class Stream
         }
 
         return $groundingMetadata;
+    }
+
+    protected function cacheBaseUrl(): string
+    {
+        return $this->baseUrl;
     }
 }

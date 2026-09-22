@@ -91,4 +91,49 @@ class CacheHints
 
         return null;
     }
+
+    /**
+     * The declared-stable prefix, and everything from the first volatile part on.
+     *
+     * The split a create-and-reference provider needs: the prefix becomes the
+     * cached resource and the remainder is what the turn actually asks. It
+     * lives here, beside the ordering rule, because both are statements about
+     * the same declaration -- and a second copy in each provider is how two
+     * providers end up disagreeing about what "stable" meant.
+     *
+     * @param  array<int, mixed>  $messages
+     * @return array{0: array<int, mixed>, 1: array<int, mixed>}
+     */
+    public static function split(array $messages): array
+    {
+        $messages = array_values($messages);
+
+        foreach ($messages as $index => $message) {
+            if ($message instanceof DeclaresCacheStability && $message->cacheStability() === CacheStability::Volatile) {
+                return [array_slice($messages, 0, $index), array_slice($messages, $index)];
+            }
+        }
+
+        return [$messages, []];
+    }
+
+    /**
+     * A ttl written for a provider ("1h", "3600") as seconds.
+     *
+     * Floored at a minute: a resource that expires before the next turn costs
+     * the write and returns nothing, which is worse than not caching.
+     */
+    public static function ttlToSeconds(string $ttl, int $default = 3600): int
+    {
+        if (preg_match('/^(\d+)\s*([smhd])?$/i', trim($ttl), $matches) !== 1) {
+            return $default;
+        }
+
+        return max(60, ((int) $matches[1]) * match (strtolower($matches[2] ?? 's')) {
+            'm' => 60,
+            'h' => 3600,
+            'd' => 86400,
+            default => 1,
+        });
+    }
 }

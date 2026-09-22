@@ -39,7 +39,8 @@ class Vertex extends Provider
     {
         $handler = new Text(
             $this->client($request->clientOptions(), $request->clientRetry()),
-            $request->model()
+            $request->model(),
+            $this->buildBaseUrl(),
         );
 
         return $handler->handle($request);
@@ -50,7 +51,8 @@ class Vertex extends Provider
     {
         $handler = new Structured(
             $this->client($request->clientOptions(), $request->clientRetry()),
-            $request->model()
+            $request->model(),
+            $this->buildBaseUrl(),
         );
 
         return $handler->handle($request);
@@ -72,7 +74,8 @@ class Vertex extends Provider
     {
         $handler = new Stream(
             $this->client($request->clientOptions(), $request->clientRetry()),
-            $request->model()
+            $request->model(),
+            $this->buildBaseUrl(),
         );
 
         return $handler->handle($request);

@@ -19,6 +19,7 @@ use Prism\Prism\Providers\Gemini\Maps\SchemaMap;
 use Prism\Prism\Providers\Gemini\Maps\ToolCallMap;
 use Prism\Prism\Providers\Gemini\Maps\ToolChoiceMap;
 use Prism\Prism\Providers\Gemini\Maps\ToolMap;
+use Prism\Prism\Providers\Vertex\Concerns\CachesStablePrefix;
 use Prism\Prism\Structured\Request;
 use Prism\Prism\Structured\Response as StructuredResponse;
 use Prism\Prism\Structured\ResponseBuilder;
@@ -32,6 +33,7 @@ use Prism\Prism\ValueObjects\Usage;
 
 class Structured
 {
+    use CachesStablePrefix;
     use CallsTools;
     use HandlesStructuredJson;
     use ManagesStructuredSteps;
@@ -41,6 +43,8 @@ class Structured
     public function __construct(
         protected PendingRequest $client,
         protected string $model,
+        /** The provider's base URL: it knows the project and region a cached resource hangs off. */
+        protected string $baseUrl = '',
     ) {
         $this->responseBuilder = new ResponseBuilder;
     }
@@ -81,6 +85,14 @@ class Structured
     {
         $providerOptions = $request->providerOptions();
 
+        // The declared-stable prefix becomes a cached resource; only the rest
+        // is sent. Opt-in -- see the trait.
+        [$messages, $cachedContentName] = $this->resolveStablePrefix(
+            $request->messages(),
+            $providerOptions,
+            $this->model,
+        );
+
         $tools = [];
 
         if ($request->providerTools() !== []) {
@@ -120,7 +132,8 @@ class Structured
         $response = $this->client->post(
             "{$this->model}:generateContent",
             Arr::whereNotNull([
-                ...(new MessageMap($request->messages(), $request->systemPrompts()))(),
+                ...(new MessageMap($messages, $request->systemPrompts()))(),
+                'cachedContent' => $cachedContentName,
                 'generationConfig' => Arr::whereNotNull([
                     'response_mime_type' => 'application/json',
                     'response_schema' => (new SchemaMap($request->schema()))->toArray(),
@@ -315,5 +328,10 @@ class Structured
         }
 
         return false;
+    }
+
+    protected function cacheBaseUrl(): string
+    {
+        return $this->baseUrl;
     }
 }

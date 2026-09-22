@@ -9,8 +9,8 @@ use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\Cache;
 use Prism\Prism\Contracts\DeclaresCacheStability;
 use Prism\Prism\Contracts\Message;
-use Prism\Prism\Enums\CacheStability;
 use Prism\Prism\Providers\Gemini\Maps\MessageMap;
+use Prism\Prism\Support\CacheHints;
 
 /**
  * Turns a stability declaration into Gemini's create-and-reference caching.
@@ -56,7 +56,7 @@ trait CachesStablePrefix
             return [$messages, null];
         }
 
-        [$prefix, $rest] = $this->splitAtFirstVolatile($messages);
+        [$prefix, $rest] = CacheHints::split($messages);
 
         // Nothing declared stable, or everything is: in the second case there
         // is no volatile remainder to send, and a generation needs something
@@ -80,27 +80,6 @@ trait CachesStablePrefix
     }
 
     /**
-     * @param  array<int, Message>  $messages
-     * @return array{0: array<int, Message>, 1: array<int, Message>}
-     */
-    protected function splitAtFirstVolatile(array $messages): array
-    {
-        $messages = array_values($messages);
-
-        foreach ($messages as $index => $message) {
-            if (! $message instanceof DeclaresCacheStability) {
-                continue;
-            }
-
-            if ($message->cacheStability() === CacheStability::Volatile) {
-                return [array_slice($messages, 0, $index), array_slice($messages, $index)];
-            }
-        }
-
-        return [$messages, []];
-    }
-
-    /**
      * Seconds, from the hint that asked for it or the provider option.
      *
      * @param  array<int, Message>  $prefix
@@ -114,27 +93,11 @@ trait CachesStablePrefix
 
         foreach ($prefix as $message) {
             if ($message instanceof DeclaresCacheStability && is_string($message->cacheTtl()) && $message->cacheTtl() !== '') {
-                return $this->ttlToSeconds($message->cacheTtl());
+                return CacheHints::ttlToSeconds($message->cacheTtl());
             }
         }
 
         return 3600;
-    }
-
-    protected function ttlToSeconds(string $ttl): int
-    {
-        if (preg_match('/^(\d+)\s*([smhd])?$/i', trim($ttl), $matches) !== 1) {
-            return 3600;
-        }
-
-        $value = (int) $matches[1];
-
-        return max(60, $value * match (strtolower($matches[2] ?? 's')) {
-            'm' => 60,
-            'h' => 3600,
-            'd' => 86400,
-            default => 1,
-        });
     }
 
     /** Where `cachedContents` lives: beside `/models`, not under it. */

@@ -16,6 +16,7 @@ use Prism\Prism\Providers\Gemini\Maps\MessageMap;
 use Prism\Prism\Providers\Gemini\Maps\ToolCallMap;
 use Prism\Prism\Providers\Gemini\Maps\ToolChoiceMap;
 use Prism\Prism\Providers\Gemini\Maps\ToolMap;
+use Prism\Prism\Providers\Vertex\Concerns\CachesStablePrefix;
 use Prism\Prism\Providers\Vertex\Concerns\ValidatesResponse;
 use Prism\Prism\Text\Request;
 use Prism\Prism\Text\Response as TextResponse;
@@ -30,6 +31,7 @@ use Prism\Prism\ValueObjects\Usage;
 
 class Text
 {
+    use CachesStablePrefix;
     use CallsTools;
     use ValidatesResponse;
 
@@ -38,6 +40,8 @@ class Text
     public function __construct(
         protected PendingRequest $client,
         protected string $model,
+        /** The provider's base URL: it knows the project and region a cached resource hangs off. */
+        protected string $baseUrl = '',
     ) {
         $this->responseBuilder = new ResponseBuilder;
     }
@@ -108,11 +112,20 @@ class Text
             $tools[] = ['function_declarations' => ToolMap::map($request->tools())];
         }
 
+        // The declared-stable prefix becomes a cached resource; only the rest
+        // is sent. Opt-in -- see the trait.
+        [$messages, $cachedContentName] = $this->resolveStablePrefix(
+            $request->messages(),
+            $providerOptions,
+            $this->model,
+        );
+
         /** @var ClientResponse $response */
         $response = $this->client->post(
             "{$this->model}:generateContent",
             Arr::whereNotNull([
-                ...(new MessageMap($request->messages(), $request->systemPrompts()))(),
+                ...(new MessageMap($messages, $request->systemPrompts()))(),
+                'cachedContent' => $cachedContentName,
                 'generationConfig' => $generationConfig !== [] ? $generationConfig : null,
                 'tools' => $tools !== [] ? $tools : null,
                 'tool_config' => $request->toolChoice() ? ToolChoiceMap::map($request->toolChoice()) : null,
@@ -252,5 +265,10 @@ class Text
         }
 
         return false;
+    }
+
+    protected function cacheBaseUrl(): string
+    {
+        return $this->baseUrl;
     }
 }
