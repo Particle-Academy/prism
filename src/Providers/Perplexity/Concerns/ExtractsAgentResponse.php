@@ -164,6 +164,9 @@ trait ExtractsAgentResponse
 
         // Preserve an ending for future/proxy statuses, with Unknown as the
         // finish reason. Only documented progress states keep the stream open.
+        // Trade-off: a new provider progress status will end the stream early
+        // and discard the rest of the run. The queued/in_progress list below
+        // is the only protection: add new progress statuses there when found.
         return ($status !== null && ! in_array($status, ['queued', 'in_progress'], true))
             || data_get($data, 'choices.0.finish_reason') !== null;
     }
