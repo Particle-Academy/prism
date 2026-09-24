@@ -8,6 +8,7 @@ use Prism\Prism\Enums\FinishReason;
 use Prism\Prism\Enums\Provider;
 use Prism\Prism\Events\Telemetry\GenerationCompleted;
 use Prism\Prism\Events\Telemetry\GenerationFailed;
+use Prism\Prism\Exceptions\PrismRateLimitedException;
 use Prism\Prism\Exceptions\PrismRunException;
 use Prism\Prism\Facades\Prism;
 use Prism\Prism\Streaming\Events\StreamEndEvent;
@@ -102,3 +103,36 @@ it('ends a successful stream once with usage from its terminal snapshot', functi
         ->and($events[4]->usage->completionTokens)->toBe(8)
         ->and($events[4]->usage->cost)->toBe(0.01);
 })->with(['nested', 'flat']);
+
+it('ends an unknown non-progress status with Unknown rather than dropping the ending', function (bool $nested): void {
+    $run = ['id' => 'resp_expired', 'status' => 'expired', 'usage' => ['input_tokens' => 12, 'output_tokens' => 8]];
+    $terminal = $nested ? ['type' => 'response.expired', 'response' => $run] : $run;
+    $sse = 'data: '.json_encode(['status' => 'queued'])."\n\n"
+        .'data: '.json_encode(['type' => 'response.output_text.delta', 'delta' => 'Partial'])."\n\n"
+        .'data: '.json_encode($terminal)."\n\n"
+        .'data: '.json_encode(['type' => 'response.output_text.delta', 'delta' => 'must not arrive'])."\n\n";
+    Http::fake(['api.perplexity.ai/*' => Http::response($sse, 200, ['Content-Type' => 'text/event-stream'])])->preventStrayRequests();
+
+    $events = iterator_to_array(Prism::text()->using(Provider::Perplexity, 'sonar')->withPrompt('Research')->asStream());
+    expect(array_map(fn (StreamEvent $event): string => $event::class, $events))->toBe([
+        StreamStartEvent::class, TextStartEvent::class, TextDeltaEvent::class, TextCompleteEvent::class, StreamEndEvent::class,
+    ])->and($events[4]->finishReason)->toBe(FinishReason::Unknown)
+        ->and($events[4]->usage->promptTokens)->toBe(12);
+})->with([false, true]);
+
+it('preserves rate-limit backoff classification even on a failed terminal snapshot', function (bool $nested, bool $outerError): void {
+    $error = ['type' => 'rate_limit_exceeded', 'message' => 'Back off'];
+    $run = ['id' => 'resp_limited', 'status' => 'failed'];
+    if (! $outerError) {
+        $run['error'] = $error;
+    }
+    $terminal = $nested ? ['type' => 'response.failed', 'response' => $run] : $run;
+    if ($outerError) {
+        $terminal['error'] = $error;
+    }
+    $sse = 'data: '.json_encode($terminal)."\n\n";
+    Http::fake(['api.perplexity.ai/*' => Http::response($sse, 200, ['Content-Type' => 'text/event-stream'])])->preventStrayRequests();
+
+    expect(fn (): array => iterator_to_array(Prism::text()->using(Provider::Perplexity, 'sonar')->withPrompt('Research')->asStream()))
+        ->toThrow(PrismRateLimitedException::class);
+})->with([false, true])->with([false, true]);

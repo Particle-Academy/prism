@@ -89,11 +89,20 @@ class Stream
             $terminal = $this->isStreamTerminal($data);
             $run = $terminal ? $this->streamRunData($data) : [];
 
-            if ($terminal) {
+            // Rate limiting is recoverable even when attached to a terminal
+            // run snapshot. Preserve the caller's existing backoff exception.
+            if ($this->isRateLimitError($data) || $this->isRateLimitError($run)) {
+                throw new PrismRateLimitedException([]);
+            }
+
+            if ($terminal && in_array($run['status'] ?? null, ['incomplete', 'failed', 'cancelled'], true)) {
                 // Earlier deltas are provisional. Throw with the full snapshot
                 // before emitting completion events or handling generic errors.
                 $this->assertRunSucceeded($run);
             }
+
+            // Unknown non-progress statuses retain the historical Unknown
+            // ending; they are not evidence of one of the known run failures.
 
             // Handle error chunks per Perplexity streaming guide
             if ($this->hasError($data)) {
@@ -211,6 +220,14 @@ class Stream
 
     /**
      * @param  array<string, mixed>  $data
+     */
+    protected function isRateLimitError(array $data): bool
+    {
+        return data_get($data, 'error.type') === 'rate_limit_exceeded';
+    }
+
+    /**
+     * @param  array<string, mixed>  $data
      * @return Generator<StreamEvent>
      *
      * @throws PrismRateLimitedException
@@ -222,7 +239,7 @@ class Stream
         $message = (string) data_get($error, 'message', 'No error message provided');
 
         // If rate limit, throw so caller can handle retry semantics
-        if ($type === 'rate_limit_exceeded') {
+        if ($this->isRateLimitError($data)) {
             throw new PrismRateLimitedException([]);
         }
 

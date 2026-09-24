@@ -160,7 +160,11 @@ trait ExtractsAgentResponse
             return true;
         }
 
-        return in_array(data_get($data, 'response.status', data_get($data, 'status')), ['completed', 'failed', 'incomplete', 'cancelled'], true)
+        $status = data_get($data, 'response.status', data_get($data, 'status'));
+
+        // Preserve an ending for future/proxy statuses, with Unknown as the
+        // finish reason. Only documented progress states keep the stream open.
+        return ($status !== null && ! in_array($status, ['queued', 'in_progress'], true))
             || data_get($data, 'choices.0.finish_reason') !== null;
     }
 

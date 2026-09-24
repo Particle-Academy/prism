@@ -52,6 +52,11 @@ available through the same accessors below. An incomplete run does not imply a
 token limit: inspect `incompleteReason()` rather than assuming a larger token
 budget will resolve it.
 
+An unrecognized non-progress stream status ends with `FinishReason::Unknown`;
+it does not confirm successful completion. A `rate_limit_exceeded` error keeps
+its `PrismRateLimitedException` classification, including on a terminal run
+snapshot, so callers can retain their backoff handling.
+
 Use `code()` to distinguish `run_incomplete`, `run_failed` and `run_cancelled`
 without parsing the exception message. The exception provides:
 
