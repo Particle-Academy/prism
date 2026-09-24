@@ -25,9 +25,9 @@ it('extracts finish reason correctly from response data', function (array $data,
         'data' => ['status' => 'completed'],
         'expected' => FinishReason::Stop,
     ],
-    'incomplete run hit a limit' => [
+    'incomplete does not imply a token limit' => [
         'data' => ['status' => 'incomplete'],
-        'expected' => FinishReason::Length,
+        'expected' => FinishReason::Unknown,
     ],
     'unrecognised status' => [
         'data' => ['status' => 'something_new'],

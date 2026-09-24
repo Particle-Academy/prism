@@ -41,9 +41,16 @@ own by default.
 
 ### Failures arrive as HTTP 200
 
-An incomplete, failed or cancelled run can return HTTP 200. For non-streaming
-text and structured requests, Prism throws `PrismRunException`, which extends
+An incomplete, failed or cancelled run can return HTTP 200. For text, structured
+and streaming requests, Prism throws `PrismRunException`, which extends
 `PrismException`; it does not return partial output as a successful response.
+
+For streams, catch the exception around iteration of `asStream()`. Text deltas
+already yielded are provisional; an unsuccessful terminal event throws before
+`TextCompleteEvent` or `StreamEndEvent` is emitted. Its run snapshot remains
+available through the same accessors below. An incomplete run does not imply a
+token limit: inspect `incompleteReason()` rather than assuming a larger token
+budget will resolve it.
 
 Use `code()` to distinguish `run_incomplete`, `run_failed` and `run_cancelled`
 without parsing the exception message. The exception provides:

@@ -86,6 +86,15 @@ class Stream
                 );
             }
 
+            $terminal = $this->isStreamTerminal($data);
+            $run = $terminal ? $this->streamRunData($data) : [];
+
+            if ($terminal) {
+                // Earlier deltas are provisional. Throw with the full snapshot
+                // before emitting completion events or handling generic errors.
+                $this->assertRunSucceeded($run);
+            }
+
             // Handle error chunks per Perplexity streaming guide
             if ($this->hasError($data)) {
                 yield from $this->handleErrors($data, $request);
@@ -118,8 +127,8 @@ class Stream
             }
 
             // Check for the run ending
-            if ($this->isStreamTerminal($data)) {
-                $finishReason = $this->extractsFinishReason($data);
+            if ($terminal) {
+                $finishReason = $this->extractsFinishReason($run);
 
                 // Complete text if we have any
                 if ($text !== '' && $this->state->hasTextStarted()) {
@@ -131,7 +140,7 @@ class Stream
                 }
 
                 // Extract usage information from the final chunk
-                $usage = $this->extractUsage($data);
+                $usage = $this->extractUsage($run);
 
                 yield new StreamEndEvent(
                     id: EventID::generate(),
@@ -139,6 +148,8 @@ class Stream
                     finishReason: $finishReason,
                     usage: $usage
                 );
+
+                return;
             }
         }
     }

@@ -7,9 +7,11 @@ namespace Prism\Prism\Exceptions;
 use Prism\Prism\ValueObjects\Usage;
 
 /**
- * An unsuccessful Perplexity text/structured run, distinct from transport failure.
- * Text and Structured call assertRunSucceeded; Stream does not. Streaming run
- * failures are not covered by this exception and can still lose diagnostics.
+ * An unsuccessful Perplexity run, distinct from transport failure.
+ * Text and Structured check the response body. Stream checks terminal snapshots;
+ * Prior deltas remain provisional: no successful StreamEndEvent and no
+ * GenerationCompleted are emitted, so the stream never claims success.
+ * See https://github.com/Particle-Academy/prism/issues/65 for the streamed path.
  *
  * Keep provider diagnostics private and accessible only through explicit methods.
  * Copying them to public responseBody would expose partial answers to ordinary

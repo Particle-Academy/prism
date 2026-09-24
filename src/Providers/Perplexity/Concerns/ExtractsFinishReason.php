@@ -16,7 +16,7 @@ trait ExtractsFinishReason
 
     /**
      * The Agent API reports a run status rather than a per-choice finish
-     * reason. A failed or cancelled run never reaches here — assertRunSucceeded
+     * reason. An unsuccessful run never reaches here — assertRunSucceeded
      * throws first — so this maps the states that can arrive on a live read.
      *
      * @param  array<string, mixed>  $data
@@ -25,7 +25,6 @@ trait ExtractsFinishReason
     {
         return match (data_get($data, 'status')) {
             'completed' => FinishReason::Stop,
-            'incomplete' => FinishReason::Length,
             default => FinishReason::Unknown,
         };
     }

@@ -19,9 +19,11 @@ trait ExtractsAgentResponse
     use ExtractsUsage;
 
     /**
-     * Reject unsuccessful non-streaming text and structured runs despite HTTP 200.
-     * Text and Structured call this guard. Stream does not: its terminal-event
-     * handling still lacks this run-failure diagnostics contract.
+     * Reject unsuccessful runs despite HTTP 200. Text and Structured check the
+     * response body; Stream checks the run snapshot at its terminal event.
+     * Prior deltas remain provisional: no successful StreamEndEvent and no
+     * GenerationCompleted are emitted, so the stream never claims success.
+     * See https://github.com/Particle-Academy/prism/issues/65 for the streamed path.
      *
      * This is the trap that makes Agent API errors invisible: a failed or
      * cancelled run comes back as HTTP 200 with `status` set to "failed" or
@@ -154,12 +156,43 @@ trait ExtractsAgentResponse
     {
         $type = data_get($data, 'type');
 
-        if (is_string($type) && (str_ends_with($type, '.completed') || str_ends_with($type, '.failed'))) {
+        if (in_array($type, ['response.completed', 'response.failed', 'response.incomplete', 'response.cancelled'], true)) {
             return true;
         }
 
-        return data_get($data, 'status') !== null
+        return in_array(data_get($data, 'response.status', data_get($data, 'status')), ['completed', 'failed', 'incomplete', 'cancelled'], true)
             || data_get($data, 'choices.0.finish_reason') !== null;
+    }
+
+    /**
+     * Perplexity documents four response terminal events carrying run snapshots.
+     * Match those names exactly: a tool's .completed event is not a run ending.
+     * Flat status snapshots remain supported for recorded/proxied responses.
+     *
+     * @link https://github.com/perplexityai/api-platform-developers/blob/main/skills/migrate-sonar-to-agent-api/references/response-and-streaming.md
+     *
+     * @param  array<string, mixed>  $data
+     * @return array<string, mixed>
+     */
+    protected function streamRunData(#[\SensitiveParameter] array $data): array
+    {
+        $run = is_array($data['response'] ?? null) ? $data['response'] : $data;
+        $eventStatus = match ($data['type'] ?? null) {
+            'response.completed' => 'completed',
+            'response.failed' => 'failed',
+            'response.incomplete' => 'incomplete',
+            'response.cancelled' => 'cancelled',
+            default => null,
+        };
+
+        // A failed terminal event cannot become success through a missing or
+        // inconsistent snapshot status. Keep a failure reported in the snapshot
+        // even if the event was labelled completed.
+        if ($eventStatus !== null && ($eventStatus !== 'completed' || ! isset($run['status']))) {
+            $run['status'] = $eventStatus;
+        }
+
+        return $run;
     }
 
     /**
