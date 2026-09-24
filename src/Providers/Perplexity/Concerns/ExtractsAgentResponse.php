@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Prism\Prism\Providers\Perplexity\Concerns;
 
 use Prism\Prism\Exceptions\PrismException;
+use Prism\Prism\Exceptions\PrismRunException;
 
 /**
  * Reads the Agent API's typed output array.
@@ -15,8 +16,12 @@ use Prism\Prism\Exceptions\PrismException;
  */
 trait ExtractsAgentResponse
 {
+    use ExtractsUsage;
+
     /**
-     * Fail on a failed run, even though the HTTP status says 200.
+     * Reject unsuccessful non-streaming text and structured runs despite HTTP 200.
+     * Text and Structured call this guard. Stream does not: its terminal-event
+     * handling still lacks this run-failure diagnostics contract.
      *
      * This is the trap that makes Agent API errors invisible: a failed or
      * cancelled run comes back as HTTP 200 with `status` set to "failed" or
@@ -25,7 +30,7 @@ trait ExtractsAgentResponse
      *
      * @param  array<string, mixed>  $data
      */
-    protected function assertRunSucceeded(array $data): void
+    protected function assertRunSucceeded(#[\SensitiveParameter] array $data): void
     {
         $status = data_get($data, 'status');
 
@@ -39,11 +44,19 @@ trait ExtractsAgentResponse
 
         // The 200 in this message is not a mistake — it is the finding. The
         // run failed and the transport said everything was fine.
-        throw PrismException::providerRequestErrorWithDetails(
+        $errorCode = 'run_'.(is_string($status) ? $status : 'unknown');
+        $exception = PrismException::providerRequestErrorWithDetails(
             provider: 'Perplexity',
             statusCode: 200,
-            errorType: "run_{$status}",
+            errorType: $errorCode,
             errorMessage: is_string($message) ? $message : 'no error detail was returned',
+        );
+
+        throw new PrismRunException(
+            errorCode: $errorCode,
+            message: $exception->getMessage(),
+            runData: $data,
+            runUsage: is_array($data['usage'] ?? null) ? $this->extractUsage($data) : null,
         );
     }
 

@@ -41,9 +41,32 @@ own by default.
 
 ### Failures arrive as HTTP 200
 
-A failed or cancelled run can return HTTP 200 with `status: "failed"` or
-`"cancelled"` and an `error`. Prism throws `PrismException` for these statuses.
-When processing raw responses, inspect the run status as well as the HTTP status.
+An incomplete, failed or cancelled run can return HTTP 200. For non-streaming
+text and structured requests, Prism throws `PrismRunException`, which extends
+`PrismException`; it does not return partial output as a successful response.
+
+Use `code()` to distinguish `run_incomplete`, `run_failed` and `run_cancelled`
+without parsing the exception message. The exception provides:
+
+| Accessor | Result |
+|---|---|
+| `status()` | Provider run status, or `null` if unavailable |
+| `runId()` | Provider run ID, or `null` if absent |
+| `incompleteReason()` | `incomplete_details.reason`, or `null` if absent |
+| `incompleteDetails()` | Full provider incomplete-details array |
+| `output()` | Partial output items, including citation annotations and search-result sources |
+| `citations()` | Inline citation annotations in provider order, without deduplication; source items remain in `output()` |
+| `usage()` | Normalized `Usage`, or `null` if usage was not reported |
+| `usageDetails()` | Full provider usage ledger, including cost and tool-call breakdowns |
+
+`httpStatus` is `200`; PHP's numeric `getCode()` remains `200` for compatibility.
+Use `code()` for the run outcome. Usage records resources spent, not successful
+completion: your application decides whether to bill an unsuccessful run.
+
+Partial content is available only through explicit accessors, not appended to
+the message or copied into the public `responseBody` field. Treat returned
+diagnostics as sensitive data and apply your retention and access policies;
+do not log or serialize the complete exception indiscriminately.
 
 ### What comes back
 
