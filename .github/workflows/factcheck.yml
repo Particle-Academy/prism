@@ -12,6 +12,7 @@ on:
   push:
     branches: [main, "*.x"]
   pull_request:
+  workflow_dispatch:
   # Claims rot without anything here changing — a sibling renames a class, a
   # package gets published. The nightly notices.
   schedule:
@@ -33,23 +34,24 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          persist-credentials: false
 
       - name: Checkout prism-parity
         uses: actions/checkout@v4
         with:
           repository: Particle-Academy/prism-parity
           path: .parity
+          persist-credentials: false
 
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
 
-      - name: Check claims
-        run: node .parity/tools/factcheck.mjs
+      - name: Test factcheck and release guards
+        run: node --test .github/scripts/factcheck.test.mjs .github/scripts/release-factcheck.test.mjs
 
-      # --strict promotes version drift from a warning to a failure. Nightly
-      # only, so a release elsewhere cannot redden an unrelated pull request
-      # here while currency is still enforced every day.
-      - name: Check currency
-        if: github.event_name == 'schedule'
-        run: node .parity/tools/factcheck.mjs --strict
+      # Every event checks Prism with --strict. A fresh tag makes the shared
+      # version lock stale; the next push must re-read and reconcile it.
+      # Reconciliation is a manual review step, never a CI mutation.
+      - name: Check claims and currency (strict)
+        run: node .github/scripts/factcheck.mjs check .parity

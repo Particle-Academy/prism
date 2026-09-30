@@ -68,6 +68,14 @@ jobs:
             exit 1
           fi
 
+      # Defence in depth only: Packagist already mirrors the pushed tag.
+      # This withholds the GitHub release, not publication. The pre-tag
+      # checklist in .github/RELEASING.md is the preventive control.
+      - name: Strict Factcheck must have SUCCEEDED for this exact commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node .github/scripts/release-factcheck.mjs
+
       - name: No other gate may have failed on this commit
         env:
           GH_TOKEN: ${{ github.token }}

@@ -111,6 +111,9 @@ applies to you too. This file does not repeat it.
 
 ## Releasing
 
+Complete the [release preflight](.github/RELEASING.md), including strict
+factcheck CI on the exact candidate SHA, before pushing any tag.
+
 Run **`prerelease-audit`** over the diff since the previous tag before you cut
 one. It is a release gate, not a formality, and it has blocked releases before.
 
