@@ -4,23 +4,32 @@ Handle rate-limit errors and use provider quota information to schedule requests
 
 ## Provider support
 
-Prism throws a `PrismRateLimitedException` for all providers other than DeepSeek (which does not have rate limits).
+Prism maps rate-limit responses to `PrismRateLimitedException` where the provider
+integration implements that mapping. DeepSeek currently uses the generic
+`PrismException` path; this does not imply that its API has no rate limits.
 
-Prism provides an array of `ProviderRateLimit` value objects on the exception and on meta for all providers other than OpenAI, Gemini, xAI and VoyageAI - as they do not provide the necessary headers to do so.
+The exception's `rateLimits` array and response metadata contain
+`ProviderRateLimit` objects when the integration can extract quota details.
+OpenAI parses rate-limit headers; Gemini can extract quota details from an
+error payload. An array can be empty, so handle the exception even when no
+quota buckets are available.
 
 ## The ProviderRateLimit value object
 
 Throughout this guide, we'll talk about the `ProviderRateLimit` value object.
 
 Each `ProviderRateLimit` has four properties:
-- name - the name given to that rate limit by the provider - e.g. "input-tokens"
+- name - the bucket identifier assigned by the integration - e.g. "input-tokens"
 - limit - the current limit set on your API key by the provider - e.g. for input-tokens, perhaps 80000
 - remaining - how many you have left - e.g. for input-tokens if you have used 30000 out of your 80000 limit - this will be 50000
-- resetsAt - a Carbon instance with the date and time at which remaining will reset to limit
+- resetsAt - a Carbon instance with the reset or retry time parsed from the provider response
+
+`limit`, `remaining` and `resetsAt` can be `null` when the provider does not
+report them. Check for a reset time before scheduling a retry from that value.
 
 ## Handling a rate limit hit
 
-Prism throws a `PrismRateLimitedException` when you hit a rate limit.
+For integrations with the mapping described above, catch `PrismRateLimitedException` when a request is rate limited.
 
 You can catch that exception, gracefully fail and inspect the `rateLimits` property which contains an array of `ProviderRateLimit`s. 
 
@@ -50,11 +59,12 @@ catch (PrismRateLimitedException $e) {
 
 Providers can enforce separate limits for requests, input tokens and output tokens. A response may report several limits, including ones that have not been exhausted.
 
-For simple rate limits like "requests", the `remaining` property on `ProviderRateLimit` will be 0 if you have hit it. These are easy to find:
+When the provider reports an exhausted bucket with `remaining` set to 0, you can find it as follows. A missing value does not mean that capacity is available:
 
 ```php 
 use Prism\Prism\ValueObjects\ProviderRateLimit;
 use Illuminate\Support\Arr;
+use Prism\Prism\Exceptions\PrismRateLimitedException;
 
 try {
     // Your request
@@ -64,13 +74,16 @@ catch (PrismRateLimitedException $e) {
 }
 ```
 
-For less simple rate limits like input tokens, the `remaining` property may not be zero. For instance, if you have 5,000 input tokens remaining and submit a request requiring 6,000 tokens, you'll be rate limited but remaining will still show 5,000.
+An input-token bucket can have capacity remaining that is insufficient for your
+next request. For example, a reported `remaining` value of 5,000 is less than an
+estimated request size of 6,000 tokens. Do not rely only on a zero check.
 
 Here, you may need to implement some logic to approximate how many tokens your request will use before sending it, and then test against that:
 
 ```php 
 use Prism\Prism\ValueObjects\ProviderRateLimit;
 use Illuminate\Support\Arr;
+use Prism\Prism\Exceptions\PrismRateLimitedException;
 
 try {
     // Your request
@@ -78,7 +91,8 @@ try {
 catch (PrismRateLimitedException $e) {
     $input_token_limit = Arr::first($e->rateLimits, fn(ProviderRateLimit $rate_limit) => $rate_limit->name === 'input-tokens');
 
-    if ($input_token_limit < $your_token_estimate) {
+    // $your_token_estimate is calculated by your application.
+    if ($input_token_limit?->remaining !== null && $input_token_limit->remaining < $your_token_estimate) {
         // Handle
     }
 }
@@ -86,13 +100,14 @@ catch (PrismRateLimitedException $e) {
 
 Estimate token use with a tokenizer appropriate for your model when the provider does not expose a token-counting endpoint.
 
-Once you know which rate limit you have hit, you'll want to ensure your app does not continue making requests until after the `ProviderRateLimit` `resetsAt` property. 
+When `resetsAt` is available, use it to delay further requests for that bucket. Otherwise, use the provider's retry guidance or your application's backoff policy.
 
 If you aren't sure where to start with that, check out the [What should you do with rate limit information](#what-should-you-do-with-rate-limit-information) section below.
 
 ## Dynamic rate limiting
 
-Prism adds the same rate limit information to every successful request:
+Supported integrations can also include quota information on successful
+responses. The array is empty when those details are unavailable:
 
 ```php
 use Prism\Prism\Facades\Prism;

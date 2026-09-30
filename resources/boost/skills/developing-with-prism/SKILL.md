@@ -186,7 +186,10 @@ $response = Prism::text()
 ```bash
 # Correct
 composer require particle-academy/prism
+```
 
+<!-- factcheck-ignore-next: Deliberate deprecated package counter-example. -->
+```bash
 # Wrong - do not use
 composer require echolabsdev/prism
 ```
@@ -201,7 +204,10 @@ use Prism\Prism\Facades\Prism;
 use Prism\Prism\Enums\Provider;
 use Prism\Prism\Tool;
 use Prism\Prism\Schema\ObjectSchema;
+```
 
+<!-- factcheck-ignore-next: Deliberate nonexistent namespace counter-examples. -->
+```php
 // Wrong - these namespaces do not exist
 use EchoLabs\Prism\Prism;
 use Prism\Facades\Prism;

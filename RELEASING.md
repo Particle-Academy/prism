@@ -2,14 +2,19 @@
 
 A release is a tag push. `.github/workflows/publish.yml` does the rest.
 
-There is **no upload step and no token**. Composer resolves versions from git
+There is **no package upload step or package upload token**. Composer resolves versions from git
 tags and Packagist mirrors them over a webhook, so pushing the tag *is* the
 publish. What the workflow adds is the part that has gone wrong here before:
 proving the tag was tested, and proving the package actually became installable.
 
 ## Cutting a release
 
-1. Land the work on `main` and wait for the gates to go green.
+Complete the [release preflight](.github/RELEASING.md), including claim review
+and successful strict Factcheck CI on the exact candidate SHA, before tagging.
+The publish workflow runs after Packagist can see the tag; it cannot prevent
+publication of an unchecked package.
+
+1. Land the work on `main` and wait for all four gates and strict Factcheck to go green.
 2. Tag it and push:
 
    ```
@@ -41,6 +46,8 @@ exactly the tag-versus-declared disagreement Composer avoids by not having one.
   never once executed.
 - **Any other gate failed on that commit** — PHPStan, Formatting, Require
   Checker, Factcheck, whichever this repo has.
+- **No successful strict Factcheck run for that exact commit.** A run on an
+  earlier commit does not satisfy the release guard.
 - **`composer.json` declares a `version`.**
 - **Packagist never serves the version.** The release job succeeds and this one
   still fails, deliberately: a tag and a GitHub release are not a distribution.

@@ -99,15 +99,23 @@ prism()
 Prism includes integrations for the following providers:
 
 - [Anthropic](/providers/anthropic.md)
+- Azure OpenAI (`Provider::Azure`)
 - [DeepSeek](/providers/deepseek.md)
+- [ElevenLabs](/providers/elevenlabs.md)
+- [Gemini](/providers/gemini.md)
 - [Groq](/providers/groq.md)
 - [Mistral](/providers/mistral.md)
 - [Ollama](/providers/ollama.md)
 - [OpenAI](/providers/openai.md)
+- [OpenRouter](/providers/openrouter.md)
+- [Requesty](/providers/requesty.md)
 - [Replicate](/providers/replicate.md)
 - [Qwen](/providers/qwen.md)
 - [xAI](/providers/xai.md)
 - [Perplexity](/providers/perplexity.md)
+- [Vertex AI](/providers/vertex.md)
+- [VoyageAI](/providers/voyageai.md)
+- [Z](/providers/z.md)
 
 ## Provider Support
 
