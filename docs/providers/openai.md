@@ -50,6 +50,22 @@ Groq, Mistral, DeepSeek, xAI, OpenRouter, Requesty, Qwen, Ollama, Azure — pref
 that provider. Each one maps the quirks its API actually has, which the generic
 OpenAI provider will not do for you.
 
+## Chat Completions refusals
+
+With `api_format` set to `chat_completions`, text, structured and streaming
+requests throw `Prism\Prism\Exceptions\PrismRefusalException` when the model
+returns a non-empty refusal. It extends `PrismException`; `code()` returns
+`response_refused` and `refusal()` returns the provider's refusal text. Treat that
+text as potentially sensitive. It is excluded from the exception message and
+public `responseBody`.
+
+Streaming collects refusal fragments and throws at the finish event, before
+text completion, tool execution or successful stream completion. Previously
+yielded text remains provisional. If the stream closes without a finish event,
+an observed refusal still throws. Empty content without a refusal remains an
+empty answer; structured output still requires valid JSON. A non-empty refusal
+takes precedence even when the response also contains text.
+
 ## Provider-specific options
 ### Strict Tool Schemas
 

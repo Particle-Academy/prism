@@ -10,6 +10,7 @@ use Illuminate\Support\Arr;
 use Prism\Prism\Concerns\CallsTools;
 use Prism\Prism\Enums\FinishReason;
 use Prism\Prism\Exceptions\PrismException;
+use Prism\Prism\Exceptions\PrismRefusalException;
 use Prism\Prism\Providers\OpenAI\Concerns\ProcessRateLimits;
 use Prism\Prism\Providers\OpenAI\Concerns\ValidatesResponse;
 use Prism\Prism\Providers\OpenAI\Maps\ChatCompletionsFinishReasonMap;
@@ -47,6 +48,11 @@ class Text
         $this->validateResponse($response);
 
         $data = $response->json();
+
+        $refusal = data_get($data, 'choices.0.message.refusal');
+        if (is_string($refusal) && $refusal !== '') {
+            throw new PrismRefusalException($refusal);
+        }
 
         $finishReason = ChatCompletionsFinishReasonMap::map(data_get($data, 'choices.0.finish_reason', ''));
 

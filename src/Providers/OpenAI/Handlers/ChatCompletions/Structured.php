@@ -5,6 +5,7 @@ namespace Prism\Prism\Providers\OpenAI\Handlers\ChatCompletions;
 use Illuminate\Http\Client\PendingRequest;
 use Illuminate\Http\Client\Response as ClientResponse;
 use Illuminate\Support\Arr;
+use Prism\Prism\Exceptions\PrismRefusalException;
 use Prism\Prism\Providers\OpenAI\Concerns\ProcessRateLimits;
 use Prism\Prism\Providers\OpenAI\Concerns\ValidatesResponse;
 use Prism\Prism\Providers\OpenAI\Maps\ChatCompletionsFinishReasonMap;
@@ -38,6 +39,11 @@ class Structured
         $this->validateResponse($response);
 
         $data = $response->json();
+
+        $refusal = data_get($data, 'choices.0.message.refusal');
+        if (is_string($refusal) && $refusal !== '') {
+            throw new PrismRefusalException($refusal);
+        }
 
         return $this->createResponse($request, $data, $response);
     }

@@ -13,6 +13,7 @@ use Prism\Prism\Concerns\CallsTools;
 use Prism\Prism\Enums\FinishReason;
 use Prism\Prism\Exceptions\PrismException;
 use Prism\Prism\Exceptions\PrismRateLimitedException;
+use Prism\Prism\Exceptions\PrismRefusalException;
 use Prism\Prism\Exceptions\PrismStreamDecodeException;
 use Prism\Prism\Providers\OpenAI\Concerns\ProcessRateLimits;
 use Prism\Prism\Providers\OpenAI\Maps\ChatCompletionsCitationsMapper;
@@ -79,6 +80,7 @@ class Stream
         }
 
         $text = '';
+        $refusal = '';
         $toolCalls = [];
 
         while (! $response->getBody()->eof()) {
@@ -114,6 +116,17 @@ class Stream
                 yield from $this->handleErrors($data, $request);
 
                 continue;
+            }
+
+            $refusalDelta = data_get($data, 'choices.0.delta.refusal');
+            if (is_string($refusalDelta)) {
+                $refusal .= $refusalDelta;
+            }
+
+            // Earlier deltas remain provisional. Refuse before completing text
+            // or executing tools, while retaining all refusal fragments.
+            if ($refusal !== '' && data_get($data, 'choices.0.finish_reason') !== null) {
+                throw new PrismRefusalException($refusal);
             }
 
             if ($this->hasToolCalls($data)) {
@@ -196,6 +209,12 @@ class Stream
                     $this->state->addUsage($usage);
                 }
             }
+        }
+
+        // A truncated stream or [DONE] without a finish chunk cannot turn an
+        // observed refusal into a successful empty completion.
+        if ($refusal !== '') {
+            throw new PrismRefusalException($refusal);
         }
 
         // Emit step finish before stream end
