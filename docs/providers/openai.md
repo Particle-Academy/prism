@@ -67,6 +67,17 @@ empty answer; structured output still requires valid JSON. A non-empty refusal
 takes precedence even when the response also contains text.
 
 ## Provider-specific options
+### Embedding encoding
+
+Use `withProviderOptions(['encoding_format' => 'base64'])` on an embeddings
+request to request base64 output. Prism decodes each string as little-endian
+float32 and returns the usual numeric embedding vector; `raw` retains the
+provider payload. Numeric array responses remain supported.
+
+Malformed or noncanonical base64, empty encodings, incomplete float32 values
+and non-finite numbers throw `PrismException`. Invalid payloads are not included
+in the exception message.
+
 ### Strict Tool Schemas
 
 Prism supports OpenAI's [function calling with Structured Outputs](https://platform.openai.com/docs/guides/function-calling#function-calling-with-structured-outputs) via provider-specific meta.

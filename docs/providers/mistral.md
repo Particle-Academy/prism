@@ -9,6 +9,17 @@
 ```
 ## Provider-specific options
 
+### Embedding encoding
+
+Embeddings accept `withProviderOptions(['encoding_format' => 'base64'])`.
+Prism decodes the result as little-endian float32 into numeric vectors while
+preserving the provider payload in `raw`. Omitting this option preserves the
+provider's default float format.
+
+Malformed or noncanonical base64, empty encodings, incomplete float32 values
+and non-finite numbers throw `PrismException` without including the payload in
+the exception message.
+
 ### Reasoning Effort
 
 Adjustable reasoning is currently supported by `mistral-small-latest` via the `reasoning_effort` parameter.
