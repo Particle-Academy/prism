@@ -20,18 +20,30 @@ use Prism\Prism\ValueObjects\Media\Image;
  * match the reference", the thing it matched is still what the reference
  * produces.
  *
- * Two of three columns are deliberately empty today (G-63). This suite is the
- * failing corpus the ports get built against, rather than a description of
- * them written afterwards.
+ * PHP and both ports record their refusal codes. Python explicitly skips the
+ * legacy unguarded-path control because that method never existed there.
  */
 function fetchGuardCorpus(): array
 {
-    return json_decode(
+    $cases = json_decode(
         (string) file_get_contents(__DIR__.'/../../Fixtures/media-fetch-guard.json'),
         true,
         512,
         JSON_THROW_ON_ERROR,
     )['cases'];
+
+    foreach ($cases as $case) {
+        if (array_key_exists('redirects_always', $case) && ! is_bool($case['redirects_always'])) {
+            throw new \InvalidArgumentException('redirects_always must be a boolean.');
+        }
+        if (($case['redirects_always'] ?? false) === true &&
+            (! is_string($case['redirects_to'] ?? null) || $case['redirects_to'] === '' ||
+                ($case['guarded'] ?? true) !== true)) {
+            throw new \InvalidArgumentException('Repeated redirects require redirects_to and the guarded path.');
+        }
+    }
+
+    return $cases;
 }
 
 /** A one-pixel PNG, so a successful fetch has a real mime type to report. */
@@ -62,7 +74,9 @@ function guardCorpusRefusal(array $case): ?string
 
     $fakes = ['*' => Http::response(guardCorpusImageBytes())];
 
-    if (isset($case['redirects_to'])) {
+    if (($case['redirects_always'] ?? false) === true) {
+        $fakes = ['*' => Http::response('', 302, ['Location' => $case['redirects_to']])];
+    } elseif (isset($case['redirects_to'])) {
         $fakes = [
             $case['redirects_to'].'*' => Http::response(guardCorpusImageBytes()),
             '*' => Http::response('', 302, ['Location' => $case['redirects_to']]),
@@ -80,6 +94,15 @@ function guardCorpusRefusal(array $case): ?string
 
         return null;
     } catch (PrismUrlRefused $refused) {
+        if (($case['redirects_always'] ?? false) === true) {
+            // Six public requests pin the default allowance to five redirect hops.
+            Http::assertSentCount(6);
+            foreach (Http::recorded() as [$request]) {
+                expect($request->url())->toBe($case['url']);
+            }
+            expect($image->hasRawContent())->toBeFalse();
+        }
+
         return $refused->code();
     }
 }
@@ -100,6 +123,7 @@ it('refuses something, so the corpus is not agreeing about nothing', function ()
             'redirect_refused',
             'scheme_not_allowed',
             'host_did_not_resolve',
+            'too_many_redirects',
         ]);
 });
 
