@@ -186,3 +186,52 @@ it('says a refused REDIRECT is a redirect, not just a bad address', function ():
         expect($refused->code())->toBe('redirect_refused');
     }
 });
+
+it('stops an endless redirect chain at the hop bound', function (): void {
+    // THE BOUND IS A DIFFERENT DEFENCE FROM THE DESTINATION CHECK ABOVE, and
+    // until G-71 nothing in any language exercised it. Every hop here is a
+    // PUBLIC address, so `PublicUrl` is satisfied on every pass and the counter
+    // is the only thing that stops the loop. The destination tests cannot cover
+    // this: they refuse on hop 1 and never reach the counter at all.
+    resolvesTo(['public.test' => ['93.184.216.34']]);
+
+    // Always redirects, never arrives.
+    Http::fake([
+        'public.test/*' => Http::response('', 302, ['Location' => 'https://public.test/next.png']),
+    ]);
+
+    try {
+        Image::fromUrl('https://public.test/x.png')->fetchPublicUrlContent();
+        expect(false)->toBeTrue('the guard should have refused an endless redirect chain');
+    } catch (PrismUrlRefused $refused) {
+        expect($refused->code())->toBe('too_many_redirects');
+    }
+
+    // Hops 0 through 5 were requested and then it gave up, rather than
+    // following the chain until something else happened to stop it.
+    Http::assertSentCount(6);
+});
+
+it('still follows a chain that stays inside the bound', function (): void {
+    // The discrimination control for the test above. A guard that threw
+    // `too_many_redirects` on the first hop would satisfy that one perfectly,
+    // and an off-by-one here is the likely defect rather than a dramatic
+    // failure: five redirects is the documented allowance, so five must work.
+    resolvesTo(['public.test' => ['93.184.216.34']]);
+
+    Http::fake([
+        'public.test/0.png' => Http::response('', 302, ['Location' => 'https://public.test/1.png']),
+        'public.test/1.png' => Http::response('', 302, ['Location' => 'https://public.test/2.png']),
+        'public.test/2.png' => Http::response('', 302, ['Location' => 'https://public.test/3.png']),
+        'public.test/3.png' => Http::response('', 302, ['Location' => 'https://public.test/4.png']),
+        'public.test/4.png' => Http::response('', 302, ['Location' => 'https://public.test/5.png']),
+        'public.test/5.png' => Http::response(base64_decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=='), 200),
+    ]);
+
+    $image = Image::fromUrl('https://public.test/0.png')->fetchPublicUrlContent();
+
+    expect($image->hasRawContent())->toBeTrue()
+        ->and($image->mimeType())->toBe('image/png');
+
+    Http::assertSentCount(6);
+});
