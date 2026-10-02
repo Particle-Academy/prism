@@ -394,63 +394,25 @@ Use the image generation API with a supported OpenAI model. Available options de
 
 | Model | Description |
 |-------|-------------|
-| `dall-e-3` | Latest DALL-E model |
-| `dall-e-2` | Previous generation |
-| `gpt-image-1` | GPT-based image model |
+| `gpt-image-1` | GPT image model. Use this for new work |
+| `dall-e-3` | Deprecated by OpenAI |
+| `dall-e-2` | Deprecated by OpenAI |
+
+> [!NOTE]
+> OpenAI has deprecated the DALL-E models and defaults image generation to its GPT
+> image models. Prism continues to support `dall-e-3` and `dall-e-2`; point new work
+> at `gpt-image-1`.
 
 ### Basic Usage
 
 ```php
 $response = Prism::image()
-    ->using('openai', 'dall-e-3')
+    ->using('openai', 'gpt-image-1')
     ->withPrompt('A serene mountain landscape at sunset')
     ->generate();
 
 $image = $response->firstImage();
-echo $image->url; // Generated image URL
-```
-
-### DALL-E 3 Options
-
-Configure DALL-E 3 output options:
-
-```php
-$response = Prism::image()
-    ->using('openai', 'dall-e-3')
-    ->withPrompt('A futuristic cityscape with flying cars')
-    ->withProviderOptions([
-        'size' => '1792x1024',          // 1024x1024, 1024x1792, 1792x1024
-        'quality' => 'hd',              // standard, hd
-        'style' => 'vivid',             // vivid, natural
-    ])
-    ->generate();
-
-// DALL-E 3 automatically revises prompts for better results
-if ($response->firstImage()->hasRevisedPrompt()) {
-    echo "Revised prompt: " . $response->firstImage()->revisedPrompt;
-}
-```
-
-### DALL-E 2 Options
-
-DALL-E 2 supports generating multiple images and is more cost-effective:
-
-```php
-$response = Prism::image()
-    ->using('openai', 'dall-e-2')
-    ->withPrompt('Abstract geometric patterns')
-    ->withProviderOptions([
-        'n' => 4,                       // Number of images (1-10)
-        'size' => '1024x1024',          // 256x256, 512x512, 1024x1024
-        'response_format' => 'url',     // url only
-        'user' => 'user-123',           // Optional user identifier
-    ])
-    ->generate();
-
-// Process multiple images
-foreach ($response->images as $image) {
-    echo "Image: {$image->url}\n";
-}
+file_put_contents('landscape.png', base64_decode($image->base64));
 ```
 
 ### GPT-Image-1 Options
@@ -533,17 +495,67 @@ $response = Prism::image()
     ->generate();
 ```
 
-### Response Format
+### DALL-E 3 Options
 
-Generated images are returned as URLs:
+DALL-E 3 is deprecated by OpenAI. Configure its output options:
 
 ```php
 $response = Prism::image()
     ->using('openai', 'dall-e-3')
+    ->withPrompt('A futuristic cityscape with flying cars')
+    ->withProviderOptions([
+        'size' => '1792x1024',          // 1024x1024, 1024x1792, 1792x1024
+        'quality' => 'hd',              // standard, hd
+        'style' => 'vivid',             // vivid, natural
+    ])
+    ->generate();
+
+// DALL-E 3 automatically revises prompts for better results
+if ($response->firstImage()->hasRevisedPrompt()) {
+    echo "Revised prompt: " . $response->firstImage()->revisedPrompt;
+}
+```
+
+### DALL-E 2 Options
+
+DALL-E 2 is deprecated by OpenAI. It supports generating multiple images per request:
+
+```php
+$response = Prism::image()
+    ->using('openai', 'dall-e-2')
+    ->withPrompt('Abstract geometric patterns')
+    ->withProviderOptions([
+        'n' => 4,                       // Number of images (1-10)
+        'size' => '1024x1024',          // 256x256, 512x512, 1024x1024
+        'response_format' => 'url',     // url only
+        'user' => 'user-123',           // Optional user identifier
+    ])
+    ->generate();
+
+// Process multiple images
+foreach ($response->images as $image) {
+    echo "Image: {$image->url}\n";
+}
+```
+
+### Response Format
+
+`gpt-image-1` returns base64-encoded image data. The DALL-E models return a URL by
+default, or base64 when `response_format` is set to `b64_json`. Check which one the
+response carries:
+
+```php
+$response = Prism::image()
+    ->using('openai', 'gpt-image-1')
     ->withPrompt('Digital artwork')
     ->generate();
 
 $image = $response->firstImage();
+
+if ($image->hasBase64()) {
+    file_put_contents('artwork.png', base64_decode($image->base64));
+}
+
 if ($image->hasUrl()) {
     echo "<img src='{$image->url}' alt='Generated image'>";
 }
@@ -739,7 +751,7 @@ $audio = Audio::fromBase64($base64AudioData, 'audio/mpeg');
 
 // From binary content
 $audioContent = file_get_contents('/path/to/audio.wav');
-$audio = Audio::fromContent($audioContent, 'audio/wav');
+$audio = Audio::fromRawContent($audioContent, 'audio/wav');
 ```
 
 #### File Size Considerations

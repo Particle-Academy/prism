@@ -282,7 +282,7 @@ $audio = Audio::fromBase64($base64AudioData, 'audio/mpeg');
 
 // From binary content
 $audioContent = file_get_contents('/path/to/audio.wav');
-$audio = Audio::fromContent($audioContent, 'audio/wav');
+$audio = Audio::fromRawContent($audioContent, 'audio/wav');
 ```
 
 ## Documents

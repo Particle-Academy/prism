@@ -178,7 +178,7 @@ $response = Prism::text()
     ->using('z', 'glm-4.6')
     ->withPrompt('Get the weather')
     ->withTools([$searchTool, $weatherTool])
-    ->withToolChoice(ToolChoice::from('get_weather'))
+    ->withToolChoice('get_weather')
     ->asText();
 
 // Let the model decide (default)

@@ -10,19 +10,19 @@ Select a provider and model, then supply a prompt:
 use Prism\Prism\Facades\Prism;
 
 $response = Prism::image()
-    ->using('openai', 'dall-e-3')
+    ->using('openai', 'gpt-image-1')
     ->withPrompt('A cute baby sea otter floating on its back in calm blue water')
     ->generate();
 
 $image = $response->firstImage();
-echo $image->url; // https://oaidalleapiprodscus.blob.core.windows.net/...
+file_put_contents('otter.png', base64_decode($image->base64));
 ```
 
 ## Provider Support
 
 Currently, Prism supports image generation through:
 
-- **OpenAI**: DALL-E 2, DALL-E 3, and GPT-Image-1 models
+- **OpenAI**: GPT-Image-1, plus the deprecated DALL-E 3 and DALL-E 2 models
 - **Gemini**: Gemini 2.0 Flash Preview Image Generation, Imagen 4, Imagen 3
 - **Qwen**: Qwen-Image (generation), Qwen-Image-Edit (editing & multi-image fusion)
 
@@ -34,7 +34,7 @@ The most straightforward way to generate an image:
 
 ```php
 $response = Prism::image()
-    ->using('openai', 'dall-e-3')
+    ->using('openai', 'gpt-image-1')
     ->withPrompt('A serene mountain landscape at sunset')
     ->generate();
 
@@ -54,8 +54,9 @@ The response object provides helpful methods for accessing generated content:
 
 ```php
 $response = Prism::image()
-    ->using('openai', 'dall-e-2')
+    ->using('openai', 'gpt-image-1')
     ->withPrompt('Abstract geometric patterns in vibrant colors')
+    ->withProviderOptions(['n' => 2])
     ->generate();
 
 // Check if images were generated
@@ -97,21 +98,6 @@ While Prism provides a consistent API, you can access provider-specific features
 
 OpenAI offers various customization options depending on the model:
 
-#### DALL-E 3 Options
-
-```php
-$response = Prism::image()
-    ->using('openai', 'dall-e-3')
-    ->withPrompt('A beautiful sunset over mountains')
-    ->withProviderOptions([
-        'size' => '1792x1024',          // 1024x1024, 1024x1792, 1792x1024
-        'quality' => 'hd',              // standard, hd
-        'style' => 'vivid',             // vivid, natural
-        'response_format' => 'url',     // url, b64_json
-    ])
-    ->generate();
-```
-
 #### GPT-Image-1 (Base64 Only)
 
 The GPT-Image-1 model always returns base64-encoded images, regardless of the `response_format` setting:
@@ -135,6 +121,23 @@ if ($image->hasBase64()) {
     file_put_contents('generated-image.png', base64_decode($image->base64));
     echo "Base64 image saved to generated-image.png";
 }
+```
+
+#### DALL-E 3 Options
+
+DALL-E 3 is deprecated by OpenAI.
+
+```php
+$response = Prism::image()
+    ->using('openai', 'dall-e-3')
+    ->withPrompt('A beautiful sunset over mountains')
+    ->withProviderOptions([
+        'size' => '1792x1024',          // 1024x1024, 1024x1792, 1792x1024
+        'quality' => 'hd',              // standard, hd
+        'style' => 'vivid',             // vivid, natural
+        'response_format' => 'url',     // url, b64_json
+    ])
+    ->generate();
 ```
 
 #### Base64 vs URL Responses
@@ -328,19 +331,18 @@ Use fakes to test image generation without external API calls:
 
 ```php
 use Prism\Prism\Facades\Prism;
-use Prism\Prism\Testing\PrismFake;
+use Prism\Prism\Testing\ImageResponseFake;
 
 test('can generate images', function () {
-    $fake = PrismFake::create()->image();
-    Prism::fake($fake);
+    Prism::fake([ImageResponseFake::make()]);
 
     $response = Prism::image()
-        ->using('openai', 'dall-e-3')
+        ->using('openai', 'gpt-image-1')
         ->withPrompt('Test image')
         ->generate();
 
     expect($response->hasImages())->toBeTrue();
-    expect($response->firstImage()->url)->toContain('fake-image-url');
+    expect($response->firstImage()->url)->toContain('fake-image.png');
 });
 ```
 

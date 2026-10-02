@@ -119,7 +119,7 @@ $audio = Audio::fromUrl('https://example.com/speech.wav');
 $audio = Audio::fromBase64($base64Data, 'audio/mpeg');
 
 // From raw binary content
-$audio = Audio::fromContent($binaryData, 'audio/wav');
+$audio = Audio::fromRawContent($binaryData, 'audio/wav');
 ```
 
 ### Audio Properties
