@@ -62,7 +62,7 @@ function documentedStaticCalls(): array
             $calls[] = [
                 'class' => $imported[$match[1]],
                 'method' => $match[2],
-                'doc' => str_replace('\\', '/', substr($file->getPathname(), strlen($docs) + 1)),
+                'doc' => str_replace('\\', '/', substr((string) $file->getPathname(), strlen($docs) + 1)),
             ];
         }
     }
@@ -82,8 +82,16 @@ it('resolves every class the docs import', function (): void {
 
     foreach (documentedStaticCalls() as $call) {
         $class = $call['class'];
-
-        if (class_exists($class) || interface_exists($class) || enum_exists($class) || trait_exists($class)) {
+        if (class_exists($class)) {
+            continue;
+        }
+        if (interface_exists($class)) {
+            continue;
+        }
+        if (enum_exists($class)) {
+            continue;
+        }
+        if (trait_exists($class)) {
             continue;
         }
 
