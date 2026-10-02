@@ -59,6 +59,21 @@ jobs:
       - name: List Installed Dependencies
         run: composer show -D
 
+      # NOTHING HERE HAD EVER AUDITED A PHP DEPENDENCY. composer.lock is
+      # gitignored -- correct for a library, since consumers resolve their own --
+      # which leaves Dependabot no lock to scan, so it reported zero and the zero
+      # was never a measurement. `composer audit` found four advisories in the
+      # production tree the first time it was run, including a Laravel XSS and a
+      # Flysystem path-normalizer bypass.
+      #
+      # Placed INSIDE the matrix on purpose: it then audits the resolution of both
+      # legs, and the `prefer-lowest` leg is the one that matters. That leg is what
+      # our declared FLOOR permits, and the floor is what a consumer with old pins
+      # actually gets -- which is exactly how the vulnerable Laravel range stayed
+      # legal here while a fresh install looked fine.
+      - name: Audit dependencies for known advisories
+        run: composer audit --no-interaction
+
       - name: Execute tests
         run: vendor/bin/pest --parallel
 
