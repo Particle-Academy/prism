@@ -165,7 +165,50 @@ if ($command === 'extract') {
     echo 'Extracted '.count($origins)." analysable fence(s).\n";
     echo 'Set aside '.count($fragments)." fence(s) that are not standalone programs (see fragments.json).\n";
     echo "Total fences: {$fences}, empty skipped: {$skipped}.\n";
-    exit($fences > 0 ? 0 : 1);
+
+    // VACUITY GUARDS. Credit to the Fancy agent for the rule behind these:
+    // comparing against a measured source rather than a literal is necessary and
+    // NOT sufficient, because "a source-comparing guard with no floor under it
+    // degrades into a literal the moment its source goes quiet". If a docs
+    // restructure or a regex change dropped extraction from 467 fences to 12,
+    // PHPStan would analyse 12, find nothing, and the whole chain would report
+    // clean. Nothing downstream can tell an empty finding list from an empty
+    // input.
+    //
+    // Two checks, and they fail for different reasons on purpose.
+
+    // 1. CONSERVATION, derived from the source rather than asserted: every
+    //    ```php fence in docs/ must end up accounted for, either analysable or
+    //    set aside. A fence silently dropped by the extractor is the failure this
+    //    catches, and it needs no magic number.
+    $declared = 0;
+    foreach (markdownFiles($docsRoot) as $path) {
+        // Leading whitespace allowed, because the extractor trims each line
+        // before matching and so finds fences indented inside a list item.
+        // Counting them differently here reported 464 against 467 on the first
+        // run -- the guard was wrong, not the extractor, which is the failure
+        // mode of every conservation check: it is only as right as its own
+        // notion of the denominator.
+        $declared += preg_match_all('/^\s*```php\b/m', (string) file_get_contents($path));
+    }
+    $accounted = count($origins) + count($fragments) + $skipped;
+    if ($accounted !== $declared) {
+        fwrite(STDERR, "VACUITY: docs/ declares {$declared} php fence(s); {$accounted} accounted for. The extractor is dropping fences.\n");
+        exit(1);
+    }
+
+    // 2. A FLOOR, which is deliberately a literal -- but a literal that encodes
+    //    a minimum plausible SCALE, never an answer. `toStartWith('^4')` went
+    //    stale because it encoded the answer and reality moved past it; this
+    //    fires only if reality collapses, which is the one case the conservation
+    //    check above cannot see (zero declared equals zero accounted).
+    $floor = 200;
+    if ($declared < $floor) {
+        fwrite(STDERR, "VACUITY: only {$declared} php fence(s) found in docs/, below the floor of {$floor}. Refusing to report a clean run on an input this small.\n");
+        exit(1);
+    }
+
+    exit(0);
 }
 
 if ($command === 'report') {
@@ -200,6 +243,15 @@ if ($command === 'report') {
     $origins = is_file($originsPath)
         ? (array) json_decode((string) file_get_contents($originsPath), true, 512, JSON_THROW_ON_ERROR)
         : [];
+
+    // The same floor as extract, for the same reason: this command reports
+    // "findings worth reading: 0" on an empty analysis just as happily as on a
+    // clean one, and a reader cannot tell them apart. Refuse rather than
+    // present a number that cannot mean what it looks like.
+    if (count($origins) < 200) {
+        fwrite(STDERR, 'VACUITY: origins.json lists '.count($origins)." analysable fence(s), below the floor of 200. Run extract first, or find out why it shrank.\n");
+        exit(1);
+    }
 
     $expected = 0;
     $contextLost = 0;
