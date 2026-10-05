@@ -34,7 +34,7 @@ use Prism\Prism\Facades\Prism;
 use Prism\Prism\Enums\Provider;
 use Prism\Prism\ValueObjects\Media\Audio;
 
-$audioFile = Audio::fromPath('/path/to/audio.mp3');
+$audioFile = Audio::fromLocalPath('/path/to/audio.mp3');
 
 $response = Prism::audio()
     ->using(Provider::OpenAI, 'whisper-1')
@@ -65,7 +65,7 @@ $response = Prism::audio()
     ->asAudio();
 
 $audio = $response->audio;
-echo "Audio type: " . $audio->getMimeType(); // audio/mpeg
+echo "Audio type: " . $audio->mimeType(); // audio/mpeg
 echo "Has audio data: " . ($audio->hasBase64() ? 'Yes' : 'No');
 ```
 
@@ -77,7 +77,7 @@ Transcribe audio files to text:
 use Prism\Prism\ValueObjects\Media\Audio;
 
 // From file path
-$audioFile = Audio::fromPath('/path/to/recording.wav');
+$audioFile = Audio::fromLocalPath('/path/to/recording.wav');
 
 // From a URL you trust — fetched explicitly, see below
 $audioFile = Audio::fromUrl('https://example.com/audio.mp3')->fetchUrlContent();
@@ -110,7 +110,7 @@ The `Audio` class provides several ways to work with audio files:
 use Prism\Prism\ValueObjects\Media\Audio;
 
 // From local file
-$audio = Audio::fromPath('/path/to/audio.mp3');
+$audio = Audio::fromLocalPath('/path/to/audio.mp3');
 
 // From remote URL
 $audio = Audio::fromUrl('https://example.com/speech.wav');
@@ -127,7 +127,7 @@ $audio = Audio::fromRawContent($binaryData, 'audio/wav');
 Access audio file information:
 
 ```php
-$audio = Audio::fromPath('/path/to/audio.mp3');
+$audio = Audio::fromLocalPath('/path/to/audio.mp3');
 
 echo "MIME type: " . $audio->mimeType();
 echo "Has local path: " . ($audio->hasLocalPath() ? 'Yes' : 'No');
@@ -154,7 +154,7 @@ if ($audio->hasBase64()) {
     file_put_contents('speech.mp3', $audioData);
     
     // Get MIME type
-    echo "Content type: " . $audio->getMimeType();
+    echo "Content type: " . $audio->mimeType();
 }
 
 // Access additional response data
@@ -166,7 +166,7 @@ foreach ($response->additionalContent as $key => $value) {
 ### Speech-to-Text Responses
 
 ```php
-$audioFile = Audio::fromPath('/path/to/speech.mp3');
+$audioFile = Audio::fromLocalPath('/path/to/speech.mp3');
 
 $response = Prism::audio()
     ->using('openai', 'whisper-1')
@@ -224,7 +224,7 @@ $response = Prism::audio()
 Configure transcription settings:
 
 ```php
-$audioFile = Audio::fromPath('/path/to/multilingual.mp3');
+$audioFile = Audio::fromLocalPath('/path/to/multilingual.mp3');
 
 $response = Prism::audio()
     ->using('openai', 'whisper-1')
@@ -270,7 +270,7 @@ use Prism\Prism\ValueObjects\Messages\UserMessage;
 use Prism\Prism\ValueObjects\Media\Audio;
 use Prism\Prism\ValueObjects\Media\Text;
 
-$audioFile = Audio::fromPath('/path/to/question.mp3');
+$audioFile = Audio::fromLocalPath('/path/to/question.mp3');
 
 // First transcribe the audio
 $transcription = Prism::audio()
@@ -388,7 +388,7 @@ test('can generate text-to-speech', function () {
         ->asAudio();
 
     expect($response->audio->hasBase64())->toBeTrue();
-    expect($response->audio->getMimeType())->toBe('audio/mpeg');
+    expect($response->audio->mimeType())->toBe('audio/mpeg');
 });
 
 test('can transcribe speech-to-text', function () {
@@ -398,7 +398,7 @@ test('can transcribe speech-to-text', function () {
     
     Prism::fake([$fakeTranscription]);
 
-    $audioFile = Audio::fromPath('/fake/path/test.mp3');
+    $audioFile = Audio::fromLocalPath('/fake/path/test.mp3');
     
     $response = Prism::audio()
         ->using('openai', 'whisper-1')

@@ -67,7 +67,7 @@ $job = Prism::batch()
     ->create(items: $items);
 
 echo $job->id;     // "msgbatch_01..."
-echo $job->status; // BatchStatus::Validating
+echo $job->status->name; // Validating
 ```
 
 ### OpenAI

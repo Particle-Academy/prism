@@ -125,7 +125,7 @@ $response = Prism::structured()
 use Prism\Prism\Facades\Prism;
 use Prism\Prism\Schema\ObjectSchema;
 use Prism\Prism\Schema\StringSchema;
-use Prism\Prism\Tool;
+use Prism\Prism\Facades\Tool;
 
 $schema = new ObjectSchema(
     name: 'weather_analysis',
@@ -630,7 +630,7 @@ Convert audio files into accurate text transcriptions using Whisper:
 ```php
 use Prism\Prism\ValueObjects\Media\Audio;
 
-$audioFile = Audio::fromPath('/path/to/recording.mp3');
+$audioFile = Audio::fromLocalPath('/path/to/recording.mp3');
 
 $response = Prism::audio()
     ->using('openai', 'whisper-1')
@@ -741,7 +741,7 @@ Load audio from various sources:
 use Prism\Prism\ValueObjects\Media\Audio;
 
 // From local file path
-$audio = Audio::fromPath('/path/to/audio.mp3');
+$audio = Audio::fromLocalPath('/path/to/audio.mp3');
 
 // From remote URL
 $audio = Audio::fromUrl('https://example.com/recording.wav');
@@ -760,7 +760,7 @@ Whisper has a file size limit of 25 MB. For larger files, consider:
 
 ```php
 // Check file size before processing
-$audio = Audio::fromPath('/path/to/large-audio.mp3');
+$audio = Audio::fromLocalPath('/path/to/large-audio.mp3');
 
 if ($audio->size() > 25 * 1024 * 1024) { // 25 MB
     echo "File too large for processing";

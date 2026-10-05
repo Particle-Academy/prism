@@ -119,7 +119,7 @@ Z AI supports function calling, allowing the model to execute your custom tools 
 
 ```php
 use Prism\Prism\Facades\Prism;
-use Prism\Prism\Tool;
+use Prism\Prism\Facades\Tool;
 
 $weatherTool = Tool::as('get_weather')
     ->for('Get current weather for a location')

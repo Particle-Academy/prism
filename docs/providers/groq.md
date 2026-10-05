@@ -85,7 +85,7 @@ Use a supported Whisper model to transcribe audio:
 ```php
 use Prism\Prism\ValueObjects\Media\Audio;
 
-$audioFile = Audio::fromPath('/path/to/recording.mp3');
+$audioFile = Audio::fromLocalPath('/path/to/recording.mp3');
 
 $response = Prism::audio()
     ->using('groq', 'whisper-large-v3')
@@ -188,7 +188,7 @@ $response = Prism::audio()
 use Prism\Prism\ValueObjects\Media\Audio;
 
 // From local file path
-$audio = Audio::fromPath('/path/to/audio.mp3');
+$audio = Audio::fromLocalPath('/path/to/audio.mp3');
 
 // From remote URL (recommended for large files)
 $audio = Audio::fromUrl('https://example.com/recording.wav');

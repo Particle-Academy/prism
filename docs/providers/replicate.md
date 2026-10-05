@@ -61,7 +61,7 @@ use Prism\Prism\Enums\Provider;
 $response = Prism::text()
     ->using(Provider::Replicate, 'meta/meta-llama-3-8b-instruct')
     ->withPrompt('Explain quantum computing in simple terms')
-    ->generate();
+    ->asText();
 
 echo $response->text;
 ```
@@ -98,7 +98,7 @@ $response = Prism::structured()
     ->using(Provider::Replicate, 'meta/meta-llama-3-8b-instruct')
     ->withPrompt('Review "1984" by George Orwell')
     ->withSchema($schema)
-    ->generate();
+    ->asStructured();
 
 echo $response->structured['title']; // "1984"
 echo $response->structured['rating']; // 5
@@ -111,15 +111,18 @@ echo $response->structured['rating']; // 5
 Stream text generation token-by-token for real-time UX using Server-Sent Events (SSE).
 
 ```php
+use Prism\Prism\Enums\StreamEventType;
 use Prism\Prism\Facades\Prism;
 
 $stream = Prism::text()
     ->using('replicate', 'meta-llama-3-8b-instruct')
     ->withPrompt('Write a short story about a robot')
-    ->stream();
+    ->asStream();
 
-foreach ($stream as $chunk) {
-    echo $chunk->text; // Prints tokens as they arrive in real-time
+foreach ($stream as $event) {
+    if ($event->type() === StreamEventType::TextDelta) {
+        echo $event->delta; // Prints tokens as they arrive in real-time
+    }
 }
 ```
 
@@ -307,7 +310,7 @@ Prism handles Replicate's async architecture transparently:
 $response = Prism::text()
     ->using('replicate', 'meta/meta-llama-3.1-405b-instruct')
     ->withPrompt('Generate text')
-    ->generate();
+    ->asText();
 
 // Prism automatically:
 // 1. Creates a prediction
@@ -344,7 +347,7 @@ try {
     $response = Prism::text()
         ->using('replicate', 'meta/meta-llama-3.1-405b-instruct')
         ->withPrompt('Generate text')
-        ->generate();
+        ->asText();
 } catch (PrismRateLimitedException $e) {
     // HTTP 429: Rate limit exceeded
     // Wait and retry with exponential backoff
@@ -404,7 +407,7 @@ $prism = Prism::text()
         'meta/meta-llama-3.1-405b-instruct'
     )
     ->withPrompt('Generate text')
-    ->generate();
+    ->asText();
 ```
 
 ## Cost Optimization Tips

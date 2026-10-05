@@ -142,7 +142,7 @@ Select a Voxtral transcription model and supply an audio file:
 ```php
 use Prism\Prism\ValueObjects\Media\Audio;
 
-$audioFile = Audio::fromPath('/path/to/recording.mp3');
+$audioFile = Audio::fromLocalPath('/path/to/recording.mp3');
 
 $response = Prism::audio()
     ->using('mistral', 'voxtral-mini-2507')
@@ -246,7 +246,7 @@ Voxtral handles extended audio without chunking:
 
 ```php
 // Process up to 30 minutes of audio in a single request
-$longAudioFile = Audio::fromPath('/path/to/long_meeting.wav');
+$longAudioFile = Audio::fromLocalPath('/path/to/long_meeting.wav');
 
 $response = Prism::audio()
     ->using('mistral', 'voxtral-small-latest')
@@ -272,7 +272,7 @@ if ($response->usage) {
 use Prism\Prism\ValueObjects\Media\Audio;
 
 // From local file path
-$audio = Audio::fromPath('/path/to/audio.mp3');
+$audio = Audio::fromLocalPath('/path/to/audio.mp3');
 
 // From remote URL
 $audio = Audio::fromUrl('https://example.com/recording.wav');
@@ -296,7 +296,7 @@ This OCR endpoint can be used like this:
 ```php
 use Prism\Prism\Enums\Provider;
 use Prism\Prism\Facades\Prism;
-use Prism\Prism\Tool;
+use Prism\Prism\Facades\Tool;
 use Prism\Prism\ValueObjects\Messages\UserMessage;
 use Prism\Prism\ValueObjects\Messages\SystemMessage;
 use Prism\Prism\Providers\Mistral\Mistral;

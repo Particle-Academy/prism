@@ -276,7 +276,7 @@ foreach ($response->steps as $step) {
 }
 
 // Access message history
-foreach ($response->responseMessages as $message) {
+foreach ($response->messages as $message) {
     if ($message instanceof AssistantMessage) {
         echo $message->content;
     }

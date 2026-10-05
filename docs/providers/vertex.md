@@ -105,7 +105,7 @@ $response = Prism::structured()
     ->using(Provider::Vertex, 'gemini-1.5-flash')
     ->withSchema($schema)
     ->withPrompt('Generate a profile for a fictional user named John Doe.')
-    ->generate();
+    ->asStructured();
 
 // Access structured data
 $profile = $response->structured;
@@ -153,7 +153,7 @@ use Prism\Prism\Enums\Provider;
 $response = Prism::embeddings()
     ->using(Provider::Vertex, 'text-embedding-004')
     ->fromInput('The quick brown fox jumps over the lazy dog.')
-    ->generate();
+    ->asEmbeddings();
 
 // Access the embedding vector
 $embedding = $response->embeddings[0]->embedding;

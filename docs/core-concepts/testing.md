@@ -94,13 +94,7 @@ Prism::fake([
                 ->withMeta(new Meta('step1', 'test-model'))
                 ->withMessages([
                     new UserMessage('Test message 1', [
-                        new Document(
-                            document: '',
-                            mimeType: 'text/plain',
-                            dataFormat: 'text',
-                            documentTitle: 'Test document',
-                            documentContext: 'Test context'
-                        ),
+                        Document::fromText('', 'Test document'),
                     ]),
                     new AssistantMessage('Test message 2')
                 ])
@@ -448,14 +442,13 @@ use Prism\Prism\ValueObjects\Meta;
 
 $response = new Response(
     steps: collect([]),
-    responseMessages: collect([]),
+    messages: collect([]),
     text: 'The meaning of life is 42',
     finishReason: FinishReason::Stop,
     toolCalls: [],
     toolResults: [],
     usage: new Usage(42, 42),
     meta: new Meta('resp_1', 'real-model'),
-    messages: collect([]),
     additionalContent: [],
 );
 ```

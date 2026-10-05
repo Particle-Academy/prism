@@ -43,7 +43,7 @@ use Prism\Prism\Enums\Provider;
 $response = Prism::text()
     ->using(Provider::Requesty, 'openai/gpt-4-turbo')
     ->withPrompt('Tell me a story about AI.')
-    ->generate();
+    ->asText();
 
 echo $response->text;
 ```
@@ -68,7 +68,7 @@ $response = Prism::structured()
     ->using(Provider::Requesty, 'openai/gpt-4-turbo')
     ->withPrompt('Generate a person profile for John Doe.')
     ->withSchema($schema)
-    ->generate();
+    ->asStructured();
 
 echo $response->text;
 ```
@@ -78,7 +78,7 @@ echo $response->text;
 ```php
 use Prism\Prism\Facades\Prism;
 use Prism\Prism\Enums\Provider;
-use Prism\Prism\Tool;
+use Prism\Prism\Facades\Tool;
 
 $weatherTool = Tool::as('get_weather')
     ->for('Get the current weather for a location')
@@ -91,7 +91,7 @@ $response = Prism::text()
     ->using(Provider::Requesty, 'openai/gpt-4-turbo')
     ->withPrompt('What is the weather like in New York?')
     ->withTools([$weatherTool])
-    ->generate();
+    ->asText();
 
 echo $response->text;
 ```
@@ -110,7 +110,7 @@ $response = Prism::text()
     ->withPrompt('Describe the key trends in this diagram.', [
         Image::fromLocalPath('storage/charts/retention.png'),
     ])
-    ->generate();
+    ->asText();
 
 echo $response->text;
 ```
@@ -132,7 +132,7 @@ $response = Prism::text()
     ->withPrompt('Summarize this document.', [
         Document::fromUrl('https://example.com/report.pdf', 'report.pdf'),
     ])
-    ->generate();
+    ->asText();
 
 echo $response->text;
 ```
@@ -154,7 +154,7 @@ $response = Prism::text()
     ->withPrompt('Describe what happens in this video.', [
         Video::fromLocalPath('/path/to/video.mp4'),
     ])
-    ->generate();
+    ->asText();
 
 echo $response->text;
 ```
@@ -189,7 +189,7 @@ foreach ($stream as $event) {
 ```php
 use Prism\Prism\Facades\Prism;
 use Prism\Prism\Enums\Provider;
-use Prism\Prism\Tool;
+use Prism\Prism\Facades\Tool;
 
 $weatherTool = Tool::as('get_weather')
     ->for('Get the current weather for a location')
@@ -279,7 +279,7 @@ $response = Prism::text()
         ],
         'top_k' => 40,
     ])
-    ->generate();
+    ->asText();
 
 echo $response->text;
 ```

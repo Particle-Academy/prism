@@ -23,7 +23,7 @@ To enable automatic caching, simply add a single cache_control field at the top 
 ```php
 use Prism\Prism\Enums\Provider;
 use Prism\Prism\Facades\Prism;
-use Prism\Prism\Tool;
+use Prism\Prism\Facades\Tool;
 use Prism\Prism\ValueObjects\Messages\UserMessage;
 use Prism\Prism\ValueObjects\Messages\SystemMessage;
 
@@ -54,7 +54,7 @@ The API for enabling prompt caching is the same for all, enabled via the `withPr
 ```php
 use Prism\Prism\Enums\Provider;
 use Prism\Prism\Facades\Prism;
-use Prism\Prism\Tool;
+use Prism\Prism\Facades\Tool;
 use Prism\Prism\ValueObjects\Messages\UserMessage;
 use Prism\Prism\ValueObjects\Messages\SystemMessage;
 
@@ -283,7 +283,7 @@ Anthropic’s [fine-grained tool streaming](https://docs.anthropic.com/en/docs/a
 
 ```php
 use Prism\Prism\Facades\Prism;
-use Prism\Prism\Tool;
+use Prism\Prism\Facades\Tool;
 
 $weatherTool = Tool::as('get_weather')
     ->for('Get current weather for a location')
@@ -393,8 +393,7 @@ $response = Prism::text()
             additionalContent: [
                 Document::fromChunks(
                     chunks: ["The grass is green.", "Flamingos are pink.", "The sky is blue."],
-                    title: 'The colours of nature',
-                    context: 'The go-to textbook on the colours found in nature!'
+                    title: 'The colours of nature'
                 )
             ]
         )
@@ -585,7 +584,7 @@ You can combine custom tools with structured output to gather data before return
 use Prism\Prism\Facades\Prism;
 use Prism\Prism\Schema\ObjectSchema;
 use Prism\Prism\Schema\StringSchema;
-use Prism\Prism\Tool;
+use Prism\Prism\Facades\Tool;
 
 $schema = new ObjectSchema(
     'weather_analysis',
@@ -635,7 +634,7 @@ To enable strict mode for a tool, use the `strict` provider option:
 
 ```php
 use Prism\Prism\Facades\Prism;
-use Prism\Prism\Tool;
+use Prism\Prism\Facades\Tool;
 
 $weatherTool = Tool::as('get_weather')
     ->for('Get current weather for a location')

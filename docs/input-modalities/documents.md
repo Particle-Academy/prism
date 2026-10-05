@@ -74,7 +74,7 @@ $response = Prism::text()
     ->withPrompt(
         'Extract key points from this document',
         [Document::fromBase64(
-            base64: $baseFromDB,
+            document: $baseFromDB,
             mimeType: 'optional/mimetype', // optional
             title: 'My document title' // optional
         )]
