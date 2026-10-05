@@ -129,3 +129,28 @@ jobs:
       # three real annotations in this estate are exactly that shape.
       - name: tools/check-release-notes.sh must refuse what it claims to
         run: sh tools/check-release-notes.test.sh
+
+      # The checker is vendored rather than fetched -- the pre-tag run is the
+      # only control that can prevent a Composer publish, so it has to work from
+      # the tree being tagged, offline, without piping a remote script into a
+      # shell. That buys a copy, and an unchecked copy is one that has already
+      # drifted without telling anyone. So the copy is diffed against the
+      # canonical file instead of trusted, the same argument prism-parity makes
+      # for the corpus copies it generates and then checks.
+      - name: Fetch the canonical checker
+        uses: actions/checkout@v4
+        with:
+          repository: Particle-Academy/.github
+          path: .canonical
+          persist-credentials: false
+
+      - name: The vendored checker must match the canonical one
+        run: |
+          for pair in check.sh:check-release-notes.sh check.test.sh:check-release-notes.test.sh; do
+            diff -u ".canonical/release-notes/${pair%%:*}" "tools/${pair##*:}" || {
+              echo "::error::tools/${pair##*:} has drifted from Particle-Academy/.github release-notes/${pair%%:*}. Change the canonical file and re-vendor it; do not patch the copy."
+              exit 1
+            }
+          done
+          echo "Both vendored files match the canonical checker."
+          node -e "require('node:fs').rmSync('.canonical',{recursive:true,force:true})"

@@ -8,7 +8,19 @@
 # would wave through.
 set -eu
 # Absolute, because the --tag cases run from inside a throwaway repository.
-script="$(cd "$(dirname "$0")" && pwd)/check-release-notes.sh"
+#
+# Either filename, because this file is BYTE-IDENTICAL to the copy each package
+# vendors as tools/check-release-notes.sh, and each repository's CI diffs its
+# copy against the canonical one here to catch drift. Resolving the name instead
+# of hardcoding it is what keeps the two copies identical and that diff honest.
+here="$(cd "$(dirname "$0")" && pwd)"
+for candidate in "$here/check.sh" "$here/check-release-notes.sh"; do
+    [ -f "$candidate" ] && script="$candidate" && break
+done
+if [ -z "${script:-}" ]; then
+    echo "cannot find the checker next to $0" >&2
+    exit 1
+fi
 pass=0
 fail=0
 
