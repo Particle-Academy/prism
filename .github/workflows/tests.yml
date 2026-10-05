@@ -106,3 +106,26 @@ jobs:
         run: |
           node .third-party-allowlist/third-party/check.mjs --repo .
           node -e "require('node:fs').rmSync('.third-party-allowlist',{recursive:true,force:true})"
+
+  release-notes:
+    name: Release-notes check
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      # tools/check-release-notes.sh refuses a tag annotation that does not say
+      # whether the release breaks anything. It runs in publish.yml's guard, and
+      # a release manager runs it by hand before tagging -- which is the only
+      # moment refusing still prevents a Composer publish.
+      #
+      # It is tested HERE because a guard nobody tried to defeat is the recurring
+      # way one of these ends up checking nothing. The suite asserts both
+      # directions, and its sharpest case is a note that discusses breakage in
+      # prose without declaring any: a plain `grep -i breaking` passes that, and
+      # three real annotations in this estate are exactly that shape.
+      - name: tools/check-release-notes.sh must refuse what it claims to
+        run: sh tools/check-release-notes.test.sh
