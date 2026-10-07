@@ -13,6 +13,11 @@
             "id": "hint-0001",
             "title": "a conversation that declares nothing",
             "since": "0.1.0",
+            "skip": {
+                "php": "Executed by prism:tests/CacheStabilityCorpusTest.php, not this generic runner.",
+                "ts": "G-64: no cache-stability derivation or package-specific runner implemented.",
+                "py": "G-64: no cache-stability derivation or package-specific runner implemented."
+            },
             "messages": [
                 {"role": "user", "text": "One", "hint": null},
                 {"role": "assistant", "text": "Two", "hint": null}
@@ -29,6 +34,11 @@
             "id": "hint-0002",
             "title": "stable history, then this turn's question",
             "since": "0.1.0",
+            "skip": {
+                "php": "Executed by prism:tests/CacheStabilityCorpusTest.php, not this generic runner.",
+                "ts": "G-64: no cache-stability derivation or package-specific runner implemented.",
+                "py": "G-64: no cache-stability derivation or package-specific runner implemented."
+            },
             "messages": [
                 {"role": "user", "text": "The manual", "hint": "stable"},
                 {"role": "assistant", "text": "Understood.", "hint": "stable"},
@@ -46,6 +56,11 @@
             "id": "hint-0003",
             "title": "every message declared stable",
             "since": "0.1.0",
+            "skip": {
+                "php": "Executed by prism:tests/CacheStabilityCorpusTest.php, not this generic runner.",
+                "ts": "G-64: no cache-stability derivation or package-specific runner implemented.",
+                "py": "G-64: no cache-stability derivation or package-specific runner implemented."
+            },
             "messages": [
                 {"role": "user", "text": "One", "hint": "stable"},
                 {"role": "assistant", "text": "Two", "hint": "stable"}
@@ -62,6 +77,11 @@
             "id": "hint-0004",
             "title": "the caller placed their own breakpoint",
             "since": "0.1.0",
+            "skip": {
+                "php": "Executed by prism:tests/CacheStabilityCorpusTest.php, not this generic runner.",
+                "ts": "G-64: no cache-stability derivation or package-specific runner implemented.",
+                "py": "G-64: no cache-stability derivation or package-specific runner implemented."
+            },
             "messages": [
                 {"role": "user", "text": "The manual", "hint": null, "provider_options": {"cacheType": "ephemeral"}},
                 {"role": "user", "text": "Also stable", "hint": "stable"},
@@ -79,6 +99,11 @@
             "id": "hint-0005",
             "title": "the volatile part declared FIRST",
             "since": "0.1.0",
+            "skip": {
+                "php": "Executed by prism:tests/CacheStabilityCorpusTest.php, not this generic runner.",
+                "ts": "G-64: no cache-stability derivation or package-specific runner implemented.",
+                "py": "G-64: no cache-stability derivation or package-specific runner implemented."
+            },
             "messages": [
                 {"role": "user", "text": "Changes every turn", "hint": "volatile"},
                 {"role": "user", "text": "The manual", "hint": "stable"}
@@ -95,6 +120,11 @@
             "id": "hint-0006",
             "title": "several misordered pairs in one conversation",
             "since": "0.1.0",
+            "skip": {
+                "php": "Executed by prism:tests/CacheStabilityCorpusTest.php, not this generic runner.",
+                "ts": "G-64: no cache-stability derivation or package-specific runner implemented.",
+                "py": "G-64: no cache-stability derivation or package-specific runner implemented."
+            },
             "messages": [
                 {"role": "user", "text": "Volatile", "hint": "volatile"},
                 {"role": "user", "text": "Stable", "hint": "stable"},
@@ -113,6 +143,11 @@
             "id": "hint-0007",
             "title": "a ttl written the provider's way",
             "since": "0.1.0",
+            "skip": {
+                "php": "Executed by prism:tests/CacheStabilityCorpusTest.php, not this generic runner.",
+                "ts": "G-64: no cache-stability derivation or package-specific runner implemented.",
+                "py": "G-64: no cache-stability derivation or package-specific runner implemented."
+            },
             "messages": [
                 {"role": "user", "text": "The manual", "hint": "stable", "ttl": "1h"},
                 {"role": "user", "text": "Question", "hint": "volatile"}
