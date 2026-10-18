@@ -62,7 +62,7 @@
                 "py": "private_address_refused"
             },
             "agrees": true,
-            "notes": "Bracketed, so a port that forgets to strip the brackets before validating reads it as a hostname and tries to resolve it \u00e2\u20ac\u201d which is how an IPv6 hole opens in a guard that closed the IPv4 one."
+            "notes": "Bracketed, so a port that forgets to strip the brackets before validating reads it as a hostname and tries to resolve it â€” which is how an IPv6 hole opens in a guard that closed the IPv4 one."
         },
         {
             "id": "url-0005",
@@ -201,6 +201,84 @@
             },
             "agrees": true,
             "notes": "Six requests pin the default redirect-hop allowance at five in PHP, TypeScript and Python: the initial request plus five allowed hops are sent, then too_many_redirects must be raised before a seventh request. A language that defaults to three would refuse under the same code but fail this six-request assertion. Every response redirects even when already at redirects_to; no hop serves content."
+        },
+        {
+            "id": "url-0013",
+            "title": "Alibaba Cloud's metadata endpoint, in CGNAT",
+            "since": "0.1.8",
+            "url": "http://100.100.100.200/latest/meta-data/",
+            "resolves": {},
+            "refusal": {
+                "php": "private_address_refused",
+                "ts": "private_address_refused",
+                "py": "private_address_refused"
+            },
+            "agrees": true,
+            "notes": "G-89. 100.64.0.0/10 is shared address space, not private: filter_var's private and reserved flags admit it, and so did the ranges copied from them. All three languages admitted this until the explicit list."
+        },
+        {
+            "id": "url-0014",
+            "title": "the NAT64 spelling of 169.254.169.254",
+            "since": "0.1.8",
+            "url": "http://[64:ff9b::a9fe:a9fe]/latest/meta-data/",
+            "resolves": {},
+            "refusal": {
+                "php": "private_address_refused",
+                "ts": "private_address_refused",
+                "py": "private_address_refused"
+            },
+            "agrees": true,
+            "notes": "G-89. On an IPv6-only network with NAT64 this IS the metadata endpoint. The guard judges the IPv4 address embedded in 64:ff9b::/96, not the IPv6 wrapper."
+        },
+        {
+            "id": "url-0015",
+            "title": "the 6to4 spelling of 169.254.169.254",
+            "since": "0.1.8",
+            "url": "http://[2002:a9fe:a9fe::]/latest/meta-data/",
+            "resolves": {},
+            "refusal": {
+                "php": "private_address_refused",
+                "ts": "private_address_refused",
+                "py": "private_address_refused"
+            },
+            "agrees": true,
+            "notes": "G-89. 2002::/16 embeds an IPv4 address in bits 16-48; judged by that address."
+        },
+        {
+            "id": "url-0016",
+            "title": "a public NAME whose DNS answer is the NAT64 metadata address",
+            "since": "0.1.8",
+            "url": "http://nat64.test/latest/meta-data/",
+            "resolves": {
+                "nat64.test": [
+                    "64:ff9b::a9fe:a9fe"
+                ]
+            },
+            "refusal": {
+                "php": "private_address_refused",
+                "ts": "private_address_refused",
+                "py": "private_address_refused"
+            },
+            "agrees": true,
+            "notes": "G-89. The literal rows prove the check; this one proves the check runs on every DNS answer too, where an attacker who owns the record chooses the spelling."
+        },
+        {
+            "id": "url-0017",
+            "title": "a public name answered with NAT64 of a PUBLIC address still fetches",
+            "since": "0.1.8",
+            "url": "https://dns64.test/x.png",
+            "resolves": {
+                "dns64.test": [
+                    "64:ff9b::5db8:d822"
+                ]
+            },
+            "refusal": {
+                "php": null,
+                "ts": null,
+                "py": null
+            },
+            "agrees": true,
+            "notes": "G-89's control. A DNS64 resolver hands an IPv6-only host 64:ff9b:: addresses for public sites (this is 93.184.216.34). A guard that refused NAT64 outright would pass url-0014 and url-0016 and break every fetch on such a network; this row fails it."
         }
     ]
 }
