@@ -441,9 +441,16 @@ class Media implements Arrayable
      * request, which only connection-level pinning closes. See
      * {@see PublicUrl}.
      *
-     * @throws PrismUrlRefused when the URL, or a redirect from it, is not public
+     * BOUNDED. The URL is one the caller does not trust, so the size of its
+     * answer is not theirs to choose either: a public host can answer with
+     * gigabytes and take the worker's memory with it (G-90). The body is read
+     * as a stream and refused with `media_too_large` past `$maxBytes`; a
+     * declared Content-Length over it is refused before any body is read. The
+     * default, 32 MiB, is the largest inline document the providers accept.
+     *
+     * @throws PrismUrlRefused when the URL, or a redirect from it, is not public, or the answer is over $maxBytes
      */
-    public function fetchPublicUrlContent(int $maxRedirects = 5): static
+    public function fetchPublicUrlContent(int $maxRedirects = 5, int $maxBytes = 32 * 1024 * 1024): static
     {
         if (! $this->url) {
             return $this;
@@ -470,7 +477,7 @@ class Media implements Arrayable
             }
 
             /** @var Response $response */
-            $response = Http::withoutRedirecting()->get($url);
+            $response = Http::withoutRedirecting()->withOptions(['stream' => true])->get($url);
 
             if (! $response->redirect()) {
                 break;
@@ -493,9 +500,9 @@ class Media implements Arrayable
             }
         }
 
-        $content = $response instanceof Response ? $response->body() : '';
+        $content = $response instanceof Response ? $this->boundedBody($response, $maxBytes) : '';
 
-        if (! $content) {
+        if ($content === '' || $content === '0') {
             throw new InvalidArgumentException($this->safeUrl().' returns no content.');
         }
 
@@ -547,6 +554,37 @@ class Media implements Arrayable
             'file_id' => $this->fileId,
             'filename' => $this->filename,
         ];
+    }
+
+    /**
+     * The body, read in chunks and refused the moment it passes `$maxBytes`,
+     * so an oversized answer is never held whole. A declared Content-Length
+     * over the cap is refused before reading anything.
+     *
+     * @throws PrismUrlRefused
+     */
+    protected function boundedBody(Response $response, int $maxBytes): string
+    {
+        $declared = $response->header('Content-Length');
+
+        if (preg_match('/^\d+$/', $declared) === 1 && (int) $declared > $maxBytes) {
+            throw new PrismUrlRefused('media_too_large', $this->safeUrl().' declares '.$declared.' bytes, over the '.$maxBytes.'-byte cap.');
+        }
+
+        $stream = $response->toPsrResponse()->getBody();
+        $content = '';
+
+        while (! $stream->eof()) {
+            $content .= $stream->read(65536);
+
+            if (strlen($content) > $maxBytes) {
+                $stream->close();
+
+                throw new PrismUrlRefused('media_too_large', $this->safeUrl().' sent more than the '.$maxBytes.'-byte cap.');
+            }
+        }
+
+        return $content;
     }
 
     /**

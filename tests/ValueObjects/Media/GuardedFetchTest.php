@@ -302,3 +302,54 @@ it('still fetches public addresses, including through NAT64 and 6to4', function 
     '6to4 of a public IPv4' => ['2002:808:808::1'],
     'public IPv6' => ['2606:4700:4700::1111'],
 ]);
+
+/*
+| G-90. The URL is one the caller does not trust, so the SIZE of its answer is
+| not theirs to choose either: a public host can answer with gigabytes. The cap
+| is enforced while the body streams, and a declared Content-Length over it is
+| refused before the body is read at all.
+*/
+it('refuses a body over the cap, while streaming', function (): void {
+    resolvesTo(['public.test' => ['93.184.216.34']]);
+    Http::fake(['public.test/*' => Http::response(str_repeat('x', 1025), 200)]);
+
+    $refused = null;
+    try {
+        Image::fromUrl('https://public.test/huge.png')->fetchPublicUrlContent(maxBytes: 1024);
+    } catch (PrismUrlRefused $error) {
+        $refused = $error->code();
+    }
+
+    expect($refused)->toBe('media_too_large');
+});
+
+it('refuses a declared Content-Length over the cap', function (): void {
+    resolvesTo(['public.test' => ['93.184.216.34']]);
+    Http::fake(['public.test/*' => Http::response('small', 200, ['Content-Length' => '999999999'])]);
+
+    $refused = null;
+    try {
+        Image::fromUrl('https://public.test/huge.png')->fetchPublicUrlContent(maxBytes: 1024);
+    } catch (PrismUrlRefused $error) {
+        $refused = $error->code();
+    }
+
+    expect($refused)->toBe('media_too_large');
+});
+
+it('accepts a body exactly at the cap (the control)', function (): void {
+    resolvesTo(['public.test' => ['93.184.216.34']]);
+    $png = base64_decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==');
+    Http::fake(['public.test/*' => Http::response($png, 200)]);
+
+    $image = Image::fromUrl('https://public.test/x.png')->fetchPublicUrlContent(maxBytes: strlen($png));
+
+    expect($image->hasRawContent())->toBeTrue();
+});
+
+it('caps at 32 MiB by default, the largest inline document the providers take', function (): void {
+    $parameter = collect((new \ReflectionMethod(Image::class, 'fetchPublicUrlContent'))->getParameters())
+        ->firstWhere('name', 'maxBytes');
+
+    expect($parameter?->getDefaultValue())->toBe(32 * 1024 * 1024);
+});
