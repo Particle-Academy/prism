@@ -6,11 +6,13 @@ namespace Prism\Prism\Providers\Anthropic\Maps;
 
 use Exception;
 use Illuminate\Support\Arr;
+use Prism\Prism\Concerns\FiltersEmptyValues;
 use Prism\Prism\Contracts\DeclaresCacheStability;
 use Prism\Prism\Contracts\Message;
 use Prism\Prism\Enums\CacheStability;
 use Prism\Prism\Exceptions\PrismException;
 use Prism\Prism\Providers\Anthropic\Concerns\NormalizesCacheControl;
+use Prism\Prism\Providers\Anthropic\Support\ContentBlocks;
 use Prism\Prism\Providers\Support\Payload;
 use Prism\Prism\Support\Json;
 use Prism\Prism\ValueObjects\Media\Document;
@@ -24,6 +26,7 @@ use Prism\Prism\ValueObjects\ToolResult;
 
 class MessageMap
 {
+    use FiltersEmptyValues;
     use NormalizesCacheControl;
 
     /**
@@ -37,12 +40,12 @@ class MessageMap
             throw new PrismException('Anthropic does not support SystemMessages in the messages array. Use withSystemPrompt or withSystemPrompts instead.');
         }
 
-        $mappedMessages = array_map(
+        // Cache hints are placed before empty assistant turns are dropped: the
+        // hint reads a message's position, and dropping first would shift it.
+        $mappedMessages = self::withoutEmptyAssistantMessages(self::applyCacheHints($messages, array_map(
             fn (Message $message): array => self::mapMessage($message, $requestProviderOptions),
             $messages
-        );
-
-        $mappedMessages = self::applyCacheHints($messages, $mappedMessages);
+        )));
 
         if (isset($requestProviderOptions['tool_result_cache_type'])) {
             $lastToolResultIndex = null;
@@ -80,6 +83,21 @@ class MessageMap
     }
 
     /**
+     * An assistant turn with nothing to replay (a refusal before any output)
+     * reads to the model as a reply it skipped, so it is left out.
+     *
+     * @param  array<int, array<string, mixed>>  $mappedMessages
+     * @return array<int, array<string, mixed>>
+     */
+    protected static function withoutEmptyAssistantMessages(array $mappedMessages): array
+    {
+        return array_values(array_filter(
+            $mappedMessages,
+            fn (array $message): bool => $message['role'] !== 'assistant' || $message['content'] !== []
+        ));
+    }
+
+    /**
      * @param  array<string, mixed>  $requestProviderOptions
      * @return array<string, mixed>
      */
@@ -98,7 +116,7 @@ class MessageMap
      */
     protected static function mapSystemMessage(SystemMessage $systemMessage): array
     {
-        return Payload::compact([
+        return self::withoutEmptyValues([
             'type' => 'text',
             'text' => $systemMessage->content,
             'cache_control' => self::normalizeCacheControl($systemMessage),
@@ -119,6 +137,8 @@ class MessageMap
                 // Only add cache_control to the last tool result
                 $isLastResult = $index === $totalResults - 1;
 
+                // Payload::compact, not withoutEmptyValues: a tool result
+                // may be the integer 0, which is real output.
                 return Payload::compact([
                     'type' => 'tool_result',
                     'tool_use_id' => $toolResult->toolCallId,
@@ -140,7 +160,7 @@ class MessageMap
         return [
             'role' => 'user',
             'content' => self::cacheFinalContentBlock([
-                Payload::compact([
+                self::withoutEmptyValues([
                     'type' => 'text',
                     'text' => $message->text(),
                 ]),
@@ -151,31 +171,27 @@ class MessageMap
     }
 
     /**
+     * Replay precedence: `content_blocks` (the ordered response content) >
+     * `thinking_blocks` > the legacy `thinking`/`thinking_signature` pair.
+     *
      * @return array<string, mixed>
      */
     protected static function mapAssistantMessage(AssistantMessage $message): array
     {
         $cacheControl = self::normalizeCacheControl($message);
 
-        $content = [];
-
-        if (isset($message->additionalContent['thinking']) && isset($message->additionalContent['thinking_signature'])) {
-            $content[] = [
-                'type' => 'thinking',
-                'thinking' => $message->additionalContent['thinking'],
-                'signature' => $message->additionalContent['thinking_signature'],
-            ];
+        if (is_array($message->additionalContent['content_blocks'] ?? null)) {
+            return self::mapAssistantContentBlocks($message->additionalContent['content_blocks'], $cacheControl);
         }
+
+        $content = self::mapAssistantThinking($message);
 
         if (isset($message->additionalContent['citations'])) {
             foreach ($message->additionalContent['citations'] as $part) {
-                $content[] = Payload::compact(CitationsMapper::mapToAnthropic($part));
+                $content[] = self::withoutEmptyValues(CitationsMapper::mapToAnthropic($part));
             }
         } elseif ($message->content !== '') {
-
-            // Payload::compact, not array_filter: a bare array_filter would
-            // also drop 'text' => '0', which is falsy but is real output.
-            $content[] = Payload::compact([
+            $content[] = self::withoutEmptyValues([
                 'type' => 'text',
                 'text' => $message->content,
             ]);
@@ -248,6 +264,7 @@ class MessageMap
         }
 
         $messages = array_values($messages);
+        $mapped = array_values($mapped);
         $breakpoint = null;
 
         foreach ($messages as $index => $message) {
@@ -261,7 +278,7 @@ class MessageMap
                 break;
             }
 
-            if ($stability === CacheStability::Stable) {
+            if ($stability === CacheStability::Stable && ($mapped[$index]['content'] ?? []) !== []) {
                 $breakpoint = $index;
             }
         }
@@ -288,14 +305,44 @@ class MessageMap
      */
     protected static function cacheFinalContentBlock(array $content, ?array $cacheControl): array
     {
-        $last = array_key_last($content);
+        // One breakpoint per message, on its final block that can carry one
+        // (thinking blocks cannot), never on every part.
+        return $cacheControl === null ? $content : ContentBlocks::withCacheControl($content, $cacheControl);
+    }
 
-        // Thinking blocks cannot carry an explicit cache breakpoint.
-        if ($cacheControl !== null && $last !== null && ! in_array($content[$last]['type'] ?? null, ['thinking', 'redacted_thinking'], true)) {
-            $content[$last]['cache_control'] = $cacheControl;
+    /**
+     * @param  array<int, array<string, mixed>>  $contentBlocks
+     * @param  array<string, mixed>|null  $cacheControl
+     * @return array<string, mixed>
+     */
+    protected static function mapAssistantContentBlocks(array $contentBlocks, ?array $cacheControl): array
+    {
+        $content = ContentBlocks::forReplay($contentBlocks);
+
+        return [
+            'role' => 'assistant',
+            'content' => $cacheControl === null ? $content : ContentBlocks::withCacheControl($content, $cacheControl),
+        ];
+    }
+
+    /**
+     * @return array<int, array<string, mixed>>
+     */
+    protected static function mapAssistantThinking(AssistantMessage $message): array
+    {
+        if (is_array($message->additionalContent['thinking_blocks'] ?? null)) {
+            return array_values($message->additionalContent['thinking_blocks']);
         }
 
-        return $content;
+        if (isset($message->additionalContent['thinking']) && isset($message->additionalContent['thinking_signature'])) {
+            return [[
+                'type' => 'thinking',
+                'thinking' => $message->additionalContent['thinking'],
+                'signature' => $message->additionalContent['thinking_signature'],
+            ]];
+        }
+
+        return [];
     }
 
     /**

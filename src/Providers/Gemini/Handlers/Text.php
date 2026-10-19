@@ -10,6 +10,7 @@ use Illuminate\Support\Arr;
 use Prism\Prism\Concerns\CallsTools;
 use Prism\Prism\Enums\FinishReason;
 use Prism\Prism\Providers\Gemini\Concerns\CachesStablePrefix;
+use Prism\Prism\Providers\Gemini\Concerns\MapsUsage;
 use Prism\Prism\Providers\Gemini\Concerns\ValidatesResponse;
 use Prism\Prism\Providers\Gemini\Maps\CitationMapper;
 use Prism\Prism\Providers\Gemini\Maps\FinishReasonMap;
@@ -26,11 +27,10 @@ use Prism\Prism\ValueObjects\Messages\ToolResultMessage;
 use Prism\Prism\ValueObjects\Meta;
 use Prism\Prism\ValueObjects\ProviderTool;
 use Prism\Prism\ValueObjects\ToolResult;
-use Prism\Prism\ValueObjects\Usage;
 
 class Text
 {
-    use CachesStablePrefix, CallsTools, ValidatesResponse;
+    use CachesStablePrefix, CallsTools, MapsUsage, ValidatesResponse;
 
     protected ResponseBuilder $responseBuilder;
 
@@ -197,12 +197,7 @@ class Text
             toolCalls: $finishReason === FinishReason::ToolCalls ? ToolCallMap::map(data_get($data, 'candidates.0.content.parts', [])) : [],
             toolResults: $toolResults,
             providerToolCalls: [],
-            usage: new Usage(
-                promptTokens: max(0, (int) data_get($data, 'usageMetadata.promptTokenCount', 0) - (int) data_get($data, 'usageMetadata.cachedContentTokenCount', 0)),
-                completionTokens: data_get($data, 'usageMetadata.candidatesTokenCount', 0),
-                cacheReadInputTokens: data_get($data, 'usageMetadata.cachedContentTokenCount'),
-                thoughtTokens: data_get($data, 'usageMetadata.thoughtsTokenCount'),
-            ),
+            usage: $this->mapUsage($data),
             meta: new Meta(
                 id: data_get($data, 'id', ''),
                 model: data_get($data, 'modelVersion', ''),

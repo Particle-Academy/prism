@@ -18,7 +18,7 @@ Prism is pre-1.0. Choose a version constraint appropriate for your application, 
 Run this command from your project directory:
 
 ```bash
-composer require particle-academy/prism
+composer require prism-php/prism
 ```
 
 This command will download Prism and its dependencies into your project.

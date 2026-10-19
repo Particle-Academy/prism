@@ -14,6 +14,7 @@ use Prism\Prism\Enums\FinishReason;
 use Prism\Prism\Exceptions\PrismException;
 use Prism\Prism\Exceptions\PrismRateLimitedException;
 use Prism\Prism\Exceptions\PrismStreamDecodeException;
+use Prism\Prism\Providers\Groq\Concerns\MapsUsage;
 use Prism\Prism\Providers\Groq\Concerns\ProcessRateLimits;
 use Prism\Prism\Providers\Groq\Concerns\ValidateResponse;
 use Prism\Prism\Providers\Groq\Maps\FinishReasonMap;
@@ -42,9 +43,11 @@ use Throwable;
 
 class Stream
 {
-    use CallsTools, ProcessRateLimits, ValidateResponse;
+    use CallsTools, MapsUsage, ProcessRateLimits, ValidateResponse;
 
     protected StreamState $state;
+
+    protected ?Usage $stepUsage = null;
 
     public function __construct(protected PendingRequest $client)
     {
@@ -79,6 +82,8 @@ class Stream
 
         $text = '';
         $toolCalls = [];
+        $stepFinishReason = null;
+        $this->stepUsage = null;
 
         while (! $response->getBody()->eof()) {
             $data = $this->parseNextDataLine($response->getBody());
@@ -109,33 +114,20 @@ class Stream
                 );
             }
 
+            $this->captureStepUsage($data);
+
+            // An unrecoverable error ends the response: later chunks only update usage.
+            if ($stepFinishReason === FinishReason::Error) {
+                continue;
+            }
+
             if ($this->hasError($data)) {
                 yield from $this->handleErrors($data, $request);
 
-                continue;
-            }
-
-            if ($this->hasToolCalls($data)) {
-                $toolCalls = $this->extractToolCalls($data, $toolCalls);
+                $stepFinishReason = FinishReason::Error;
+                $this->state->withFinishReason(FinishReason::Error);
 
                 continue;
-            }
-
-            if ($this->mapFinishReason($data) === FinishReason::ToolCalls) {
-                // Complete any ongoing text
-                if ($this->state->hasTextStarted() && $text !== '') {
-                    $this->state->markTextCompleted();
-
-                    yield new TextCompleteEvent(
-                        id: EventID::generate(),
-                        timestamp: time(),
-                        messageId: $this->state->messageId()
-                    );
-                }
-
-                yield from $this->handleToolCalls($request, $text, $toolCalls, $depth);
-
-                return;
             }
 
             $content = data_get($data, 'choices.0.delta.content', '') ?? '';
@@ -161,39 +153,76 @@ class Stream
                 );
             }
 
+            if ($this->hasToolCalls($data)) {
+                $toolCalls = $this->extractToolCalls($data, $toolCalls);
+            }
+
+            if ($this->mapFinishReason($data) === FinishReason::ToolCalls) {
+                yield from $this->completeText();
+
+                $this->drainStepUsage($response);
+                $this->recordStepUsage();
+
+                yield from $this->handleToolCalls($request, $text, $toolCalls, $depth);
+
+                return;
+            }
+
             // Only emit completion events when we actually have a finish reason (not null)
             $rawFinishReason = data_get($data, 'choices.0.finish_reason');
             if ($rawFinishReason !== null) {
                 $finishReason = $this->mapFinishReason($data);
 
-                if ($this->state->hasTextStarted() && $text !== '') {
-                    $this->state->markTextCompleted();
-
-                    yield new TextCompleteEvent(
-                        id: EventID::generate(),
-                        timestamp: time(),
-                        messageId: $this->state->messageId()
-                    );
-                }
+                yield from $this->completeText();
 
                 $this->state->withFinishReason($finishReason);
-
-                $usage = $this->extractUsage($data);
-                if ($usage instanceof Usage) {
-                    $this->state->addUsage($usage);
-                }
+                $stepFinishReason = $finishReason;
             }
         }
 
+        yield from $this->completeText();
+
+        $this->recordStepUsage();
+        $this->state->withFinishReason($stepFinishReason ?? FinishReason::Stop);
+
         // Emit step finish before stream end
         $this->state->markStepFinished();
+
+        // The step's own usage, null when it reported none (upstream #1043).
+        // Advancing the snapshot keeps the fork's HITL finish in CallsTools,
+        // which measures its step from the last finished one, from
+        // counting this step's usage again.
+        $this->state->takeStepUsage();
+
         yield new StepFinishEvent(
             id: EventID::generate(),
             timestamp: time(),
-            usage: $this->state->takeStepUsage(),
+            usage: $this->stepUsage,
+            finishReason: $this->state->finishReason(),
         );
 
         yield $this->emitStreamEndEvent();
+    }
+
+    /**
+     * Closes the text this step started, once, before its tool calls or its
+     * StepFinishEvent.
+     *
+     * @return Generator<StreamEvent>
+     */
+    protected function completeText(): Generator
+    {
+        if (! $this->state->hasTextStarted()) {
+            return;
+        }
+
+        $this->state->markTextCompleted();
+
+        yield new TextCompleteEvent(
+            id: EventID::generate(),
+            timestamp: time(),
+            messageId: $this->state->messageId()
+        );
     }
 
     protected function emitStreamEndEvent(): StreamEndEvent
@@ -293,11 +322,20 @@ class Stream
         }
 
         // Emit step finish after tool calls
+        $this->state->withFinishReason(FinishReason::ToolCalls);
         $this->state->markStepFinished();
+
+        // The step's own usage, null when it reported none (upstream #1043).
+        // Advancing the snapshot keeps the fork's HITL finish in CallsTools,
+        // which measures its step from the last finished one, from
+        // counting this step's usage again.
+        $this->state->takeStepUsage();
+
         yield new StepFinishEvent(
             id: EventID::generate(),
             timestamp: time(),
-            usage: $this->state->takeStepUsage(),
+            usage: $this->stepUsage,
+            finishReason: FinishReason::ToolCalls,
         );
 
         $request->addMessage(new AssistantMessage($text, $mappedToolCalls));
@@ -374,21 +412,41 @@ class Stream
     }
 
     /**
+     * Groq reports usage at the top level (also repeated in a trailing chunk
+     * without choices) or under `x_groq.usage`. Each is the response's total,
+     * so a chunk's usage replaces the snapshot and the sources are never summed.
+     *
      * @param  array<string, mixed>  $data
      */
-    protected function extractUsage(array $data): ?Usage
+    protected function captureStepUsage(array $data): void
     {
-        $usage = data_get($data, 'usage');
+        $usage = $data['usage'] ?? null;
 
-        if (! $usage) {
-            return null;
+        if (! is_array($usage) || $usage === []) {
+            $usage = data_get($data, 'x_groq.usage');
         }
 
-        return new Usage(
-            promptTokens: max(0, (int) data_get($usage, 'prompt_tokens', 0) - (int) data_get($usage, 'prompt_tokens_details.cached_tokens', 0)),
-            completionTokens: (int) data_get($usage, 'completion_tokens', 0),
-            cacheReadInputTokens: (int) data_get($usage, 'prompt_tokens_details.cached_tokens', 0) ?: null,
-        );
+        if (is_array($usage) && $usage !== []) {
+            $this->stepUsage = $this->mapUsage($usage);
+        }
+    }
+
+    protected function drainStepUsage(Response $response): void
+    {
+        while (! $response->getBody()->eof()) {
+            $data = $this->parseNextDataLine($response->getBody());
+
+            if ($data !== null) {
+                $this->captureStepUsage($data);
+            }
+        }
+    }
+
+    protected function recordStepUsage(): void
+    {
+        if ($this->stepUsage instanceof Usage) {
+            $this->state->addUsage($this->stepUsage);
+        }
     }
 
     protected function sendRequest(Request $request): Response

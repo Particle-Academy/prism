@@ -11,7 +11,10 @@ use Illuminate\Support\Arr;
 use Prism\Prism\Concerns\CallsTools;
 use Prism\Prism\Enums\FinishReason;
 use Prism\Prism\Exceptions\PrismStreamDecodeException;
+use Prism\Prism\Providers\Anthropic\Concerns\ExtractsAdditionalContent;
 use Prism\Prism\Providers\Anthropic\Maps\CitationsMapper;
+use Prism\Prism\Providers\Anthropic\Maps\FinishReasonMap;
+use Prism\Prism\Providers\Anthropic\Support\ContentBlocks;
 use Prism\Prism\Providers\Anthropic\ValueObjects\AnthropicStreamState;
 use Prism\Prism\Streaming\EventID;
 use Prism\Prism\Streaming\Events\CitationEvent;
@@ -42,19 +45,9 @@ use Throwable;
 
 class Stream
 {
-    use CallsTools;
+    use CallsTools, ExtractsAdditionalContent;
 
     protected AnthropicStreamState $state;
-
-    /**
-     * What `message_start` reported for the message in flight.
-     *
-     * Kept so `message_delta` can turn its final output count into an
-     * INCREMENT on the running total rather than a replacement for it -- the
-     * difference between a multi-step turn reporting every step's output and
-     * reporting only the last one's.
-     */
-    protected ?Usage $messageStartUsage = null;
 
     public function __construct(protected PendingRequest $client)
     {
@@ -97,10 +90,25 @@ class Stream
             }
         }
 
-        if ($this->state->hasToolCalls()) {
-            foreach ($this->handleToolCalls($request, $depth) as $item) {
-                yield $item;
-            }
+        $unfinishedBlockEvent = $this->completeUnfinishedBlock();
+
+        if ($unfinishedBlockEvent instanceof StreamEvent) {
+            yield $unfinishedBlockEvent;
+        }
+
+        $this->finalizeStepUsage();
+
+        $additionalContent = $this->stepAdditionalContent();
+        $toolCalls = $this->executableToolCalls();
+
+        if ($this->state->finishReason() === FinishReason::ToolCalls && $toolCalls !== []) {
+            yield from $this->handleToolCalls($request, $depth, $toolCalls, $additionalContent);
+
+            return;
+        }
+
+        if ($this->state->finishReason() === FinishReason::Pause) {
+            yield from $this->handlePause($request, $depth, $additionalContent);
 
             return;
         }
@@ -109,10 +117,112 @@ class Stream
         yield new StepFinishEvent(
             id: EventID::generate(),
             timestamp: time(),
-            usage: $this->state->takeStepUsage(),
+            usage: $this->state->stepUsage(),
+            additionalContent: $additionalContent,
+            finishReason: $this->state->finishReason() ?? FinishReason::Stop,
         );
 
-        yield $this->emitStreamEndEvent();
+        yield $this->emitStreamEndEvent($additionalContent);
+    }
+
+    /**
+     * A stream that ends inside a text or thinking block (an `error` event or a
+     * dropped connection) still closes it, so every start has its complete.
+     * The block stays out of the step's replay content.
+     */
+    protected function completeUnfinishedBlock(): TextCompleteEvent|ThinkingCompleteEvent|null
+    {
+        $event = match ($this->state->currentBlockType()) {
+            'text' => $this->handleTextComplete(),
+            'thinking' => new ThinkingCompleteEvent(
+                id: EventID::generate(),
+                timestamp: time(),
+                reasoningId: $this->state->reasoningId()
+            ),
+            default => null,
+        };
+
+        $this->state->resetBlockContext();
+
+        return $event;
+    }
+
+    protected function finalizeStepUsage(): void
+    {
+        if ($this->state->stepUsage() instanceof Usage) {
+            $this->state->addUsage($this->state->stepUsage());
+        }
+    }
+
+    /**
+     * The step's replay metadata, built from the streamed content blocks with
+     * the same extraction the non-streaming handlers use, filtered by the
+     * finish reason the step actually ended with: a step that ended with Error
+     * never runs its tools, whatever `stop_reason` arrived after the error, so
+     * its replay content leaves out the tool use it never answered.
+     *
+     * @return array<string, mixed>
+     */
+    protected function stepAdditionalContent(): array
+    {
+        return $this->extractAdditionalContent([
+            'content' => array_values($this->state->replayableContentBlocks()),
+            'stop_reason' => $this->state->stopReason(),
+            'stop_details' => $this->state->stopDetails(),
+            'usage' => ['iterations' => $this->state->usageIterations()],
+        ], $this->state->finishReason());
+    }
+
+    /**
+     * Complete `tool_use` blocks produced by the serving model. Tool calls
+     * declined before a fallback, or left open by an interrupted stream, are
+     * never executed.
+     *
+     * @return ToolCall[]
+     */
+    protected function executableToolCalls(): array
+    {
+        $blocks = $this->state->contentBlocks();
+        $lastFallback = ContentBlocks::lastFallbackIndex($blocks);
+        $positions = array_keys($blocks);
+        $toolCalls = [];
+
+        foreach (array_values($blocks) as $position => $block) {
+            $index = $positions[$position];
+            if (($block['type'] ?? null) !== 'tool_use') {
+                continue;
+            }
+            if ($lastFallback !== null && $position < $lastFallback) {
+                continue;
+            }
+            if (! $this->state->isContentBlockComplete($index)) {
+                continue;
+            }
+
+            $toolCalls[] = new ToolCall(
+                id: $block['id'] ?? EventID::generate(),
+                name: $block['name'] ?? 'unknown',
+                arguments: $this->normalizeToolInput($this->state->toolCalls()[$index]['input'] ?? ''),
+            );
+        }
+
+        return $toolCalls;
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    protected function normalizeToolInput(mixed $input): array
+    {
+        if (is_string($input) && json_validate($input)) {
+            return json_decode($input, true) ?: [];
+        }
+
+        if (is_string($input) && $input !== '') {
+            return ['input' => $input];
+        }
+
+        return is_array($input) ? $input : [];
     }
 
     /**
@@ -145,25 +255,18 @@ class Stream
 
         $usageData = $message['usage'] ?? [];
 
-        // A baseline for THIS message, always -- a zero one when the start
-        // carries no usage block. Left alone, the previous message's baseline
-        // survived into this one and message_delta subtracted ANOTHER step's
-        // output from the running total: on a three-step turn whose second
-        // start had no usage, the total fell from 96 to 71 and that step's own
-        // usage came out at minus 25. Found by the pre-publish audit of the fix
-        // that introduced the baseline.
-        $this->messageStartUsage = new Usage(0, 0);
-
+        // The step's usage lives on the state, which is reset between steps,
+        // so a start without a usage block never inherits the previous
+        // message's numbers. message_delta reconciles it; finalizeStepUsage
+        // adds it to the turn's running total once, at the step's end.
         if (! empty($usageData)) {
-            $this->messageStartUsage = new Usage(
+            $this->state->withStepUsage(new Usage(
                 promptTokens: $usageData['input_tokens'] ?? 0,
                 completionTokens: $usageData['output_tokens'] ?? 0,
                 cacheWriteInputTokens: $usageData['cache_creation_input_tokens'] ?? null,
                 cacheReadInputTokens: $usageData['cache_read_input_tokens'] ?? null,
-                thoughtTokens: $usageData['output_tokens_details']['thinking_tokens'] ?? null
-            );
-
-            $this->state->addUsage($this->messageStartUsage);
+                thoughtTokens: data_get($usageData, 'output_tokens_details.thinking_tokens'),
+            ));
         }
 
         // Only emit StreamStartEvent once per streaming session
@@ -198,6 +301,7 @@ class Stream
             $event['index'] ?? 0,
             $contentBlock['type'] ?? ''
         );
+        $this->state->startContentBlock($event['index'] ?? 0, $contentBlock);
 
         return match ($this->state->currentBlockType()) {
             'text' => new TextStartEvent(
@@ -222,6 +326,8 @@ class Stream
         $delta = $event['delta'] ?? [];
         $deltaType = $delta['type'] ?? null;
 
+        $this->recordContentBlockDelta($event['index'] ?? $this->state->currentBlockIndex() ?? 0, $delta);
+
         return match ([$this->state->currentBlockType(), $deltaType]) {
             ['text', 'text_delta'] => $this->handleTextDelta($delta),
             ['text', 'citations_delta'] => $this->handleCitationsDelta($delta),
@@ -234,10 +340,29 @@ class Stream
     }
 
     /**
+     * @param  array<string, mixed>  $delta
+     */
+    protected function recordContentBlockDelta(int $index, array $delta): void
+    {
+        match ($delta['type'] ?? null) {
+            'text_delta' => $this->state->appendContentBlockField($index, 'text', $delta['text'] ?? ''),
+            'thinking_delta' => $this->state->appendContentBlockField($index, 'thinking', $delta['thinking'] ?? ''),
+            'signature_delta' => $this->state->appendContentBlockField($index, 'signature', $delta['signature'] ?? ''),
+            'input_json_delta' => $this->state->appendContentBlockInput($index, $delta['partial_json'] ?? ''),
+            'citations_delta' => is_array($delta['citation'] ?? null)
+                ? $this->state->appendContentBlockCitation($index, $delta['citation'])
+                : null,
+            default => null,
+        };
+    }
+
+    /**
      * @param  array<string, mixed>  $event
      */
     protected function handleContentBlockStop(array $event): ?StreamEvent
     {
+        $this->state->completeContentBlock($event['index'] ?? $this->state->currentBlockIndex() ?? 0);
+
         $result = match ($this->state->currentBlockType()) {
             'text' => $this->handleTextComplete(),
             'thinking' => new ThinkingCompleteEvent(
@@ -260,58 +385,48 @@ class Stream
      */
     protected function handleMessageDelta(array $event): null
     {
-        // `message_delta` carries THIS MESSAGE's final output count, and the
-        // state holds a RUNNING TOTAL across every step of the turn -- so the
-        // count is an increment on what message_start already added, not a
-        // replacement for the total.
-        //
-        // It used to REPLACE: `completionTokens: $usageData['output_tokens']`.
-        // The prompt side accumulates at message_start, so a three-step turn
-        // came out 1225 in / 36 out when 203 tokens had been generated -- input
-        // right, output only the last step's. Every multi-step streamed turn
-        // under-reported what it generated, and so did everything reading the
-        // StreamEndEvent's usage, which includes consumers' own billing ledgers
-        // as well as telemetry.
-        $usageData = $event['usage'] ?? [];
+        $stopReason = data_get($event, 'delta.stop_reason');
 
-        if (
-            ! empty($usageData)
-            && isset($usageData['output_tokens'])
-            && $this->messageStartUsage instanceof Usage
-        ) {
-            // A turn whose FIRST start carried no usage has no total yet; the
-            // delta still has output to record, so it starts from zero rather
-            // than being dropped.
-            $total = $this->state->usage() ?? new Usage(0, 0);
-            $started = $this->messageStartUsage;
-            $finalOutput = (int) $usageData['output_tokens'];
-            $finalThought = isset($usageData['output_tokens_details']['thinking_tokens'])
-                ? (int) $usageData['output_tokens_details']['thinking_tokens']
-                : null;
+        if (is_string($stopReason)) {
+            $this->state->withStopReason($stopReason, data_get($event, 'delta.stop_details'));
 
-            $this->state->withUsage(new Usage(
-                promptTokens: $total->promptTokens,
-                completionTokens: $total->completionTokens - $started->completionTokens + $finalOutput,
-                cacheWriteInputTokens: $total->cacheWriteInputTokens,
-                cacheReadInputTokens: $total->cacheReadInputTokens,
-                thoughtTokens: $finalThought === null
-                    ? $total->thoughtTokens
-                    : ($total->thoughtTokens ?? 0) - ($started->thoughtTokens ?? 0) + $finalThought,
-            ));
-
-            // Revised in place, so a second message_delta for the same message
-            // -- which the API is free to send -- increments from the right base
-            // instead of counting this one twice.
-            $this->messageStartUsage = new Usage(
-                promptTokens: $started->promptTokens,
-                completionTokens: $finalOutput,
-                cacheWriteInputTokens: $started->cacheWriteInputTokens,
-                cacheReadInputTokens: $started->cacheReadInputTokens,
-                thoughtTokens: $finalThought ?? $started->thoughtTokens,
-            );
+            if ($this->state->finishReason() !== FinishReason::Error) {
+                $this->state->withFinishReason(FinishReasonMap::map($stopReason));
+            }
         }
 
+        $usageData = $event['usage'] ?? [];
+
+        if (is_array($usageData['iterations'] ?? null)) {
+            $this->state->withUsageIterations($usageData['iterations']);
+        }
+
+        $this->reconcileStepUsage($usageData);
+
         return null;
+    }
+
+    /**
+     * `message_delta` usage is authoritative for every field it carries (after
+     * a fallback it describes the serving attempt, not the declined one).
+     *
+     * @param  array<string, mixed>  $usageData
+     */
+    protected function reconcileStepUsage(array $usageData): void
+    {
+        if ($usageData === []) {
+            return;
+        }
+
+        $current = $this->state->stepUsage() ?? new Usage(0, 0);
+
+        $this->state->withStepUsage(new Usage(
+            promptTokens: $usageData['input_tokens'] ?? $current->promptTokens,
+            completionTokens: $usageData['output_tokens'] ?? $current->completionTokens,
+            cacheWriteInputTokens: $usageData['cache_creation_input_tokens'] ?? $current->cacheWriteInputTokens,
+            cacheReadInputTokens: $usageData['cache_read_input_tokens'] ?? $current->cacheReadInputTokens,
+            thoughtTokens: data_get($usageData, 'output_tokens_details.thinking_tokens') ?? $current->thoughtTokens,
+        ));
     }
 
     /**
@@ -326,7 +441,13 @@ class Stream
         return null;
     }
 
-    protected function emitStreamEndEvent(): StreamEndEvent
+    /**
+     * Carries the final step's metadata without the replay blobs
+     * (`content_blocks`, `thinking_blocks`), which are on `StepFinishEvent`.
+     *
+     * @param  array<string, mixed>  $stepAdditionalContent
+     */
+    protected function emitStreamEndEvent(array $stepAdditionalContent = []): StreamEndEvent
     {
         return new StreamEndEvent(
             id: EventID::generate(),
@@ -335,23 +456,29 @@ class Stream
             usage: $this->state->usage() ?? new Usage(0, 0),
             citations: $this->state->citations() !== [] ? $this->state->citations() : null,
             additionalContent: [
-                'thinking' => $this->state->thinkingSummaries() === [] ? null : implode('', $this->state->thinkingSummaries()),
-                'thinking_signature' => $this->state->currentThinkingSignature() === '' ? null : $this->state->currentThinkingSignature(),
+                'thinking' => $stepAdditionalContent['thinking'] ?? null,
+                'thinking_signature' => $stepAdditionalContent['thinking_signature'] ?? null,
+                ...Arr::only($stepAdditionalContent, ['stop_reason', 'stop_details', 'fallbacks', 'usage_iterations']),
             ]
         );
     }
 
     /**
+     * An `error` event ends Anthropic's stream, so the step ends with Error
+     * rather than looking like a complete response.
+     *
      * @param  array<string, mixed>  $event
      */
     protected function handleError(array $event): ErrorEvent
     {
+        $this->state->withFinishReason(FinishReason::Error);
+
         return new ErrorEvent(
             id: EventID::generate(),
             timestamp: time(),
             errorType: $event['error']['type'] ?? 'unknown_error',
             message: $event['error']['message'] ?? 'Unknown error occurred',
-            recoverable: true
+            recoverable: false
         );
     }
 
@@ -537,79 +664,88 @@ class Stream
     }
 
     /**
+     * @param  ToolCall[]  $toolCalls
+     * @param  array<string, mixed>  $additionalContent
      * @return Generator<StreamEvent>
      */
-    protected function handleToolCalls(Request $request, int $depth): Generator
+    protected function handleToolCalls(Request $request, int $depth, array $toolCalls, array $additionalContent): Generator
     {
-        $toolCalls = [];
-
-        // Convert tool calls to ToolCall objects
-        foreach ($this->state->toolCalls() as $toolCallData) {
-            $input = $toolCallData['input'];
-            if (is_string($input) && json_validate($input)) {
-                $input = json_decode($input, true);
-            } elseif (is_string($input) && $input !== '') {
-                $input = ['input' => $input];
-            } else {
-                $input = [];
-            }
-
-            $toolCalls[] = new ToolCall(
-                id: $toolCallData['id'],
-                name: $toolCallData['name'],
-                arguments: $input
-            );
-        }
-
-        // Execute tools and emit results
         $toolResults = [];
         $hasPendingToolCalls = false;
         yield from $this->callToolsAndYieldEventsWithPending($request->tools(), $toolCalls, $this->state->messageId(), $toolResults, $hasPendingToolCalls);
 
+        $this->state->markStepFinished();
+        yield new StepFinishEvent(
+            id: EventID::generate(),
+            timestamp: time(),
+            usage: $this->state->stepUsage(),
+            additionalContent: $additionalContent,
+            finishReason: FinishReason::ToolCalls,
+        );
+
         if ($hasPendingToolCalls) {
             // Client-executed or approval-required tool calls: end the stream
             // with FinishReason::ToolCalls so the consumer resolves and resumes.
-            $this->state->markStepFinished();
-            yield from $this->yieldToolCallsFinishEvents($this->state);
+            // The step's own usage is already on the StepFinishEvent above;
+            // the StreamEndEvent carries the turn's running total.
+            yield $this->emitStreamEndEvent($additionalContent);
 
             return;
         }
 
-        // Add messages to request for next turn
-        if ($toolResults !== []) {
-            // Emit step finish after tool calls
-            $this->state->markStepFinished();
-            yield new StepFinishEvent(
-                id: EventID::generate(),
-                timestamp: time(),
-                usage: $this->state->takeStepUsage(),
-            );
+        $request->addMessage(new AssistantMessage(
+            content: $this->state->currentText(),
+            toolCalls: $toolCalls,
+            additionalContent: $additionalContent,
+        ));
 
-            $request->addMessage(new AssistantMessage(
-                content: $this->state->currentText(),
-                toolCalls: $toolCalls,
-                additionalContent: Arr::whereNotNull([
-                    'thinking' => $this->state->currentThinking() ?: null,
-                    'thinking_signature' => $this->state->currentThinkingSignature() ?: null,
-                    'citations' => $this->state->citations() ?: null,
-                    'provider_tool_calls' => array_values($this->state->providerToolCalls()) ?: null,
-                    'provider_tool_results' => array_values($this->state->providerToolResults()) ?: null,
-                ]),
-            ));
+        $request->addMessage(new ToolResultMessage($toolResults));
+        $request->resetToolChoice();
 
-            $request->addMessage(new ToolResultMessage($toolResults));
-            $request->resetToolChoice();
+        yield from $this->continueOrEnd($request, $depth + 1, $additionalContent);
+    }
 
-            // Continue streaming if within step limit
-            $depth++;
-            if ($depth < $request->maxSteps()) {
-                $this->state->reset();
-                $nextResponse = $this->sendRequest($request);
-                yield from $this->processStream($nextResponse, $request, $depth);
-            } else {
-                yield $this->emitStreamEndEvent();
-            }
+    /**
+     * A long-running server tool paused the turn (`pause_turn`). The paused
+     * assistant content goes back unchanged so the model can resume the turn.
+     *
+     * @param  array<string, mixed>  $additionalContent
+     * @return Generator<StreamEvent>
+     */
+    protected function handlePause(Request $request, int $depth, array $additionalContent): Generator
+    {
+        $this->state->markStepFinished();
+        yield new StepFinishEvent(
+            id: EventID::generate(),
+            timestamp: time(),
+            usage: $this->state->stepUsage(),
+            additionalContent: $additionalContent,
+            finishReason: FinishReason::Pause,
+        );
+
+        $request->addMessage(new AssistantMessage(
+            content: $this->state->currentText(),
+            additionalContent: $additionalContent,
+        ));
+
+        yield from $this->continueOrEnd($request, $depth + 1, $additionalContent);
+    }
+
+    /**
+     * @param  array<string, mixed>  $additionalContent
+     * @return Generator<StreamEvent>
+     */
+    protected function continueOrEnd(Request $request, int $depth, array $additionalContent): Generator
+    {
+        if ($depth < $request->maxSteps()) {
+            $this->state->reset();
+            $nextResponse = $this->sendRequest($request);
+            yield from $this->processStream($nextResponse, $request, $depth);
+
+            return;
         }
+
+        yield $this->emitStreamEndEvent($additionalContent);
     }
 
     /**

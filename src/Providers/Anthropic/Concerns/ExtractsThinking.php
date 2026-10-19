@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Prism\Prism\Providers\Anthropic\Concerns;
 
 use Illuminate\Support\Arr;
+use Prism\Prism\Providers\Anthropic\Support\ContentBlocks;
 
 trait ExtractsThinking
 {
@@ -14,17 +15,23 @@ trait ExtractsThinking
      */
     protected function extractThinking(array $data): array
     {
-        // Read from the response, not from the options. A thinking shape Prism
-        // does not spell itself is still sent, and its block and signature have
-        // to come back for the next tool-use turn to be accepted.
-        $thinking = Arr::first(
-            data_get($data, 'content', []),
-            fn ($content): bool => data_get($content, 'type') === 'thinking'
+        $thinkingBlocks = ContentBlocks::thinkingBlocks(
+            ContentBlocks::servingBlocks(data_get($data, 'content') ?? [])
+        );
+
+        if ($thinkingBlocks === []) {
+            return [];
+        }
+
+        $firstThinking = Arr::first(
+            $thinkingBlocks,
+            fn (array $block): bool => ($block['type'] ?? null) === 'thinking'
         );
 
         return [
-            'thinking' => data_get($thinking, 'thinking'),
-            'thinking_signature' => data_get($thinking, 'signature'),
+            'thinking_blocks' => $thinkingBlocks,
+            'thinking' => $firstThinking['thinking'] ?? null,
+            'thinking_signature' => $firstThinking['signature'] ?? null,
         ];
     }
 }

@@ -11,10 +11,9 @@ use InvalidArgumentException;
 use Prism\Prism\Concerns\CallsTools;
 use Prism\Prism\Contracts\PrismRequest;
 use Prism\Prism\Enums\FinishReason;
-use Prism\Prism\Providers\Anthropic\Concerns\ExtractsCitations;
+use Prism\Prism\Providers\Anthropic\Concerns\ExtractsAdditionalContent;
 use Prism\Prism\Providers\Anthropic\Concerns\ExtractsProviderToolCalls;
 use Prism\Prism\Providers\Anthropic\Concerns\ExtractsText;
-use Prism\Prism\Providers\Anthropic\Concerns\ExtractsThinking;
 use Prism\Prism\Providers\Anthropic\Concerns\HandlesHttpRequests;
 use Prism\Prism\Providers\Anthropic\Concerns\ProcessesRateLimits;
 use Prism\Prism\Providers\Anthropic\Concerns\ResolvesThinking;
@@ -40,7 +39,7 @@ use Prism\Prism\ValueObjects\Usage;
 
 class Structured
 {
-    use CallsTools, ExtractsCitations, ExtractsProviderToolCalls, ExtractsText, ExtractsThinking, HandlesHttpRequests, ProcessesRateLimits, ResolvesThinking;
+    use CallsTools, ExtractsAdditionalContent, ExtractsProviderToolCalls, ExtractsText, HandlesHttpRequests, ProcessesRateLimits, ResolvesThinking;
 
     protected ResponseBuilder $responseBuilder;
 
@@ -56,26 +55,33 @@ class Structured
     {
         $this->resolveToolApprovals($this->request);
 
-        $this->strategy->appendMessages();
+        if ($this->responseBuilder->steps->isEmpty()) {
+            $this->strategy->appendMessages();
+        }
 
         $this->sendRequest();
 
+        $data = $this->httpResponse->json();
+
         $tempResponse = $this->buildTempResponse();
 
-        $toolCalls = $this->extractToolCalls($this->httpResponse->json());
+        $toolCalls = $this->extractToolCalls($data);
 
-        $responseMessage = new AssistantMessage(
-            content: $tempResponse->text,
+        $this->request->addMessage(new AssistantMessage(
+            content: $this->extractText($data),
             toolCalls: $toolCalls,
             additionalContent: $tempResponse->additionalContent
-        );
+        ));
 
-        $this->request->addMessage($responseMessage);
+        if ($tempResponse->finishReason === FinishReason::ToolCalls && $toolCalls !== []) {
+            return $this->handleToolCalls($toolCalls, $tempResponse);
+        }
 
-        return match ($tempResponse->finishReason) {
-            FinishReason::ToolCalls => $this->handleToolCalls($toolCalls, $tempResponse),
-            default => $this->handleStop($tempResponse),
-        };
+        if ($tempResponse->finishReason === FinishReason::Pause) {
+            return $this->handlePause($tempResponse);
+        }
+
+        return $this->handleStop($tempResponse);
     }
 
     /**
@@ -122,6 +128,7 @@ class Structured
             'output_config' => $request->providerOptions('effort') !== null
                 ? ['effort' => $request->providerOptions('effort')]
                 : null,
+            'fallbacks' => $request->providerOptions('fallbacks'),
         ]);
 
         return $structuredStrategy->mutatePayload($basePayload);
@@ -204,12 +211,7 @@ class Structured
 
         $this->attachApprovalRequests($approvalRequests, $tempResponse, $toolCalls);
 
-        $message = new ToolResultMessage($toolResults);
-        if ($toolResultCacheType = $this->request->providerOptions('tool_result_cache_type')) {
-            $message->withProviderOptions(['cacheType' => $toolResultCacheType]);
-        }
-
-        $this->request->addMessage($message);
+        $this->request->addMessage(new ToolResultMessage($toolResults));
         $this->request->resetToolChoice();
         $this->addStep($toolCalls, $tempResponse, $toolResults, $approvalRequests);
 
@@ -270,6 +272,22 @@ class Structured
     protected function canContinue(): bool
     {
         return $this->responseBuilder->steps->count() < $this->request->maxSteps();
+    }
+
+    /**
+     * A long-running server tool paused the turn (`pause_turn`). The paused
+     * assistant content is already on the request, so re-sending it lets the
+     * model resume the same turn.
+     */
+    protected function handlePause(Response $tempResponse): Response
+    {
+        $this->addStep([], $tempResponse);
+
+        if ($this->canContinue()) {
+            return $this->handle();
+        }
+
+        return $this->responseBuilder->toResponse();
     }
 
     protected function handleStop(Response $tempResponse): Response
@@ -388,41 +406,16 @@ class Structured
                 completionTokens: data_get($data, 'usage.output_tokens'),
                 cacheWriteInputTokens: data_get($data, 'usage.cache_creation_input_tokens'),
                 cacheReadInputTokens: data_get($data, 'usage.cache_read_input_tokens'),
-                thoughtTokens: data_get($data, 'usage.output_tokens_details.thinking_tokens')
+                thoughtTokens: data_get($data, 'usage.output_tokens_details.thinking_tokens'),
             ),
             meta: new Meta(
                 id: data_get($data, 'id'),
                 model: data_get($data, 'model'),
                 rateLimits: $this->processRateLimits($this->httpResponse)
             ),
-            additionalContent: Arr::whereNotNull([
-                'citations' => $this->extractCitations($data),
-                ...$this->extractThinking($data),
-            ])
+            additionalContent: $this->extractAdditionalContent($data)
         );
 
         return $this->strategy->mutateResponse($this->httpResponse, $baseResponse);
-    }
-
-    /**
-     * @param  array<string, mixed>  $data
-     * @return ToolCall[]
-     */
-    protected function extractToolCalls(array $data): array
-    {
-        $toolCalls = [];
-        $contents = data_get($data, 'content', []);
-
-        foreach ($contents as $content) {
-            if (data_get($content, 'type') === 'tool_use') {
-                $toolCalls[] = new ToolCall(
-                    id: data_get($content, 'id'),
-                    name: data_get($content, 'name'),
-                    arguments: data_get($content, 'input')
-                );
-            }
-        }
-
-        return $toolCalls;
     }
 }

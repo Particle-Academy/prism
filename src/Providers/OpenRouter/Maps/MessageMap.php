@@ -6,6 +6,7 @@ namespace Prism\Prism\Providers\OpenRouter\Maps;
 
 use BackedEnum;
 use Exception;
+use Prism\Prism\Concerns\FiltersEmptyValues;
 use Prism\Prism\Contracts\Message;
 use Prism\Prism\Providers\Support\Payload;
 use Prism\Prism\ValueObjects\Media\Audio;
@@ -21,6 +22,8 @@ use Prism\Prism\ValueObjects\ToolResult;
 
 class MessageMap
 {
+    use FiltersEmptyValues;
+
     /** @var array<int, mixed> */
     protected array $mappedMessages = [];
 
@@ -109,7 +112,7 @@ class MessageMap
                 // Only add cache_control to the last tool result
                 $isLastResult = $index === $totalResults - 1;
 
-                return Payload::compact([
+                return self::withoutEmptyValues([
                     'type' => 'tool_result',
                     'tool_call_id' => $toolResult->toolCallId,
                     'content' => $toolResult->result,
@@ -151,7 +154,7 @@ class MessageMap
         $this->mappedMessages[] = [
             'role' => 'user',
             'content' => [
-                Payload::compact([
+                self::withoutEmptyValues([
                     'type' => 'text',
                     'text' => $message->text(),
                     'cache_control' => $cacheControl,
@@ -185,7 +188,7 @@ class MessageMap
 
         // OpenRouter supports cache_control on assistant messages
         if ($cacheType && $message->content !== '') {
-            $this->mappedMessages[] = Payload::compact([
+            $this->mappedMessages[] = self::withoutEmptyValues([
                 'role' => 'assistant',
                 'content' => [
                     [
@@ -202,7 +205,7 @@ class MessageMap
                 'reasoning_details' => $reasoningDetails,
             ]);
         } else {
-            $this->mappedMessages[] = Payload::compact([
+            $this->mappedMessages[] = self::withoutEmptyValues([
                 'role' => 'assistant',
                 'content' => $message->content,
                 'tool_calls' => $toolCalls,

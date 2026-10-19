@@ -15,6 +15,7 @@ use Prism\Prism\Exceptions\PrismException;
 use Prism\Prism\Exceptions\PrismStreamDecodeException;
 use Prism\Prism\Providers\XAI\Concerns\ExtractsThinking;
 use Prism\Prism\Providers\XAI\Concerns\MapsFinishReason;
+use Prism\Prism\Providers\XAI\Concerns\MapsUsage;
 use Prism\Prism\Providers\XAI\Concerns\ValidatesResponses;
 use Prism\Prism\Providers\XAI\Maps\MessageMap;
 use Prism\Prism\Providers\XAI\Maps\ToolChoiceMap;
@@ -43,7 +44,7 @@ use Throwable;
 
 class Stream
 {
-    use CallsTools, ExtractsThinking, MapsFinishReason, ValidatesResponses;
+    use CallsTools, ExtractsThinking, MapsFinishReason, MapsUsage, ValidatesResponses;
 
     protected StreamState $state;
 
@@ -80,7 +81,7 @@ class Stream
         $text = '';
         $toolCalls = [];
         $finishReason = null;
-        $usage = null;
+        $usageSnapshot = null;
 
         while (! $response->getBody()->eof()) {
             $data = $this->parseNextDataLine($response->getBody());
@@ -88,6 +89,8 @@ class Stream
             if ($data === null) {
                 continue;
             }
+
+            $usageSnapshot = $this->extractUsage($data) ?? $usageSnapshot;
 
             if ($this->state->shouldEmitStreamStart()) {
                 $this->state
@@ -132,28 +135,17 @@ class Stream
                     delta: $thinkingContent,
                     reasoningId: $this->state->reasoningId()
                 );
-
-                continue;
             }
 
-            if ($this->state->hasThinkingStarted()) {
-                yield new ThinkingCompleteEvent(
-                    id: EventID::generate(),
-                    timestamp: time(),
-                    reasoningId: $this->state->reasoningId()
-                );
-                $this->state->resetTextState();
-            }
-
-            if ($this->hasToolCalls($data)) {
-                $toolCalls = $this->extractToolCalls($data, $toolCalls);
-
-                continue;
+            if ($thinkingContent === '') {
+                yield from $this->completeThinking();
             }
 
             $content = $this->extractContent($data);
 
             if ($content !== '') {
+                yield from $this->completeThinking();
+
                 if ($this->state->shouldEmitTextStart()) {
                     $this->state->markTextStarted();
 
@@ -174,37 +166,59 @@ class Stream
                 );
             }
 
+            if ($this->hasToolCalls($data)) {
+                $toolCalls = $this->extractToolCalls($data, $toolCalls);
+            }
+
             $rawFinishReason = data_get($data, 'choices.0.finish_reason');
             if ($rawFinishReason !== null) {
                 $finishReason = $this->extractFinishReason($data);
                 if ($finishReason instanceof FinishReason) {
                     $this->state->withFinishReason($finishReason);
                 }
-
-                $usage = $this->extractUsage($data);
-                if ($usage instanceof Usage) {
-                    $this->state->addUsage($usage);
-                }
             }
         }
 
-        if ($toolCalls !== []) {
-            if ($this->state->hasTextStarted() && $text !== '') {
-                $this->state->markTextCompleted();
+        yield from $this->completeOpenBlocks();
 
-                yield new TextCompleteEvent(
-                    id: EventID::generate(),
-                    timestamp: time(),
-                    messageId: $this->state->messageId()
-                );
-            }
+        $stepUsage = $this->recordStepUsage($usageSnapshot);
 
-            yield from $this->handleToolCalls($request, $text, $toolCalls, $depth);
+        if ($toolCalls !== [] && $finishReason === FinishReason::ToolCalls) {
+            yield from $this->handleToolCalls($request, $text, $toolCalls, $depth, $stepUsage);
 
             return;
         }
 
-        if ($this->state->hasTextStarted() && $text !== '') {
+        $this->state->withFinishReason($finishReason ?? FinishReason::Stop);
+        $this->state->markStepFinished();
+
+        // The step's own usage, null when it reported none (upstream #1043).
+        // Advancing the snapshot keeps the fork's HITL finish in CallsTools,
+        // which measures its step from the last finished one, from
+        // counting this step's usage again.
+        $this->state->takeStepUsage();
+
+        yield new StepFinishEvent(
+            id: EventID::generate(),
+            timestamp: time(),
+            usage: $stepUsage,
+            finishReason: $this->state->finishReason(),
+        );
+
+        yield $this->emitStreamEndEvent();
+    }
+
+    /**
+     * Closes the thinking and text this step started, each exactly once, before
+     * the step's tool calls or its StepFinishEvent.
+     *
+     * @return Generator<StreamEvent>
+     */
+    protected function completeOpenBlocks(): Generator
+    {
+        yield from $this->completeThinking();
+
+        if ($this->state->hasTextStarted()) {
             $this->state->markTextCompleted();
 
             yield new TextCompleteEvent(
@@ -213,15 +227,24 @@ class Stream
                 messageId: $this->state->messageId()
             );
         }
+    }
 
-        $this->state->markStepFinished();
-        yield new StepFinishEvent(
+    /**
+     * @return Generator<StreamEvent>
+     */
+    protected function completeThinking(): Generator
+    {
+        if (! $this->state->hasThinkingStarted()) {
+            return;
+        }
+
+        $this->state->markThinkingCompleted();
+
+        yield new ThinkingCompleteEvent(
             id: EventID::generate(),
             timestamp: time(),
-            usage: $this->state->takeStepUsage(),
+            reasoningId: $this->state->reasoningId()
         );
-
-        yield $this->emitStreamEndEvent();
     }
 
     protected function emitStreamEndEvent(): StreamEndEvent
@@ -302,7 +325,9 @@ class Stream
                 $toolCalls[$index]['name'] = $name;
             }
 
-            if ($arguments = data_get($deltaToolCall, 'function.arguments')) {
+            $arguments = data_get($deltaToolCall, 'function.arguments');
+
+            if (is_string($arguments) && $arguments !== '') {
                 $toolCalls[$index]['arguments'] .= $arguments;
             }
         }
@@ -315,7 +340,7 @@ class Stream
      */
     protected function extractContent(array $data): string
     {
-        return data_get($data, 'choices.0.delta.content', '');
+        return data_get($data, 'choices.0.delta.content') ?? '';
     }
 
     /**
@@ -334,20 +359,29 @@ class Stream
 
     /**
      * @param  array<string, mixed>  $data
+     * @return array<string, mixed>|null
      */
-    protected function extractUsage(array $data): ?Usage
+    protected function extractUsage(array $data): ?array
     {
         $usage = data_get($data, 'usage');
 
-        if ($usage === null) {
+        return is_array($usage) && $usage !== [] ? $usage : null;
+    }
+
+    /**
+     * @param  array<string, mixed>|null  $usageSnapshot
+     */
+    protected function recordStepUsage(?array $usageSnapshot): ?Usage
+    {
+        if ($usageSnapshot === null) {
             return null;
         }
 
-        return new Usage(
-            promptTokens: max(0, (int) data_get($usage, 'prompt_tokens', 0) - (int) data_get($usage, 'prompt_tokens_details.cached_tokens', 0)),
-            completionTokens: (int) data_get($usage, 'completion_tokens', 0),
-            cacheReadInputTokens: (int) data_get($usage, 'prompt_tokens_details.cached_tokens', 0) ?: null,
-        );
+        $stepUsage = $this->mapUsage($usageSnapshot);
+
+        $this->state->addUsage($stepUsage);
+
+        return $stepUsage;
     }
 
     /**
@@ -358,7 +392,8 @@ class Stream
         Request $request,
         string $text,
         array $toolCalls,
-        int $depth
+        int $depth,
+        ?Usage $stepUsage = null,
     ): Generator {
         $mappedToolCalls = $this->mapToolCalls($toolCalls);
 
@@ -384,11 +419,20 @@ class Stream
             return;
         }
 
+        $this->state->withFinishReason(FinishReason::ToolCalls);
         $this->state->markStepFinished();
+
+        // The step's own usage, null when it reported none (upstream #1043).
+        // Advancing the snapshot keeps the fork's HITL finish in CallsTools,
+        // which measures its step from the last finished one, from
+        // counting this step's usage again.
+        $this->state->takeStepUsage();
+
         yield new StepFinishEvent(
             id: EventID::generate(),
             timestamp: time(),
-            usage: $this->state->takeStepUsage(),
+            usage: $stepUsage,
+            finishReason: FinishReason::ToolCalls,
         );
 
         $request->addMessage(new AssistantMessage($text, $mappedToolCalls));

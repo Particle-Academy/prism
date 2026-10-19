@@ -11,6 +11,8 @@ use Prism\Prism\Events\Telemetry\GenerationFailed;
 use Prism\Prism\Exceptions\PrismRateLimitedException;
 use Prism\Prism\Exceptions\PrismRunException;
 use Prism\Prism\Facades\Prism;
+use Prism\Prism\Streaming\Events\StepFinishEvent;
+use Prism\Prism\Streaming\Events\StepStartEvent;
 use Prism\Prism\Streaming\Events\StreamEndEvent;
 use Prism\Prism\Streaming\Events\StreamEvent;
 use Prism\Prism\Streaming\Events\StreamStartEvent;
@@ -56,10 +58,10 @@ it('throws typed diagnostics after provisional deltas on an unsuccessful stream'
     }
 
     expect(array_map(fn (StreamEvent $event): string => $event::class, $events))->toBe([
-        StreamStartEvent::class, TextStartEvent::class, TextDeltaEvent::class,
+        StreamStartEvent::class, StepStartEvent::class, TextStartEvent::class, TextDeltaEvent::class,
     ]);
-    expect($events[1]->messageId)->toBe($events[2]->messageId)
-        ->and($events[2]->delta)->toBe('Private partial finding');
+    expect($events[2]->messageId)->toBe($events[3]->messageId)
+        ->and($events[3]->delta)->toBe('Private partial finding');
     Event::assertNotDispatched(GenerationCompleted::class);
     Event::assertDispatchedTimes(GenerationFailed::class, 1);
 })->with(['nested', 'flat'])->with(['incomplete', 'failed', 'cancelled'])->with([false, true]);
@@ -85,7 +87,7 @@ it('cannot mistake an unsuccessful terminal type for success when snapshot statu
             ->and($exception->output())->toBe([])
             ->and($exception->citations())->toBe([]);
     }
-    expect(array_map(fn (StreamEvent $event): string => $event::class, $events))->toBe([StreamStartEvent::class]);
+    expect(array_map(fn (StreamEvent $event): string => $event::class, $events))->toBe([StreamStartEvent::class, StepStartEvent::class]);
 })->with([null, 'completed']);
 
 it('ends a successful stream once with usage from its terminal snapshot', function (string $shape): void {
@@ -96,12 +98,15 @@ it('ends a successful stream once with usage from its terminal snapshot', functi
     $events = iterator_to_array(Prism::text()->using(Provider::Perplexity, 'sonar')->withPrompt('Research')->asStream());
 
     expect(array_map(fn (StreamEvent $event): string => $event::class, $events))->toBe([
-        StreamStartEvent::class, TextStartEvent::class, TextDeltaEvent::class, TextCompleteEvent::class, StreamEndEvent::class,
+        StreamStartEvent::class, StepStartEvent::class, TextStartEvent::class, TextDeltaEvent::class,
+        TextCompleteEvent::class, StepFinishEvent::class, StreamEndEvent::class,
     ]);
-    expect($events[4]->finishReason)->toBe(FinishReason::Stop)
-        ->and($events[4]->usage->promptTokens)->toBe(12)
-        ->and($events[4]->usage->completionTokens)->toBe(8)
-        ->and($events[4]->usage->cost)->toBe(0.01);
+    expect($events[6]->finishReason)->toBe(FinishReason::Stop)
+        ->and($events[6]->usage->promptTokens)->toBe(12)
+        ->and($events[6]->usage->completionTokens)->toBe(8)
+        ->and($events[6]->usage->cost)->toBe(0.01)
+        ->and($events[5]->finishReason)->toBe(FinishReason::Stop)
+        ->and($events[5]->usage->cost)->toBe(0.01);
 })->with(['nested', 'flat']);
 
 it('ends an unknown non-progress status with Unknown rather than dropping the ending', function (bool $nested): void {
@@ -115,9 +120,10 @@ it('ends an unknown non-progress status with Unknown rather than dropping the en
 
     $events = iterator_to_array(Prism::text()->using(Provider::Perplexity, 'sonar')->withPrompt('Research')->asStream());
     expect(array_map(fn (StreamEvent $event): string => $event::class, $events))->toBe([
-        StreamStartEvent::class, TextStartEvent::class, TextDeltaEvent::class, TextCompleteEvent::class, StreamEndEvent::class,
-    ])->and($events[4]->finishReason)->toBe(FinishReason::Unknown)
-        ->and($events[4]->usage->promptTokens)->toBe(12);
+        StreamStartEvent::class, StepStartEvent::class, TextStartEvent::class, TextDeltaEvent::class,
+        TextCompleteEvent::class, StepFinishEvent::class, StreamEndEvent::class,
+    ])->and($events[6]->finishReason)->toBe(FinishReason::Unknown)
+        ->and($events[6]->usage->promptTokens)->toBe(12);
 })->with([false, true]);
 
 it('preserves rate-limit backoff classification even on a failed terminal snapshot', function (bool $nested, bool $outerError): void {

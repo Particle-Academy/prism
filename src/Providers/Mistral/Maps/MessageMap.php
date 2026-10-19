@@ -5,8 +5,8 @@ declare(strict_types=1);
 namespace Prism\Prism\Providers\Mistral\Maps;
 
 use Exception;
+use Prism\Prism\Concerns\FiltersEmptyValues;
 use Prism\Prism\Contracts\Message;
-use Prism\Prism\Providers\Support\Payload;
 use Prism\Prism\ValueObjects\Media\Document;
 use Prism\Prism\ValueObjects\Media\Image;
 use Prism\Prism\ValueObjects\Messages\AssistantMessage;
@@ -17,6 +17,8 @@ use Prism\Prism\ValueObjects\ToolCall;
 
 class MessageMap
 {
+    use FiltersEmptyValues;
+
     /** @var array<int, mixed> */
     protected array $mappedMessages = [];
 
@@ -101,7 +103,7 @@ class MessageMap
             ],
         ], $message->toolCalls);
 
-        $this->mappedMessages[] = Payload::compact([
+        $this->mappedMessages[] = self::withoutEmptyValues([
             'role' => 'assistant',
             'content' => $message->content,
             'tool_calls' => $toolCalls,

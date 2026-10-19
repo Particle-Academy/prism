@@ -54,6 +54,12 @@ class Anthropic extends Provider
 {
     use InitializesClient, ProcessesRateLimits;
 
+    public const FALLBACKS_BETA = 'server-side-fallback-2026-07-01';
+
+    public const THINKING_DISPLAY_UPDATES_BETA = 'thinking-display-updates-2026-08-18';
+
+    public const THINKING_BINDING_CONTROLS_BETA = 'thinking-binding-controls-2026-08-01';
+
     public function __construct(
         #[\SensitiveParameter] public readonly string $apiKey,
         public readonly string $apiVersion,
@@ -68,7 +74,7 @@ class Anthropic extends Provider
             $this->client(
                 $request->clientOptions(),
                 $request->clientRetry(),
-                betaFeatures: $this->requestBetaFeatures($request)
+                betaFeatures: $this->betaFeaturesFor($request),
             ),
             $request
         );
@@ -83,7 +89,7 @@ class Anthropic extends Provider
             $this->client(
                 $request->clientOptions(),
                 $request->clientRetry(),
-                betaFeatures: $this->requestBetaFeatures($request)
+                betaFeatures: $this->betaFeaturesFor($request),
             ),
             $request
         );
@@ -100,7 +106,7 @@ class Anthropic extends Provider
         $handler = new Stream($this->client(
             $request->clientOptions(),
             $request->clientRetry(),
-            betaFeatures: $this->requestBetaFeatures($request)
+            betaFeatures: $this->betaFeaturesFor($request),
         ));
 
         return $handler->handle($request);
@@ -184,6 +190,32 @@ class Anthropic extends Provider
         };
     }
 
+    /**
+     * The configured `anthropic_beta` list, the request's own `anthropic_beta`
+     * provider option, and the betas a request's other provider options
+     * require, comma separated and de-duplicated in a stable order.
+     */
+    public function betaFeaturesFor(TextRequest|StructuredRequest $request): ?string
+    {
+        $betas = $this->requestBetaFeatures($request);
+
+        if ($request->providerOptions('fallbacks') !== null) {
+            $betas[] = self::FALLBACKS_BETA;
+        }
+
+        if ($request->providerOptions('thinking.display') === 'updates') {
+            $betas[] = self::THINKING_DISPLAY_UPDATES_BETA;
+        }
+
+        if ($request->providerOptions('thinking.block_binding') !== null) {
+            $betas[] = self::THINKING_BINDING_CONTROLS_BETA;
+        }
+
+        $betas = array_values(array_unique(array_filter($betas, fn (string $beta): bool => $beta !== '')));
+
+        return $betas === [] ? null : implode(',', $betas);
+    }
+
     protected function handleResponseErrors(RequestException $e): never
     {
         $data = $e->response->json() ?? [];
@@ -215,21 +247,21 @@ class Anthropic extends Provider
     }
 
     /**
-     * Merge config-level beta features with per-request ones supplied via
+     * Config-level beta features merged with per-request ones supplied via
      * withProviderOptions(['anthropic_beta' => 'skills-2025-10-02']) — a
-     * comma-separated string or an array of feature flags.
+     * comma-separated string or an array of feature flags. A per-request
+     * string merges with the configured list rather than replacing it.
+     *
+     * @return array<int, string>
      */
-    protected function requestBetaFeatures(TextRequest|StructuredRequest $request): ?string
+    protected function requestBetaFeatures(TextRequest|StructuredRequest $request): array
     {
         $requested = $request->providerOptions('anthropic_beta');
 
-        $merged = collect([$this->betaFeatures])
+        return collect([$this->betaFeatures])
             ->merge(is_array($requested) ? $requested : [$requested])
             ->flatMap(fn (mixed $value): array => is_string($value) ? array_map(trim(...), explode(',', $value)) : [])
-            ->filter()
-            ->unique()
-            ->implode(',');
-
-        return $merged === '' ? null : $merged;
+            ->values()
+            ->all();
     }
 }

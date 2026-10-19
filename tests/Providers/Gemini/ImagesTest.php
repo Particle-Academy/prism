@@ -335,3 +335,37 @@ it('refuses a url input image for generation without fetching it', function (): 
 
     Http::assertSentCount(0);
 });
+
+it('maps image token usage with thoughts and cached input like text', function (): void {
+    Http::fake([
+        '*' => Http::response([
+            'candidates' => [[
+                'content' => ['parts' => [['inlineData' => ['mimeType' => 'image/png', 'data' => base64_encode('png')]]], 'role' => 'model'],
+                'finishReason' => 'STOP',
+                'index' => 0,
+            ]],
+            'usageMetadata' => [
+                'promptTokenCount' => 300,
+                'cachedContentTokenCount' => 256,
+                'candidatesTokenCount' => 1290,
+                'thoughtsTokenCount' => 120,
+                'totalTokenCount' => 1710,
+            ],
+            'modelVersion' => 'gemini-3-pro-image-preview',
+        ]),
+    ])->preventStrayRequests();
+
+    $response = Prism::image()
+        ->using(Provider::Gemini, 'gemini-3-pro-image-preview')
+        ->withPrompt('A outsized soda can floating in space')
+        ->generate();
+
+    expect($response->usage->toArray())->toBe([
+        'prompt_tokens' => 44,
+        'completion_tokens' => 1410,
+        'cache_write_input_tokens' => null,
+        'cache_read_input_tokens' => 256,
+        'thought_tokens' => 120,
+        'cost' => null,
+    ]);
+});

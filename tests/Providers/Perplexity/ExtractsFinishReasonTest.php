@@ -29,6 +29,31 @@ it('extracts finish reason correctly from response data', function (array $data,
         'data' => ['status' => 'incomplete'],
         'expected' => FinishReason::Unknown,
     ],
+    'sonar-shaped length finish reason' => [
+        'data' => [
+            'choices' => [
+                ['finish_reason' => 'length'],
+            ],
+        ],
+        'expected' => FinishReason::Length,
+    ],
+    'sonar-shaped undocumented finish reason' => [
+        'data' => [
+            'choices' => [
+                ['finish_reason' => 'content_filter'],
+            ],
+        ],
+        'expected' => FinishReason::Unknown,
+    ],
+    'run status wins over a per-choice finish reason' => [
+        'data' => [
+            'status' => 'incomplete',
+            'choices' => [
+                ['finish_reason' => 'length'],
+            ],
+        ],
+        'expected' => FinishReason::Unknown,
+    ],
     'unrecognised status' => [
         'data' => ['status' => 'something_new'],
         'expected' => FinishReason::Unknown,

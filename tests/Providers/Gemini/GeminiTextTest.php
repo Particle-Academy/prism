@@ -809,30 +809,6 @@ describe('Flex Inference for Gemini', function (): void {
     });
 });
 
-it('excludes implicitly cached tokens from promptTokens', function (): void {
-    Http::fake([
-        '*' => Http::response([
-            'candidates' => [[
-                'content' => ['parts' => [['text' => 'Hello!']], 'role' => 'model'],
-                'finishReason' => 'STOP',
-            ]],
-            'usageMetadata' => [
-                'promptTokenCount' => 100,
-                'cachedContentTokenCount' => 60,
-                'candidatesTokenCount' => 10,
-            ],
-        ]),
-    ])->preventStrayRequests();
-
-    $response = Prism::text()
-        ->using(Provider::Gemini, 'gemini-2.5-flash')
-        ->withPrompt('Hello')
-        ->asText();
-
-    expect($response->usage->promptTokens)->toBe(40)
-        ->and($response->usage->cacheReadInputTokens)->toBe(60);
-});
-
 // prism#82. CONTINUATION means the per-request token limit was reached and the
 // answer is NOT finished. Reported as Other, a cut-off answer looked complete to
 // a caller checking for Length.
@@ -853,4 +829,82 @@ it('reports a CONTINUATION finish as Length so truncation is visible', function 
         ->asText();
 
     expect($response->finishReason)->toBe(FinishReason::Length);
+});
+
+describe('Usage for Gemini', function (): void {
+    it('adds tool-use input to the prompt and thoughts to the completion', function (): void {
+        FixtureResponse::fakeResponseSequence('*', 'gemini/generate-text-with-file-search');
+
+        $response = Prism::text()
+            ->using(Provider::Gemini, 'gemini-2.5-flash')
+            ->withPrompt('What are the main topics covered in the documents?')
+            ->withProviderTools([new ProviderTool(type: 'file_search', name: 'file_search')])
+            ->asText();
+
+        expect($response->usage->toArray())->toBe([
+            'prompt_tokens' => 116,
+            'completion_tokens' => 242,
+            'cache_write_input_tokens' => null,
+            'cache_read_input_tokens' => null,
+            'thought_tokens' => 187,
+            'cost' => null,
+        ]);
+    });
+
+    it('counts thoughts as completion tokens', function (): void {
+        FixtureResponse::fakeResponseSequence('*', 'gemini/generate-text-with-a-prompt-with-thinking-budget');
+
+        $response = Prism::text()
+            ->using(Provider::Gemini, 'gemini-2.5-flash-preview')
+            ->withPrompt('Explain the concept of Occam\'s Razor and provide a simple, everyday example.')
+            ->asText();
+
+        expect($response->usage->completionTokens)->toBe(1701)
+            ->and($response->usage->thoughtTokens)->toBe(1209)
+            ->and($response->usage->promptTokens)->toBe(17);
+    });
+
+    it('takes implicit cache hits out of the prompt without a cached content name', function (): void {
+        Http::fake([
+            '*' => Http::response([
+                'candidates' => [['content' => ['parts' => [['text' => 'Hi']], 'role' => 'model'], 'finishReason' => 'STOP', 'index' => 0]],
+                'usageMetadata' => ['promptTokenCount' => 1000, 'cachedContentTokenCount' => 900, 'candidatesTokenCount' => 10, 'totalTokenCount' => 1010],
+                'modelVersion' => 'gemini-2.5-flash',
+            ]),
+        ])->preventStrayRequests();
+
+        $response = Prism::text()
+            ->using(Provider::Gemini, 'gemini-2.5-flash')
+            ->withPrompt('Hi')
+            ->asText();
+
+        expect($response->usage->promptTokens)->toBe(100)
+            ->and($response->usage->cacheReadInputTokens)->toBe(900)
+            ->and($response->usage->completionTokens)->toBe(10)
+            ->and($response->usage->thoughtTokens)->toBeNull();
+    });
+
+    it('keeps reported zeros apart from fields that were not reported', function (): void {
+        Http::fake([
+            '*' => Http::response([
+                'candidates' => [['content' => ['parts' => [['text' => 'Hi']], 'role' => 'model'], 'finishReason' => 'STOP', 'index' => 0]],
+                'usageMetadata' => ['promptTokenCount' => 4, 'cachedContentTokenCount' => 0, 'candidatesTokenCount' => 2, 'thoughtsTokenCount' => 0, 'totalTokenCount' => 6],
+                'modelVersion' => 'gemini-2.5-flash',
+            ]),
+        ])->preventStrayRequests();
+
+        $response = Prism::text()
+            ->using(Provider::Gemini, 'gemini-2.5-flash')
+            ->withPrompt('Hi')
+            ->asText();
+
+        expect($response->usage->toArray())->toBe([
+            'prompt_tokens' => 4,
+            'completion_tokens' => 2,
+            'cache_write_input_tokens' => null,
+            'cache_read_input_tokens' => 0,
+            'thought_tokens' => 0,
+            'cost' => null,
+        ]);
+    });
 });

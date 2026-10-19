@@ -15,12 +15,14 @@ use Prism\Prism\Enums\StructuredMode;
 use Prism\Prism\Exceptions\PrismException;
 use Prism\Prism\Providers\OpenAI\Concerns\ExtractsCitations;
 use Prism\Prism\Providers\OpenAI\Concerns\MapsFinishReason;
+use Prism\Prism\Providers\OpenAI\Concerns\MapsUsage;
 use Prism\Prism\Providers\OpenAI\Concerns\ProcessRateLimits;
 use Prism\Prism\Providers\OpenAI\Concerns\ValidatesResponse;
 use Prism\Prism\Providers\OpenAI\Maps\MessageMap;
 use Prism\Prism\Providers\OpenAI\Maps\ToolCallMap;
 use Prism\Prism\Providers\OpenAI\Maps\ToolChoiceMap;
 use Prism\Prism\Providers\OpenAI\Maps\ToolMap;
+use Prism\Prism\Providers\OpenAI\Support\OutputItems;
 use Prism\Prism\Providers\OpenAI\Support\StructuredModeResolver;
 use Prism\Prism\Structured\Request;
 use Prism\Prism\Structured\Response as StructuredResponse;
@@ -33,7 +35,6 @@ use Prism\Prism\ValueObjects\Meta;
 use Prism\Prism\ValueObjects\ProviderTool;
 use Prism\Prism\ValueObjects\ToolApprovalRequest;
 use Prism\Prism\ValueObjects\ToolResult;
-use Prism\Prism\ValueObjects\Usage;
 
 class Structured
 {
@@ -42,6 +43,7 @@ class Structured
     use HandlesStructuredJson;
     use ManagesStructuredSteps;
     use MapsFinishReason;
+    use MapsUsage;
     use ProcessRateLimits;
     use ValidatesResponse;
 
@@ -67,29 +69,30 @@ class Structured
 
         $data = $response->json();
 
-        $this->handleRefusal(data_get($data, 'output.{last}.content.0', []));
+        /** @var array<array-key, mixed> $output */
+        $output = data_get($data, 'output', []);
 
-        $toolCalls = ToolCallMap::map(
-            $this->extractFunctionCalls($data),
-            $this->extractReasoningOutput($data),
-        );
+        $finishReason = $this->mapFinishReason($data);
 
-        $responseMessage = new AssistantMessage(
-            content: data_get($data, 'output.{last}.content.0.text') ?? '',
-            toolCalls: $toolCalls,
-        );
+        $request->addMessage(new AssistantMessage(
+            content: OutputItems::text($output),
+            toolCalls: $finishReason === FinishReason::ToolCalls
+                ? ToolCallMap::map($this->extractFunctionCalls($data), $this->extractReasoningOutput($data))
+                : [],
+            additionalContent: OutputItems::replayContent($output, $finishReason),
+        ));
 
-        $request->addMessage($responseMessage);
-
-        return match ($finishReason = $this->mapFinishReason($data)) {
-            FinishReason::ToolCalls => $this->handleToolCalls($data, $request, $response),
-            FinishReason::Length => throw new PrismException(sprintf(
+        if ($this->exceededMaxOutputTokens($data, $finishReason)) {
+            throw new PrismException(sprintf(
                 'OpenAI: max tokens exceeded (status: %s, type: %s). If using a reasoning model, increase max_tokens to account for internal reasoning token usage.',
                 data_get($data, 'output.{last}.status', 'n/a'),
                 data_get($data, 'output.{last}.type', 'n/a'),
-            )),
-            default => $this->handleFinalStop($data, $request, $response),
-        };
+            ));
+        }
+
+        return $finishReason === FinishReason::ToolCalls
+            ? $this->handleToolCalls($data, $request, $response)
+            : $this->handleFinalStop($data, $request, $response);
     }
 
     /**
@@ -148,6 +151,9 @@ class Structured
         $finishReason = $this->mapFinishReason($data);
         $isStructuredStep = $finishReason !== FinishReason::ToolCalls;
 
+        /** @var array<array-key, mixed> $output */
+        $output = data_get($data, 'output', []);
+
         $toolCalls = $finishReason === FinishReason::ToolCalls
             ? ToolCallMap::map(
                 $this->extractFunctionCalls($data),
@@ -155,15 +161,12 @@ class Structured
             )
             : [];
 
+        $text = $isStructuredStep ? OutputItems::finalMessageText($output) : OutputItems::text($output);
+
         $this->responseBuilder->addStep(new Step(
-            text: data_get($data, 'output.{last}.content.0.text') ?? '',
+            text: $text,
             finishReason: $finishReason,
-            usage: new Usage(
-                promptTokens: data_get($data, 'usage.input_tokens', 0) - data_get($data, 'usage.input_tokens_details.cached_tokens', 0),
-                completionTokens: data_get($data, 'usage.output_tokens'),
-                cacheReadInputTokens: data_get($data, 'usage.input_tokens_details.cached_tokens'),
-                thoughtTokens: data_get($data, 'usage.output_tokens_details.reasoning_tokens'),
-            ),
+            usage: $this->mapUsage($data),
             meta: new Meta(
                 id: data_get($data, 'id'),
                 model: data_get($data, 'model'),
@@ -172,10 +175,13 @@ class Structured
             ),
             messages: $request->messages(),
             systemPrompts: $request->systemPrompts(),
-            additionalContent: Arr::whereNotNull([
-                'citations' => $this->extractCitations($data),
-            ]),
-            structured: $isStructuredStep ? $this->extractStructuredData(data_get($data, 'output.{last}.content.0.text') ?? '') : [],
+            additionalContent: [
+                ...Arr::whereNotNull([
+                    'citations' => $this->extractCitations($data),
+                ]),
+                ...OutputItems::replayContent($output, $finishReason),
+            ],
+            structured: $isStructuredStep && $finishReason !== FinishReason::Refusal ? $this->extractStructuredData($text) : [],
             toolCalls: $toolCalls,
             toolResults: $toolResults,
             raw: $data,
@@ -191,7 +197,7 @@ class Structured
     {
         return array_filter(
             data_get($data, 'output', []),
-            fn (array $output): bool => $output['type'] === 'function_call'
+            fn (array $output): bool => ($output['type'] ?? null) === 'function_call'
         );
     }
 
@@ -203,7 +209,7 @@ class Structured
     {
         return array_filter(
             data_get($data, 'output', []),
-            fn (array $output): bool => $output['type'] === 'reasoning'
+            fn (array $output): bool => ($output['type'] ?? null) === 'reasoning'
         );
     }
 
@@ -256,12 +262,6 @@ class Structured
 
     protected function handleStructuredMode(Request $request): ClientResponse
     {
-        $mode = StructuredModeResolver::forModel($request->model());
-
-        if ($mode !== StructuredMode::Structured) {
-            throw new PrismException(sprintf('%s model does not support structured mode', $request->model()));
-        }
-
         /** @var array{type: 'json_schema', name: string, schema: array<mixed>, strict?: bool} $responseFormat */
         $responseFormat = Arr::whereNotNull([
             'type' => 'json_schema',
@@ -282,16 +282,6 @@ class Structured
         return $this->sendRequest($request, [
             'type' => 'json_object',
         ]);
-    }
-
-    /**
-     * @param  array<string, string>  $message
-     */
-    protected function handleRefusal(array $message): void
-    {
-        if (data_get($message, 'type') === 'refusal') {
-            throw new PrismException(sprintf('OpenAI Refusal: %s', $message['refusal'] ?? 'Reason unknown.'));
-        }
     }
 
     protected function appendMessageForJsonMode(Request $request): Request

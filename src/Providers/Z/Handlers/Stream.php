@@ -17,6 +17,7 @@ use Prism\Prism\Enums\Provider;
 use Prism\Prism\Exceptions\PrismException;
 use Prism\Prism\Exceptions\PrismStreamDecodeException;
 use Prism\Prism\Providers\Z\Concerns\MapsFinishReason;
+use Prism\Prism\Providers\Z\Concerns\MapsUsage;
 use Prism\Prism\Providers\Z\Maps\MessageMap;
 use Prism\Prism\Providers\Z\Maps\ToolChoiceMap;
 use Prism\Prism\Providers\Z\Maps\ToolMap;
@@ -24,6 +25,7 @@ use Prism\Prism\Streaming\EventID;
 use Prism\Prism\Streaming\Events\StepFinishEvent;
 use Prism\Prism\Streaming\Events\StepStartEvent;
 use Prism\Prism\Streaming\Events\StreamEndEvent;
+use Prism\Prism\Streaming\Events\StreamEvent;
 use Prism\Prism\Streaming\Events\StreamStartEvent;
 use Prism\Prism\Streaming\Events\TextCompleteEvent;
 use Prism\Prism\Streaming\Events\TextDeltaEvent;
@@ -39,7 +41,7 @@ use Psr\Http\Message\StreamInterface;
 
 class Stream
 {
-    use CallsTools, MapsFinishReason;
+    use CallsTools, MapsFinishReason, MapsUsage;
 
     protected StreamState $state;
 
@@ -77,10 +79,8 @@ class Stream
 
         $text = '';
         $toolCalls = [];
-
-        // The latest usage THIS response reported. Recorded once, at whichever
-        // exit the response takes -- see recordResponseUsage().
-        $responseUsage = null;
+        $stepFinishReason = null;
+        $usageSnapshot = null;
 
         while (! $response->getBody()->eof()) {
             $data = $this->parseNextDataLine($response->getBody());
@@ -90,26 +90,12 @@ class Stream
             }
 
             // Usage is read from WHICHEVER chunk carries it, before any branch
-            // below can return or `continue` past it.
-            //
-            // Z.ai documents that `finish_reason` and `usage` appear only on the
-            // LAST chunk, so on a tool-calling turn usage rides on the
-            // `finish_reason: "tool_calls"` chunk. This handler used to read it
-            // only in the branch for chunks WITHOUT a tool-call delta -- and the
-            // tool-call branch returns first. Whether that lost the step's usage
-            // depended on whether Z also put the tool call on that last chunk,
-            // which Z does not document (and Prism never sends `tool_stream`, so
-            // tool calls are not streamed piece by piece). Measured on both
-            // shapes: one lost it, one did not. Reading it here makes the shape
-            // irrelevant.
-            //
-            // KEPT, NOT SUMMED. Z.ai sends usage once, but `Z_URL` is
-            // configurable and an OpenAI-compatible server may report RUNNING
-            // TOTALS on several chunks; adding each one over-counted such a
-            // server, which the old finish-chunk-only read did not. The latest
-            // report is the response's total either way, and it is recorded
-            // once, when the response ends.
-            $responseUsage = $this->extractUsage($data) ?? $responseUsage;
+            // below can skip it (fork #60): on a tool-calling turn Z.ai puts it
+            // on the `finish_reason: "tool_calls"` chunk. KEPT, NOT SUMMED: an
+            // OpenAI-compatible server behind a configurable `Z_URL` may report
+            // running totals on several chunks, so the latest report is the
+            // response's total, recorded once when the step ends.
+            $usageSnapshot = $this->extractUsage($data) ?? $usageSnapshot;
 
             if ($this->state->shouldEmitStreamStart()) {
                 yield new StreamStartEvent(
@@ -120,8 +106,6 @@ class Stream
                 );
 
                 $this->state->markStreamStarted();
-
-                continue;
             }
 
             if ($this->state->shouldEmitStepStart()) {
@@ -131,32 +115,6 @@ class Stream
                     id: EventID::generate(),
                     timestamp: time(),
                 );
-            }
-
-            if ($this->hasToolCalls($data)) {
-                $toolCalls = $this->extractToolCalls($data, $toolCalls);
-
-                $rawFinishReason = data_get($data, 'choices.0.finish_reason');
-
-                if ($rawFinishReason === 'tool_calls') {
-                    if ($this->state->hasTextStarted() && $text !== '') {
-                        $this->state->markTextCompleted();
-
-                        yield new TextCompleteEvent(
-                            id: EventID::generate(),
-                            timestamp: time(),
-                            messageId: $this->state->messageId(),
-                        );
-                    }
-
-                    $this->recordResponseUsage($responseUsage);
-
-                    yield from $this->handleToolCalls($request, $text, $toolCalls, $depth);
-
-                    return;
-                }
-
-                continue;
             }
 
             $content = $this->extractContentDelta($data);
@@ -180,8 +138,10 @@ class Stream
                     delta: $content,
                     messageId: $this->state->messageId(),
                 );
+            }
 
-                continue;
+            if ($this->hasToolCalls($data)) {
+                $toolCalls = $this->extractToolCalls($data, $toolCalls);
             }
 
             $rawFinishReason = data_get($data, 'choices.0.finish_reason');
@@ -189,53 +149,61 @@ class Stream
             if ($rawFinishReason !== null) {
                 $finishReason = $this->mapFinishReason($data);
 
-                if ($this->state->hasTextStarted() && $text !== '') {
-                    $this->state->markTextCompleted();
-
-                    yield new TextCompleteEvent(
-                        id: EventID::generate(),
-                        timestamp: time(),
-                        messageId: $this->state->messageId(),
-                    );
-                }
+                yield from $this->completeText();
 
                 $this->state->withFinishReason($finishReason);
+                $stepFinishReason = $finishReason;
             }
         }
 
-        // Every path out of the loop from here -- tool calls or a finished
-        // step -- records this response's usage exactly once. The in-loop
-        // tool-call return above is the only other exit, and it records its own.
-        $this->recordResponseUsage($responseUsage);
+        yield from $this->completeText();
 
-        if ($toolCalls !== []) {
-            yield from $this->handleToolCalls($request, $text, $toolCalls, $depth);
+        $stepUsage = $this->recordStepUsage($usageSnapshot);
+
+        if ($toolCalls !== [] && $stepFinishReason === FinishReason::ToolCalls) {
+            yield from $this->handleToolCalls($request, $text, $toolCalls, $depth, $stepUsage);
 
             return;
         }
 
+        $this->state->withFinishReason($stepFinishReason ?? FinishReason::Stop);
         $this->state->markStepFinished();
+
+        // The step's own usage, null when it reported none (upstream #1043).
+        // Advancing the snapshot keeps the fork's HITL finish in CallsTools,
+        // which measures its step from the last finished one, from
+        // counting this step's usage again.
+        $this->state->takeStepUsage();
 
         yield new StepFinishEvent(
             id: EventID::generate(),
             timestamp: time(),
-            usage: $this->state->takeStepUsage(),
+            usage: $stepUsage,
+            finishReason: $this->state->finishReason(),
         );
 
         yield $this->emitStreamEndEvent();
     }
 
     /**
-     * Add one response's usage to the turn's running total.
+     * Closes the text this step started, once, before its tool calls or its
+     * StepFinishEvent.
      *
-     * One response, one call: the running total accumulates across the steps
-     * of a tool loop, and each step contributes its own response's usage once.
+     * @return Generator<StreamEvent>
      */
-    protected function recordResponseUsage(?Usage $usage): void
+    protected function completeText(): Generator
     {
-        if ($usage instanceof Usage) {
-            $this->state->addUsage($usage);
+        if (! $this->state->hasTextStarted()) {
+            return;
         }
+
+        $this->state->markTextCompleted();
+
+        yield new TextCompleteEvent(
+            id: EventID::generate(),
+            timestamp: time(),
+            messageId: $this->state->messageId(),
+        );
     }
 
     protected function emitStreamEndEvent(): StreamEndEvent
@@ -310,7 +278,9 @@ class Stream
                 $toolCalls[$index]['name'] = $name;
             }
 
-            if ($arguments = data_get($deltaToolCall, 'function.arguments')) {
+            $arguments = data_get($deltaToolCall, 'function.arguments');
+
+            if (is_string($arguments) && $arguments !== '') {
                 $toolCalls[$index]['arguments'] .= $arguments;
             }
         }
@@ -336,20 +306,29 @@ class Stream
 
     /**
      * @param  array<string, mixed>  $data
+     * @return array<string, mixed>|null
      */
-    protected function extractUsage(array $data): ?Usage
+    protected function extractUsage(array $data): ?array
     {
         $usage = data_get($data, 'usage');
 
-        if (! $usage) {
+        return is_array($usage) && $usage !== [] ? $usage : null;
+    }
+
+    /**
+     * @param  array<string, mixed>|null  $usageSnapshot
+     */
+    protected function recordStepUsage(?array $usageSnapshot): ?Usage
+    {
+        if ($usageSnapshot === null) {
             return null;
         }
 
-        return new Usage(
-            promptTokens: max(0, (int) data_get($usage, 'prompt_tokens', 0) - (int) data_get($usage, 'prompt_tokens_details.cached_tokens', 0)),
-            completionTokens: (int) data_get($usage, 'completion_tokens', 0),
-            cacheReadInputTokens: (int) data_get($usage, 'prompt_tokens_details.cached_tokens', 0) ?: null,
-        );
+        $stepUsage = $this->mapUsage($usageSnapshot);
+
+        $this->state->addUsage($stepUsage);
+
+        return $stepUsage;
     }
 
     /**
@@ -359,7 +338,7 @@ class Stream
      * @throws PrismStreamDecodeException
      * @throws ConnectionException
      */
-    protected function handleToolCalls(Request $request, string $text, array $toolCalls, int $depth): Generator
+    protected function handleToolCalls(Request $request, string $text, array $toolCalls, int $depth, ?Usage $stepUsage = null): Generator
     {
         $mappedToolCalls = $this->mapToolCalls($toolCalls);
 
@@ -386,12 +365,20 @@ class Stream
             return;
         }
 
+        $this->state->withFinishReason(FinishReason::ToolCalls);
         $this->state->markStepFinished();
+
+        // The step's own usage, null when it reported none (upstream #1043).
+        // Advancing the snapshot keeps the fork's HITL finish in CallsTools,
+        // which measures its step from the last finished one, from
+        // counting this step's usage again.
+        $this->state->takeStepUsage();
 
         yield new StepFinishEvent(
             id: EventID::generate(),
             timestamp: time(),
-            usage: $this->state->takeStepUsage(),
+            usage: $stepUsage,
+            finishReason: FinishReason::ToolCalls,
         );
 
         $request->addMessage(new AssistantMessage($text, $mappedToolCalls));

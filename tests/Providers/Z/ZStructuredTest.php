@@ -80,6 +80,7 @@ it('Z provider handles structured request', function (): void {
         ->and($response->usage->promptTokens)->toBe(82)
         ->and($response->usage->cacheReadInputTokens)->toBe(1227)
         ->and($response->usage->completionTokens)->toBe(129)
+        ->and($response->usage->thoughtTokens)->toBeNull()
         ->and($response->meta->id)->toBe('chatcmpl-123')
         ->and($response->meta->model)->toBe('z-model');
 });

@@ -76,5 +76,4 @@ at the repository directly:
 ```
 
 > [!NOTE]
-> Prism itself is `particle-academy/prism` — the actively maintained fork of
-> `prism-php/prism`. The companions are built against it and track its releases.
+> The companions are built against Prism (`prism-php/prism`) and track its releases.

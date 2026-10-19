@@ -13,6 +13,9 @@ class OllamaStreamState extends StreamState
 
     protected int $completionTokens = 0;
 
+    /**
+     * @deprecated Prism no longer reads this counter. Use `StreamState::addUsage()` and `StreamState::usage()` instead.
+     */
     public function addPromptTokens(int $tokens): self
     {
         $this->promptTokens += $tokens;
@@ -20,6 +23,9 @@ class OllamaStreamState extends StreamState
         return $this->syncUsage();
     }
 
+    /**
+     * @deprecated Prism no longer reads this counter. Use `StreamState::addUsage()` and `StreamState::usage()` instead.
+     */
     public function addCompletionTokens(int $tokens): self
     {
         $this->completionTokens += $tokens;
@@ -27,11 +33,17 @@ class OllamaStreamState extends StreamState
         return $this->syncUsage();
     }
 
+    /**
+     * @deprecated Prism no longer reads this counter. Use `StreamState::addUsage()` and `StreamState::usage()` instead.
+     */
     public function promptTokens(): int
     {
         return $this->promptTokens;
     }
 
+    /**
+     * @deprecated Prism no longer reads this counter. Use `StreamState::addUsage()` and `StreamState::usage()` instead.
+     */
     public function completionTokens(): int
     {
         return $this->completionTokens;
@@ -40,8 +52,8 @@ class OllamaStreamState extends StreamState
     public function reset(): self
     {
         parent::reset();
-        // Note: Token counts are intentionally NOT reset here.
-        // They accumulate across tool-call turns to provide total usage.
+        // The deprecated token counters are intentionally NOT reset here, so
+        // they keep accumulating across tool-call turns as they always have.
 
         return $this;
     }

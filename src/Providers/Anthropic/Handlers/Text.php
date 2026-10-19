@@ -11,10 +11,9 @@ use InvalidArgumentException;
 use Prism\Prism\Concerns\CallsTools;
 use Prism\Prism\Contracts\PrismRequest;
 use Prism\Prism\Enums\FinishReason;
-use Prism\Prism\Providers\Anthropic\Concerns\ExtractsCitations;
+use Prism\Prism\Providers\Anthropic\Concerns\ExtractsAdditionalContent;
 use Prism\Prism\Providers\Anthropic\Concerns\ExtractsProviderToolCalls;
 use Prism\Prism\Providers\Anthropic\Concerns\ExtractsText;
-use Prism\Prism\Providers\Anthropic\Concerns\ExtractsThinking;
 use Prism\Prism\Providers\Anthropic\Concerns\HandlesHttpRequests;
 use Prism\Prism\Providers\Anthropic\Concerns\ProcessesRateLimits;
 use Prism\Prism\Providers\Anthropic\Concerns\ResolvesThinking;
@@ -31,13 +30,12 @@ use Prism\Prism\ValueObjects\Messages\ToolResultMessage;
 use Prism\Prism\ValueObjects\Meta;
 use Prism\Prism\ValueObjects\ProviderTool;
 use Prism\Prism\ValueObjects\ToolApprovalRequest;
-use Prism\Prism\ValueObjects\ToolCall;
 use Prism\Prism\ValueObjects\ToolResult;
 use Prism\Prism\ValueObjects\Usage;
 
 class Text
 {
-    use CallsTools, ExtractsCitations, ExtractsProviderToolCalls, ExtractsText, ExtractsThinking, HandlesHttpRequests, ProcessesRateLimits, ResolvesThinking;
+    use CallsTools, ExtractsAdditionalContent, ExtractsProviderToolCalls, ExtractsText, HandlesHttpRequests, ProcessesRateLimits, ResolvesThinking;
 
     protected Response $tempResponse;
 
@@ -57,7 +55,9 @@ class Text
         $this->prepareTempResponse();
 
         return match ($this->tempResponse->finishReason) {
-            FinishReason::ToolCalls => $this->handleToolCalls(),
+            FinishReason::ToolCalls => $this->tempResponse->toolCalls === []
+                ? $this->handleStop()
+                : $this->handleToolCalls(),
             FinishReason::Pause => $this->handlePause(),
             // Refusal and unknown reasons resolve gracefully (prism-php/prism#996);
             // the response carries the mapped finish reason for the caller.
@@ -107,6 +107,7 @@ class Text
             'output_config' => $request->providerOptions('effort') !== null
                 ? ['effort' => $request->providerOptions('effort')]
                 : null,
+            'fallbacks' => $request->providerOptions('fallbacks'),
         ]);
     }
 
@@ -206,7 +207,7 @@ class Text
                 completionTokens: data_get($data, 'usage.output_tokens'),
                 cacheWriteInputTokens: data_get($data, 'usage.cache_creation_input_tokens'),
                 cacheReadInputTokens: data_get($data, 'usage.cache_read_input_tokens'),
-                thoughtTokens: data_get($data, 'usage.output_tokens_details.thinking_tokens')
+                thoughtTokens: data_get($data, 'usage.output_tokens_details.thinking_tokens'),
             ),
             meta: new Meta(
                 id: data_get($data, 'id'),
@@ -215,62 +216,14 @@ class Text
             ),
             messages: new Collection,
             additionalContent: Arr::whereNotNull([
-                'citations' => $this->extractCitations($data),
-                // What the server actually cleared. Without it a caller cannot
-                // tell "cleared 40 tool results" from "the beta header was
-                // ignored" -- both look identical from outside: a successful
-                // response and a smaller bill nobody can attribute.
-                //
-                // That is the half of #35 carrying the weight. Sending the
-                // request without surfacing the answer is a feature you cannot
-                // verify, which on a context-management edit means trusting the
-                // single highest-leverage thing in a token budget on faith.
+                ...$this->extractAdditionalContent($data),
+                // What the server actually cleared (#35). Without it a caller
+                // cannot tell "cleared 40 tool results" from "the beta header
+                // was ignored" -- both look identical from outside: a
+                // successful response and a smaller bill nobody can attribute.
                 'context_management' => data_get($data, 'context_management'),
-                ...$this->extractThinking($data),
-                ...$this->extractProviderToolContent($data),
             ])
         );
-    }
-
-    /**
-     * Extract server tool use and result content blocks from the response.
-     *
-     * These must be preserved in additionalContent so that MessageMap can
-     * replay them alongside citations during multi-step tool loops.
-     *
-     * @param  array<string, mixed>  $data
-     * @return array<string, array<int, array<string, mixed>>>
-     */
-    protected function extractProviderToolContent(array $data): array
-    {
-        $providerToolCalls = [];
-        $providerToolResults = [];
-
-        foreach (data_get($data, 'content') ?? [] as $content) {
-            $type = data_get($content, 'type');
-
-            if ($type === 'server_tool_use') {
-                $providerToolCalls[] = [
-                    'type' => $type,
-                    'id' => data_get($content, 'id'),
-                    'name' => data_get($content, 'name'),
-                    'input' => json_encode(data_get($content, 'input', [])),
-                ];
-            }
-
-            if (str_ends_with((string) $type, '_tool_result')) {
-                $providerToolResults[] = [
-                    'type' => $type,
-                    'tool_use_id' => data_get($content, 'tool_use_id'),
-                    'content' => data_get($content, 'content'),
-                ];
-            }
-        }
-
-        return Arr::whereNotNull([
-            'provider_tool_calls' => $providerToolCalls !== [] ? $providerToolCalls : null,
-            'provider_tool_results' => $providerToolResults !== [] ? $providerToolResults : null,
-        ]);
     }
 
     /**
@@ -294,27 +247,5 @@ class Text
         );
 
         return array_merge($providerTools, $tools);
-    }
-
-    /**
-     * @param  array<string, mixed>  $data
-     * @return ToolCall[]
-     */
-    protected function extractToolCalls(array $data): array
-    {
-        $toolCalls = [];
-        $contents = data_get($data, 'content', []);
-
-        foreach ($contents as $content) {
-            if (data_get($content, 'type') === 'tool_use') {
-                $toolCalls[] = new ToolCall(
-                    id: data_get($content, 'id'),
-                    name: data_get($content, 'name'),
-                    arguments: data_get($content, 'input')
-                );
-            }
-        }
-
-        return $toolCalls;
     }
 }

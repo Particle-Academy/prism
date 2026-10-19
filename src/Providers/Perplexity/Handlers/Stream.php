@@ -7,6 +7,7 @@ namespace Prism\Prism\Providers\Perplexity\Handlers;
 use Generator;
 use Illuminate\Http\Client\PendingRequest;
 use Illuminate\Http\Client\Response;
+use Prism\Prism\Enums\FinishReason;
 use Prism\Prism\Enums\Provider as ProviderEnum;
 use Prism\Prism\Exceptions\PrismRateLimitedException;
 use Prism\Prism\Exceptions\PrismStreamDecodeException;
@@ -18,6 +19,8 @@ use Prism\Prism\Providers\Perplexity\Concerns\ExtractsUsage;
 use Prism\Prism\Providers\Perplexity\Concerns\HandlesHttpRequests;
 use Prism\Prism\Streaming\EventID;
 use Prism\Prism\Streaming\Events\ErrorEvent;
+use Prism\Prism\Streaming\Events\StepFinishEvent;
+use Prism\Prism\Streaming\Events\StepStartEvent;
 use Prism\Prism\Streaming\Events\StreamEndEvent;
 use Prism\Prism\Streaming\Events\StreamEvent;
 use Prism\Prism\Streaming\Events\StreamStartEvent;
@@ -26,6 +29,7 @@ use Prism\Prism\Streaming\Events\TextDeltaEvent;
 use Prism\Prism\Streaming\Events\TextStartEvent;
 use Prism\Prism\Streaming\StreamState;
 use Prism\Prism\Text\Request;
+use Prism\Prism\ValueObjects\Usage;
 use Psr\Http\Message\StreamInterface;
 use Throwable;
 
@@ -66,6 +70,8 @@ class Stream
     {
         $this->state->reset();
         $text = '';
+        $finishReason = null;
+        $stepUsage = null;
 
         while (! $response->getBody()->eof()) {
             $data = $this->parseNextDataLine($response->getBody());
@@ -74,7 +80,6 @@ class Stream
                 continue;
             }
 
-            // Emit stream start event if not already started
             if ($this->state->shouldEmitStreamStart()) {
                 $this->state->withMessageId(EventID::generate())->markStreamStarted();
 
@@ -86,8 +91,28 @@ class Stream
                 );
             }
 
+            if ($this->state->shouldEmitStepStart()) {
+                $this->state->markStepStarted();
+
+                yield new StepStartEvent(
+                    id: EventID::generate(),
+                    timestamp: time()
+                );
+            }
+
             $terminal = $this->isStreamTerminal($data);
             $run = $terminal ? $this->streamRunData($data) : [];
+
+            // The Agent API carries usage on the terminal run snapshot; Sonar-shaped
+            // chunks carry the running usage on every chunk. The latest one wins.
+            $stepUsage = $this->extractStepUsage($terminal ? $run : $data) ?? $stepUsage;
+
+            // Once the run has ended (an unrecoverable error or its first terminal),
+            // later chunks only update usage: content after the ending is not part
+            // of the run, and a repeated terminal must not end the stream twice.
+            if ($finishReason instanceof FinishReason) {
+                continue;
+            }
 
             // Rate limiting is recoverable even when attached to a terminal
             // run snapshot. Preserve the caller's existing backoff exception.
@@ -108,7 +133,8 @@ class Stream
             if ($this->hasError($data)) {
                 yield from $this->handleErrors($data, $request);
 
-                // Do not process further content in this chunk
+                $finishReason = FinishReason::Error;
+
                 continue;
             }
 
@@ -135,32 +161,60 @@ class Stream
                 );
             }
 
-            // Check for the run ending
+            // The run can report its ending more than once (a terminal event, then a
+            // trailing done chunk), so the first one wins and the stream ends once,
+            // after the body is read.
             if ($terminal) {
                 $finishReason = $this->extractsFinishReason($run);
-
-                // Complete text if we have any
-                if ($text !== '' && $this->state->hasTextStarted()) {
-                    yield new TextCompleteEvent(
-                        id: EventID::generate(),
-                        timestamp: time(),
-                        messageId: $this->state->messageId()
-                    );
-                }
-
-                // Extract usage information from the final chunk
-                $usage = $this->extractUsage($run);
-
-                yield new StreamEndEvent(
-                    id: EventID::generate(),
-                    timestamp: time(),
-                    finishReason: $finishReason,
-                    usage: $usage
-                );
-
-                return;
             }
         }
+
+        if ($text !== '' && $this->state->hasTextStarted()) {
+            $this->state->markTextCompleted();
+
+            yield new TextCompleteEvent(
+                id: EventID::generate(),
+                timestamp: time(),
+                messageId: $this->state->messageId()
+            );
+        }
+
+        if ($stepUsage instanceof Usage) {
+            $this->state->addUsage($stepUsage);
+        }
+
+        $this->state->withFinishReason($finishReason ?? FinishReason::Stop);
+        $this->state->markStepFinished();
+
+        yield new StepFinishEvent(
+            id: EventID::generate(),
+            timestamp: time(),
+            usage: $stepUsage,
+            finishReason: $this->state->finishReason(),
+        );
+
+        yield new StreamEndEvent(
+            id: EventID::generate(),
+            timestamp: time(),
+            finishReason: $this->state->finishReason() ?? FinishReason::Stop,
+            usage: $this->state->usage() ?? new Usage(0, 0),
+        );
+    }
+
+    /**
+     * Every chunk carries the response's running usage, so the latest one wins.
+     *
+     * @param  array<string, mixed>  $data
+     */
+    protected function extractStepUsage(array $data): ?Usage
+    {
+        $usage = data_get($data, 'usage');
+
+        if (! is_array($usage) || $usage === []) {
+            return null;
+        }
+
+        return $this->extractUsage($data);
     }
 
     /**

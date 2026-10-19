@@ -365,3 +365,82 @@ it('excludes cached tokens from promptTokens', function (): void {
     expect($response->usage->promptTokens)->toBe(40)
         ->and($response->usage->cacheReadInputTokens)->toBe(60);
 });
+
+describe('usage normalization', function (): void {
+    it('decides from the raw counters whether reasoning is already part of the completion tokens', function (array $usage, array $expected): void {
+        Http::fake([
+            '*' => Http::response([
+                'id' => 'chatcmpl-usage',
+                'model' => 'grok-4',
+                'choices' => [[
+                    'index' => 0,
+                    'message' => ['role' => 'assistant', 'content' => 'Hello!'],
+                    'finish_reason' => 'stop',
+                ]],
+                'usage' => $usage,
+            ]),
+        ])->preventStrayRequests();
+
+        $response = Prism::text()
+            ->using(Provider::XAI, 'grok-4')
+            ->withPrompt('Hello!')
+            ->asText();
+
+        expect($response->usage->toArray())->toBe($expected)
+            ->and($response->usage->thoughtTokens ?? 0)->toBeLessThanOrEqual($response->usage->completionTokens);
+    })->with([
+        'total counts reasoning separately (documented example)' => [
+            [
+                'prompt_tokens' => 32,
+                'completion_tokens' => 9,
+                'total_tokens' => 135,
+                'prompt_tokens_details' => ['text_tokens' => 32, 'cached_tokens' => 6],
+                'completion_tokens_details' => ['reasoning_tokens' => 94],
+            ],
+            ['prompt_tokens' => 26, 'completion_tokens' => 103, 'cache_write_input_tokens' => null, 'cache_read_input_tokens' => 6, 'thought_tokens' => 94, 'cost' => null],
+        ],
+        'total already includes reasoning in the completion tokens' => [
+            [
+                'prompt_tokens' => 32,
+                'completion_tokens' => 103,
+                'total_tokens' => 135,
+                'prompt_tokens_details' => ['cached_tokens' => 6],
+                'completion_tokens_details' => ['reasoning_tokens' => 94],
+            ],
+            ['prompt_tokens' => 26, 'completion_tokens' => 103, 'cache_write_input_tokens' => null, 'cache_read_input_tokens' => 6, 'thought_tokens' => 94, 'cost' => null],
+        ],
+        'missing total falls back to separate reasoning' => [
+            [
+                'prompt_tokens' => 49,
+                'completion_tokens' => 32,
+                'prompt_tokens_details' => ['cached_tokens' => 7],
+                'completion_tokens_details' => ['reasoning_tokens' => 183],
+            ],
+            ['prompt_tokens' => 42, 'completion_tokens' => 215, 'cache_write_input_tokens' => null, 'cache_read_input_tokens' => 7, 'thought_tokens' => 183, 'cost' => null],
+        ],
+        'total matching neither falls back to separate reasoning' => [
+            [
+                'prompt_tokens' => 49,
+                'completion_tokens' => 32,
+                'total_tokens' => 300,
+                'prompt_tokens_details' => ['cached_tokens' => 7],
+                'completion_tokens_details' => ['reasoning_tokens' => 183],
+            ],
+            ['prompt_tokens' => 42, 'completion_tokens' => 215, 'cache_write_input_tokens' => null, 'cache_read_input_tokens' => 7, 'thought_tokens' => 183, 'cost' => null],
+        ],
+        'reported zeros stay zero' => [
+            [
+                'prompt_tokens' => 125,
+                'completion_tokens' => 48,
+                'total_tokens' => 173,
+                'prompt_tokens_details' => ['cached_tokens' => 0],
+                'completion_tokens_details' => ['reasoning_tokens' => 0],
+            ],
+            ['prompt_tokens' => 125, 'completion_tokens' => 48, 'cache_write_input_tokens' => null, 'cache_read_input_tokens' => 0, 'thought_tokens' => 0, 'cost' => null],
+        ],
+        'fields that are not reported stay null' => [
+            ['prompt_tokens' => 10, 'completion_tokens' => 42, 'total_tokens' => 52],
+            ['prompt_tokens' => 10, 'completion_tokens' => 42, 'cache_write_input_tokens' => null, 'cache_read_input_tokens' => null, 'thought_tokens' => null, 'cost' => null],
+        ],
+    ]);
+});
