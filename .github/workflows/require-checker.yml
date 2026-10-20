@@ -6,6 +6,8 @@ on:
       - main
       - "*.x"
   pull_request:
+  # Lets the gates be run again on the same SHA, without a commit.
+  workflow_dispatch:
 
 permissions:
   contents: read
