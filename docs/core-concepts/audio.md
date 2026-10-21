@@ -95,9 +95,12 @@ echo $response->text;
 ```
 
 ::: warning URLs are not fetched automatically
-Audio built with `fromUrl()` has no bytes until you call `fetchUrlContent()`, which downloads the file from your server. Only call it on a URL you control or have validated. Never call it on a URL taken from user input — that lets anyone make your server request an address of their choosing, including internal services.
+Media built with `fromUrl()` has no bytes until you fetch them. Two calls do it:
 
-For audio a user uploads, use `fromBase64()` or `fromLocalPath()` on the stored file instead.
+- `fetchUrlContent()` downloads the file from your server with no checks. Use it only on a URL you control.
+- `fetchPublicUrlContent()` is for a URL you did not choose, from user input or model output. It refuses non-http schemes, private, loopback and reserved addresses (including a host name that resolves to one, and any redirect that leads to one), and bodies over 32 MiB, throwing `PrismUrlRefused` with a `code()` such as `private_address_refused`.
+
+For a file a user uploads, use `fromBase64()` or `fromLocalPath()` on the stored file instead.
 :::
 
 ## Working with Audio Files
@@ -113,7 +116,7 @@ use Prism\Prism\ValueObjects\Media\Audio;
 $audio = Audio::fromLocalPath('/path/to/audio.mp3');
 
 // From remote URL
-$audio = Audio::fromUrl('https://example.com/speech.wav');
+$audio = Audio::fromUrl('https://example.com/speech.wav')->fetchUrlContent(); // a URL you trust
 
 // From base64 encoded data
 $audio = Audio::fromBase64($base64Data, 'audio/mpeg');
