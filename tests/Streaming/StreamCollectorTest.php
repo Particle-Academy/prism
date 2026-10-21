@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Event;
+use Prism\Prism\Contracts\Message;
 use Prism\Prism\Enums\FinishReason;
 use Prism\Prism\Facades\Prism;
 use Prism\Prism\Facades\Tool;
@@ -408,7 +409,7 @@ it('over a real multi-step tool stream, hands the harness the same messages Stre
 
     expect($collected)->not->toBeNull();
     $expected = StreamedMessages::fromEvents($events);
-    expect(array_map(fn (\Prism\Prism\Contracts\Message $message): string => $message::class, $collected['messages']))->toBe([
+    expect(array_map(fn (Message $message): string => $message::class, $collected['messages']))->toBe([
         AssistantMessage::class,
         ToolResultMessage::class,
         AssistantMessage::class,
