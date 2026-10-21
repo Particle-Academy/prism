@@ -306,13 +306,13 @@ it('decodes an object argument sent as a string of JSON, and an array argument t
         'fields' => '["email","name"]',
     ]);
 
-    expect(json_decode($result, true))->toBe([['title' => 'Signup', 'nested' => ['a' => [1, 2]]], ['email', 'name'], '']);
+    expect(json_decode((string) $result, true))->toBe([['title' => 'Signup', 'nested' => ['a' => [1, 2]]], ['email', 'name'], '']);
 });
 
 it('CONTROL: an object argument that arrives as an object is untouched', function (): void {
     $result = call_user_func_array(schemaTool()->handle(...), ['schema' => ['title' => 'Signup']]);
 
-    expect(json_decode($result, true))->toBe([['title' => 'Signup'], [], '']);
+    expect(json_decode((string) $result, true))->toBe([['title' => 'Signup'], [], '']);
 });
 
 it('fails exactly as before when the string is not JSON, or is JSON of the wrong type', function (string $argument, mixed $value): void {
@@ -332,7 +332,7 @@ it('fails exactly as before when the string is not JSON, or is JSON of the wrong
 it('never decodes a string-typed parameter, even when its value is JSON', function (): void {
     $result = call_user_func_array(schemaTool()->handle(...), ['schema' => ['title' => 'x'], 'note' => '{"looks":"like json"}']);
 
-    expect(json_decode($result, true)[2])->toBe('{"looks":"like json"}');
+    expect(json_decode((string) $result, true)[2])->toBe('{"looks":"like json"}');
 });
 
 it('gives a handler that declares the parameter as string the string it asked for', function (): void {
