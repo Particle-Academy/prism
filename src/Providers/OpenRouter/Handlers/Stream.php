@@ -214,6 +214,7 @@ class Stream
             id: EventID::generate(),
             timestamp: time(),
             usage: $stepUsage,
+            additionalContent: ['openrouter_billing' => $this->state->stepBilling()],
             finishReason: $this->state->finishReason(),
         );
 
@@ -264,6 +265,7 @@ class Stream
      */
     protected function recordStepUsage(?array $usageSnapshot): ?Usage
     {
+        $this->state->recordBilling($usageSnapshot ?? []);
         if ($usageSnapshot === null) {
             return null;
         }
@@ -480,8 +482,11 @@ class Stream
         if ($hasPendingToolCalls) {
             // Client-executed or approval-required tool calls: end the stream
             // with FinishReason::ToolCalls so the consumer resolves and resumes.
-            $this->state->markStepFinished();
-            yield from $this->yieldToolCallsFinishEvents($this->state);
+            $this->state->withFinishReason(FinishReason::ToolCalls)->markStepFinished();
+            $this->state->takeStepUsage();
+            yield new StepFinishEvent(id: EventID::generate(), timestamp: time(), usage: $stepUsage,
+                additionalContent: ['openrouter_billing' => $this->state->stepBilling()], finishReason: FinishReason::ToolCalls);
+            yield $this->emitStreamEndEvent();
 
             return;
         }
@@ -498,6 +503,7 @@ class Stream
             id: EventID::generate(),
             timestamp: time(),
             usage: $stepUsage,
+            additionalContent: ['openrouter_billing' => $this->state->stepBilling()],
             finishReason: FinishReason::ToolCalls,
         );
 

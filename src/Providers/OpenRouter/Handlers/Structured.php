@@ -17,9 +17,10 @@ use Prism\Prism\Providers\OpenRouter\Concerns\MapsFinishReason;
 use Prism\Prism\Providers\OpenRouter\Concerns\MapsUsage;
 use Prism\Prism\Providers\OpenRouter\Concerns\ValidatesResponses;
 use Prism\Prism\Providers\OpenRouter\Maps\MessageMap;
+use Prism\Prism\Providers\OpenRouter\ResponseBuilders\StructuredResponseBuilder as ResponseBuilder;
+use Prism\Prism\Providers\OpenRouter\ValueObjects\Billing;
 use Prism\Prism\Structured\Request;
 use Prism\Prism\Structured\Response as StructuredResponse;
-use Prism\Prism\Structured\ResponseBuilder;
 use Prism\Prism\Structured\Step;
 use Prism\Prism\ValueObjects\Messages\AssistantMessage;
 use Prism\Prism\ValueObjects\Messages\ToolResultMessage;
@@ -167,7 +168,7 @@ class Structured
             ),
             messages: $request->messages(),
             systemPrompts: $request->systemPrompts(),
-            additionalContent: $this->extractReasoning($data),
+            additionalContent: [...$this->extractReasoning($data), 'openrouter_billing' => Billing::fromUsage((array) data_get($data, 'usage', []))],
             toolCalls: ToolCallMap::map(data_get($data, 'choices.0.message.tool_calls', [])),
             providerToolCalls: [],
             toolResults: $toolResults,
