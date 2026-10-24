@@ -9,6 +9,7 @@ use Generator;
 use Illuminate\Support\Collection;
 use Prism\Prism\Contracts\Message;
 use Prism\Prism\Streaming\Events\ProviderToolEvent;
+use Prism\Prism\Streaming\Events\StepFinishEvent;
 use Prism\Prism\Streaming\Events\StreamEndEvent;
 use Prism\Prism\Streaming\Events\StreamEvent;
 use Prism\Prism\Text\PendingRequest;
@@ -97,7 +98,7 @@ class StreamCollector
             ->values()
             ->all();
         $finishReason = $end->finishReason;
-        $usage = $end->usage ?? new Usage(0, 0);
+        $usage = $end->usage ?? $this->stepUsage($events);
         $meta = new Meta(id: '', model: '', rateLimits: []);
 
         $steps = new Collection;
@@ -130,5 +131,37 @@ class StreamCollector
         );
 
         ($this->onCompleteCallback)($this->pendingRequest, $messages, $response);
+    }
+
+    /**
+     * A stream end without usage means the total is unknown (an interrupted
+     * stream, for one). The response's usage is not nullable, so it carries
+     * what the steps did report, never invented zeros; its finish reason says
+     * whether that total is complete.
+     *
+     * @param  StreamEvent[]  $events
+     */
+    protected function stepUsage(array $events): Usage
+    {
+        $total = new Usage(0, 0);
+
+        foreach ($events as $event) {
+            if ($event instanceof StepFinishEvent && $event->usage instanceof Usage) {
+                $total = new Usage(
+                    promptTokens: $total->promptTokens + $event->usage->promptTokens,
+                    completionTokens: $total->completionTokens + $event->usage->completionTokens,
+                    cacheWriteInputTokens: $this->sum($total->cacheWriteInputTokens, $event->usage->cacheWriteInputTokens),
+                    cacheReadInputTokens: $this->sum($total->cacheReadInputTokens, $event->usage->cacheReadInputTokens),
+                    thoughtTokens: $this->sum($total->thoughtTokens, $event->usage->thoughtTokens),
+                );
+            }
+        }
+
+        return $total;
+    }
+
+    protected function sum(?int $total, ?int $tokens): ?int
+    {
+        return $total === null && $tokens === null ? null : ($total ?? 0) + ($tokens ?? 0);
     }
 }
