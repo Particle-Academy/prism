@@ -8,6 +8,7 @@ use Prism\Prism\Contracts\Message;
 use Prism\Prism\Enums\FinishReason;
 use Prism\Prism\Facades\Prism;
 use Prism\Prism\Facades\Tool;
+use Prism\Prism\Streaming\Events\StepFinishEvent;
 use Prism\Prism\Streaming\Events\StreamEndEvent;
 use Prism\Prism\Streaming\Events\StreamEvent;
 use Prism\Prism\Streaming\Events\StreamStartEvent;
@@ -22,6 +23,7 @@ use Prism\Prism\ValueObjects\Messages\AssistantMessage;
 use Prism\Prism\ValueObjects\Messages\ToolResultMessage;
 use Prism\Prism\ValueObjects\ToolCall;
 use Prism\Prism\ValueObjects\ToolResult;
+use Prism\Prism\ValueObjects\Usage;
 use Tests\Fixtures\FixtureResponse;
 
 /**
@@ -420,4 +422,27 @@ it('over a real multi-step tool stream, hands the harness the same messages Stre
     expect($collected['response']->finishReason)->toBe($end->finishReason)
         ->and($collected['response']->usage)->toBe($end->usage)
         ->and($collected['response']->toolResults)->toHaveCount(count($collected['messages'][1]->toolResults));
+});
+
+it('builds the callback response from the steps\' usage when the stream end reports none', function (): void {
+    $response = null;
+    $events = [
+        new StreamStartEvent('evt-1', 1640995200, 'claude-sonnet-4-5', 'anthropic'),
+        new TextStartEvent('evt-2', 1640995201, 'msg-1'),
+        new TextDeltaEvent('evt-3', 1640995202, 'Sunny', 'msg-1'),
+        new StepFinishEvent('evt-4', 1640995203, new Usage(11, 1), finishReason: FinishReason::Error),
+        new StreamEndEvent('evt-5', 1640995204, FinishReason::Error),
+    ];
+
+    $collector = new StreamCollector(createCollectorEventGenerator($events), null,
+        function ($request, Collection $messages, Response $collected) use (&$response): void {
+            $response = $collected;
+        });
+    iterator_to_array($collector->collect());
+
+    // Unknown at the end is not zero: the response keeps what did arrive, and
+    // its Error finish says the total is incomplete.
+    expect($response->usage->promptTokens)->toBe(11)
+        ->and($response->usage->completionTokens)->toBe(1)
+        ->and($response->finishReason)->toBe(FinishReason::Error);
 });

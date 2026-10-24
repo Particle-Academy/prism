@@ -90,6 +90,16 @@ class Stream
             }
         }
 
+        $incomplete = $this->incompleteStreamError();
+
+        if ($incomplete instanceof ErrorEvent) {
+            yield $incomplete;
+        }
+
+        if (! $this->state->finalUsageReported()) {
+            $this->state->markTurnUsageIncomplete();
+        }
+
         $unfinishedBlockEvent = $this->completeUnfinishedBlock();
 
         if ($unfinishedBlockEvent instanceof StreamEvent) {
@@ -123,6 +133,29 @@ class Stream
         );
 
         yield $this->emitStreamEndEvent($additionalContent);
+    }
+
+    /**
+     * A body that ends without `message_stop` (a dropped connection, a proxy
+     * cutting it short) is not a finished message, and is reported the way
+     * Anthropic's own `error` event is: never as Stop. An `error` event already
+     * reported it, so it is not reported twice.
+     */
+    protected function incompleteStreamError(): ?ErrorEvent
+    {
+        if ($this->state->messageStopped() || $this->state->finishReason() === FinishReason::Error) {
+            return null;
+        }
+
+        $this->state->withFinishReason(FinishReason::Error);
+
+        return new ErrorEvent(
+            id: EventID::generate(),
+            timestamp: time(),
+            errorType: 'incomplete_stream',
+            message: 'The stream ended before Anthropic finished the message.',
+            recoverable: false,
+        );
     }
 
     /**
@@ -403,6 +436,10 @@ class Stream
 
         $this->reconcileStepUsage($usageData);
 
+        if (isset($usageData['output_tokens'])) {
+            $this->state->markFinalUsageReported();
+        }
+
         return null;
     }
 
@@ -434,6 +471,8 @@ class Stream
      */
     protected function handleMessageStop(array $event): ?StreamEndEvent
     {
+        $this->state->markMessageStopped();
+
         if (! $this->state->finishReason() instanceof FinishReason) {
             $this->state->withFinishReason(FinishReason::Stop);
         }
@@ -453,7 +492,9 @@ class Stream
             id: EventID::generate(),
             timestamp: time(),
             finishReason: $this->state->finishReason() ?? FinishReason::Stop,
-            usage: $this->state->usage() ?? new Usage(0, 0),
+            // Unknown is null, never zeros: a consumer billing on this must
+            // not read a missing or partial total as a cheap call.
+            usage: $this->state->turnUsageIncomplete() ? null : $this->state->usage(),
             citations: $this->state->citations() !== [] ? $this->state->citations() : null,
             additionalContent: [
                 'thinking' => $stepAdditionalContent['thinking'] ?? null,

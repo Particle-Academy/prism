@@ -354,6 +354,12 @@ If you persist streamed conversations, pass the events your stream callback rece
 
 The stream's `finishReason` reflects Anthropic's `stop_reason`, and Prism only runs the tools Claude asked for when the turn actually ended with `tool_use`. A turn that ends in a refusal, `max_tokens` or an error doesn't execute the tool calls it streamed. You still get their `ToolCallEvent`s, but the step's `content_blocks` leave them out (along with any block the stream never finished), the `StepFinishEvent` reports the step's `finishReason`, and the `AssistantMessage` `StreamedMessages` builds for that step has no tool calls.
 
+#### Streams that end early
+
+A stream that ends before Anthropic's `message_stop` (a dropped connection, or a proxy that cuts the response short) did not finish, and is reported that way: an `ErrorEvent` with `errorType` `incomplete_stream` and `recoverable` `false`, then `FinishReason::Error` on the `StepFinishEvent` and `StreamEndEvent`. An Anthropic `error` event ends the stream the same way, with its own `ErrorEvent`.
+
+The `StreamEndEvent`'s `usage` is `null` when Anthropic sent no usage, or when a step ended without its final usage (the `message_delta` that carries `output_tokens`). Its total would otherwise leave out the output generated before the stream stopped, so treat `null` as unknown, not as zero. The step's `StepFinishEvent` still carries whatever usage arrived, for inspection, and so does the `Response` a completion callback receives (its `usage` can't be `null`), so check its `finishReason` before relying on that total.
+
 ## Paused turns
 
 Server tools such as web search, web fetch and code execution run in a loop on Anthropic's side. When that loop reaches its iteration limit, the response stops with `pause_turn` (`FinishReason::Pause`), and the turn continues once you send the paused assistant content back as it is.
