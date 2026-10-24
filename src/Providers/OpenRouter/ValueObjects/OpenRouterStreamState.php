@@ -28,7 +28,7 @@ class OpenRouterStreamState extends StreamState
     {
         $usage = parent::usage();
 
-        return $usage instanceof \Prism\Prism\ValueObjects\Usage ? new Usage($usage->promptTokens, $usage->completionTokens,
+        return $usage instanceof Usage ? new Usage($usage->promptTokens, $usage->completionTokens,
             $usage->cacheWriteInputTokens, $usage->cacheReadInputTokens, $usage->thoughtTokens,
             Billing::totalCost($this->billingSteps)) : null;
     }
