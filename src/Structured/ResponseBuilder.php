@@ -44,7 +44,7 @@ readonly class ResponseBuilder
             toolCalls: $this->aggregateToolCalls(),
             providerToolCalls: $this->aggregateProviderToolCalls(),
             toolResults: $this->aggregateToolResults(),
-            additionalContent: $finalStep->additionalContent,
+            additionalContent: $this->responseAdditionalContent(),
             raw: $finalStep->raw,
         );
     }
@@ -116,6 +116,15 @@ readonly class ResponseBuilder
             ->flatMap(fn (Step $step): array => $step->toolResults)
             ->values()
             ->all();
+    }
+
+    /** @return array<string, mixed> */
+    protected function responseAdditionalContent(): array
+    {
+        /** @var Step $finalStep */
+        $finalStep = $this->steps->last();
+
+        return $finalStep->additionalContent;
     }
 
     protected function calculateTotalUsage(): Usage

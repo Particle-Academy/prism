@@ -67,9 +67,18 @@ readonly class ResponseBuilder
             usage: $this->calculateTotalUsage(),
             meta: $finalStep->meta,
             messages: $messages,
-            additionalContent: $finalStep->additionalContent,
+            additionalContent: $this->responseAdditionalContent(),
             raw: $finalStep->raw,
         );
+    }
+
+    /** @return array<string, mixed> */
+    protected function responseAdditionalContent(): array
+    {
+        /** @var Step $finalStep */
+        $finalStep = $this->steps->last();
+
+        return $finalStep->additionalContent;
     }
 
     protected function calculateTotalUsage(): Usage

@@ -15,9 +15,10 @@ use Prism\Prism\Providers\OpenRouter\Concerns\MapsUsage;
 use Prism\Prism\Providers\OpenRouter\Concerns\ValidatesResponses;
 use Prism\Prism\Providers\OpenRouter\Maps\MessageMap;
 use Prism\Prism\Providers\OpenRouter\Maps\ToolCallMap;
+use Prism\Prism\Providers\OpenRouter\ResponseBuilders\TextResponseBuilder as ResponseBuilder;
+use Prism\Prism\Providers\OpenRouter\ValueObjects\Billing;
 use Prism\Prism\Text\Request;
 use Prism\Prism\Text\Response as TextResponse;
-use Prism\Prism\Text\ResponseBuilder;
 use Prism\Prism\Text\Step;
 use Prism\Prism\ValueObjects\Messages\AssistantMessage;
 use Prism\Prism\ValueObjects\Messages\ToolResultMessage;
@@ -135,7 +136,7 @@ class Text
             ),
             messages: $request->messages(),
             systemPrompts: $request->systemPrompts(),
-            additionalContent: $this->extractReasoning($data),
+            additionalContent: [...$this->extractReasoning($data), 'openrouter_billing' => Billing::fromUsage((array) data_get($data, 'usage', []))],
             raw: $data,
         ));
     }

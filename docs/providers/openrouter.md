@@ -323,6 +323,43 @@ A few things worth knowing:
 - A replayed response-cache hit can report more cached tokens than prompt tokens, so `promptTokens` never drops below `0`.
 - Streams take usage from the accounting chunk OpenRouter sends at the end of every response, which repeats the finish reason. Prism reads it once per step, and the final `StreamEndEvent` adds up every step of a tool loop. Each `StepFinishEvent` carries its own step's usage.
 
+### Reported cost and BYOK
+
+`$response->usage->cost` reports the call's cost in USD when OpenRouter provides
+the necessary billing figures. For an explicitly identified BYOK call, Prism
+adds the OpenRouter charge to OpenRouter's reported upstream inference estimate.
+This is the combined reported call cost, rather than only the credits deducted
+by OpenRouter. The upstream estimate is not an audited provider invoice.
+
+For a non-BYOK call, the OpenRouter charge already covers inference; Prism does
+not add its upstream breakdown again. Missing, negative, invalid or overflowing
+BYOK totals produce a null cost. Explicit zero totals remain zero.
+
+```php
+$response->usage->cost;
+$billing = $response->additionalContent['openrouter_billing'];
+// is_byok: bool|null, router_cost: float|null,
+// upstream_cost: float|null, complete: bool
+```
+
+These accounting facts are on each response step and streamed `StepFinishEvent`
+object. Text and structured responses aggregate them in `additionalContent`;
+they also appear in an explicit non-stream `toArray()`. They are not sent in
+serialized stream events.
+Completeness requires complete evidence for every step. StreamEnd carries total
+usage and cost, without billing metadata. StepFinish serialization excludes
+additional content, so the billing facts are absent from SSE and broadcast output.
+Mixed BYOK/non-BYOK routing produces a null aggregate `is_byok`, while each
+step retains its own identity. A missing component makes its aggregate total
+null; the normalized cost is null if any step has an unknown cost.
+
+Older responses without BYOK identity retain their scalar router cost for
+compatibility and report `complete: false`. When enforcing a spending cap, only
+trust cost with complete billing evidence. Null or incomplete evidence must not
+be treated as a free call. See OpenRouter's
+[usage accounting](https://openrouter.ai/docs/cookbook/administration/usage-accounting)
+and [BYOK documentation](https://openrouter.ai/docs/guides/overview/auth/byok).
+
 ### Provider Routing & Advanced Options
 
 Use `withProviderOptions()` to forward OpenRouter-specific controls such as model preferences or sampling parameters. Prism automatically forwards the native request values for `temperature`, `top_p`, and `max_tokens`, so you can continue tuning them through the usual Prism API without duplicating them in `withProviderOptions()`. For transform pipelines, OpenRouter currently documents `"middle-out"` as the primary example—consult the parameter reference for additional context.
