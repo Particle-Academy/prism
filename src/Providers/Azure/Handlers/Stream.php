@@ -23,7 +23,6 @@ use Prism\Prism\Providers\Azure\Maps\MessageMap;
 use Prism\Prism\Providers\Azure\Maps\ToolChoiceMap;
 use Prism\Prism\Providers\Azure\Maps\ToolMap;
 use Prism\Prism\Streaming\EventID;
-use Prism\Prism\Streaming\Events\ArtifactEvent;
 use Prism\Prism\Streaming\Events\ErrorEvent;
 use Prism\Prism\Streaming\Events\StreamEndEvent;
 use Prism\Prism\Streaming\Events\StreamEvent;
@@ -32,7 +31,6 @@ use Prism\Prism\Streaming\Events\TextCompleteEvent;
 use Prism\Prism\Streaming\Events\TextDeltaEvent;
 use Prism\Prism\Streaming\Events\TextStartEvent;
 use Prism\Prism\Streaming\Events\ToolCallEvent;
-use Prism\Prism\Streaming\Events\ToolResultEvent;
 use Prism\Prism\Streaming\StreamState;
 use Prism\Prism\Text\Request;
 use Prism\Prism\ValueObjects\Messages\AssistantMessage;
@@ -60,6 +58,10 @@ class Stream
      */
     public function handle(Request $request): Generator
     {
+        // Resuming after a stream stopped for approval: run what was approved
+        // and deny the rest before the conversation goes back to the model.
+        yield from $this->resolveToolApprovalsAndYieldEvents($request, EventID::generate());
+
         if ($this->provider->usesV1ForModel($request->model())) {
             yield from $this->processV1NativeStream($request);
 
@@ -551,26 +553,18 @@ class Stream
             );
         }
 
-        $toolResults = $this->callTools($request->tools(), $mappedToolCalls);
+        // The pending-aware path: approval-required and client-executed tools
+        // are never run here. The stream ends with FinishReason::ToolCalls so
+        // the consumer resolves them and resumes, as every other provider does.
+        $toolResults = [];
+        $hasPendingToolCalls = false;
+        yield from $this->callToolsAndYieldEventsWithPending($request->tools(), $mappedToolCalls, $this->state->messageId(), $toolResults, $hasPendingToolCalls);
 
-        foreach ($toolResults as $result) {
-            yield new ToolResultEvent(
-                id: EventID::generate(),
-                timestamp: time(),
-                toolResult: $result,
-                messageId: $this->state->messageId()
-            );
+        if ($hasPendingToolCalls) {
+            $this->state->markStepFinished();
+            yield from $this->yieldToolCallsFinishEvents($this->state);
 
-            foreach ($result->artifacts as $artifact) {
-                yield new ArtifactEvent(
-                    id: EventID::generate(),
-                    timestamp: time(),
-                    artifact: $artifact,
-                    toolCallId: $result->toolCallId,
-                    toolName: $result->toolName,
-                    messageId: $this->state->messageId(),
-                );
-            }
+            return;
         }
 
         $request->addMessage(new AssistantMessage($text, $mappedToolCalls));

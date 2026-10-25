@@ -6,6 +6,7 @@ use Illuminate\Support\Facades\Http;
 use Prism\Prism\Concerns\CallsTools;
 use Prism\Prism\Enums\StreamEventType;
 use Prism\Prism\Enums\ToolChoice;
+use Prism\Prism\Exceptions\PrismException;
 use Prism\Prism\Facades\Prism;
 use Prism\Prism\Streaming\Events\ToolApprovalRequestEvent;
 use Prism\Prism\Streaming\Events\ToolResultEvent;
@@ -40,6 +41,14 @@ class ToolApprovalTestHandler
     public function resolve(Request $request): void
     {
         $this->resolveToolApprovals($request);
+    }
+
+    /**
+     * The non-pausing path a handler (or a custom provider) can reach.
+     */
+    public function callPlain(array $tools, array $toolCalls): array
+    {
+        return $this->callTools($tools, $toolCalls);
     }
 
     public function resolveStream(Request $request, string $messageId, ?StreamState $state = null): Generator
@@ -1395,5 +1404,46 @@ describe('the documented resume, through a real provider handler', function (): 
 
         expect($response->messages->last())->toBeInstanceOf(ToolResultMessage::class)
             ->and(collect($response->messages->last()->toolResults)->pluck('toolName')->sort()->values()->all())->toBe(['search', 'weather']);
+    });
+});
+
+describe('callTools(): the path that cannot pause for a human', function (): void {
+    it('refuses an approval-required or client-executed tool instead of running it', function (Closure $make): void {
+        $ran = 0;
+        /** @var Tool $tool */
+        $tool = $make(function () use (&$ran): string {
+            $ran++;
+
+            return 'ran';
+        });
+
+        $call = fn (): array => (new ToolApprovalTestHandler)->callPlain(
+            [$tool],
+            [new ToolCall(id: 'call-1', name: $tool->name(), arguments: ['path' => 'a.txt'])],
+        );
+
+        expect($call)->toThrow(PrismException::class, 'Refusing to run')
+            ->and($ran)->toBe(0);
+    })->with([
+        'approval-required' => [fn (Closure $handler): Tool => (new Tool)->as('delete_file')->for('Delete')->withStringParameter('path', 'Path')
+            ->using($handler)->requiresApproval()],
+        'conditionally approval-required' => [fn (Closure $handler): Tool => (new Tool)->as('delete_file')->for('Delete')->withStringParameter('path', 'Path')
+            ->using($handler)->requiresApproval(fn (array $arguments): bool => $arguments['path'] === 'a.txt')],
+        // No handler: using() would turn it back into a server tool.
+        'client-executed' => [fn (Closure $handler): Tool => (new Tool)->as('pick_file')->for('Pick')->withStringParameter('path', 'Path')
+            ->clientExecuted()],
+    ]);
+
+    it('still runs an ordinary tool', function (): void {
+        $tool = (new Tool)->as('read_file')->for('Read')->withStringParameter('path', 'Path')
+            ->using(fn (string $path): string => "contents of {$path}");
+
+        $results = (new ToolApprovalTestHandler)->callPlain(
+            [$tool],
+            [new ToolCall(id: 'call-1', name: 'read_file', arguments: ['path' => 'a.txt'])],
+        );
+
+        expect($results)->toHaveCount(1)
+            ->and($results[0]->result)->toBe('contents of a.txt');
     });
 });
