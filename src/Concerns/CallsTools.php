@@ -36,12 +36,28 @@ trait CallsTools
     /**
      * Execute tools and return results (for non-streaming handlers).
      *
+     * This path has no way to stop for a human, so it refuses a call to a
+     * client-executed or approval-required tool rather than running it. Azure
+     * streaming called it and ran approval-required tools unasked; any handler
+     * that can meet a marked tool must use callToolsWithPending() or
+     * callToolsAndYieldEventsWithPending() and end the turn on ToolCalls.
+     *
      * @param  Tool[]  $tools
      * @param  ToolCall[]  $toolCalls
      * @return ToolResult[]
+     *
+     * @throws PrismException when a call targets a client-executed or approval-required tool
      */
     protected function callTools(array $tools, array $toolCalls): array
     {
+        $hasPendingToolCalls = false;
+        $approvalRequiredToolCalls = [];
+        $this->filterServerExecutedToolCalls($tools, $toolCalls, $hasPendingToolCalls, $approvalRequiredToolCalls);
+
+        if ($hasPendingToolCalls) {
+            throw new PrismException('Refusing to run a client-executed or approval-required tool on a path that cannot pause for it; use callToolsWithPending().');
+        }
+
         $toolResults = [];
 
         // Consume generator to execute all tools and collect results
