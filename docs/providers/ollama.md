@@ -3,7 +3,7 @@
 
 ```php
 'ollama' => [
-    'url' => env('OLLAMA_URL', 'http://localhost:11434/v1'),
+    'url' => env('OLLAMA_URL', 'http://localhost:11434'),
 ],
 ```
 
@@ -19,7 +19,7 @@ Prism::text() // [!code focus]
   ->withProviderOptions([ // [!code focus]
       'top_p' => 0.9, // [!code focus]
       'num_ctx' => 4096, // [!code focus]
-  ]) // [!code focus]
+  ]); // [!code focus]
 ```
 
 > [!NOTE]
@@ -65,15 +65,12 @@ Depending on your configuration, responses tend to time out. You may need to ext
 Prism::text() // [!code focus]
   ->using(Provider::Ollama, 'gemma3:1b')
   ->withPrompt('Who are you?')
-  ->withClientOptions(['timeout' => 60]) // [!code focus]
+  ->withClientOptions(['timeout' => 60]); // [!code focus]
 ```
 
 ### Structured Output
 
-Ollama doesn't have native JSON mode or structured output like some providers, Prism implements a robust workaround for structured output:
-
-- We automatically append instructions to your prompt that guide the model to output valid JSON matching your schema
-- If the response isn't valid JSON, Prism will raise a PrismException
+`Prism::structured()` sends your schema in Ollama's `format` field. The response is decoded into `$response->structured`; malformed JSON raises a structured-decoding exception. Use a model that supports structured output.
 
 ## Limitations
 ### Image URL

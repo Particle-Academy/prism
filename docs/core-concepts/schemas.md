@@ -135,8 +135,7 @@ $profileSchema = new ObjectSchema(
 
 For flexible data that can match one of several schemas. This is particularly useful when you need to handle different data types or structures in the same field.
 
-> [!IMPORTANT]
-> **Provider Compatibility**: The AnyOfSchema works with OpenAI's structured outputs and Gemini's enhanced JSON Schema support (as of November 2025). Each nested schema must be a valid JSON schema according to the provider's requirements. For best results, ensure each nested schema has a proper `type` field.
+Each nested schema must be valid JSON Schema for the selected provider and model. Check its supported schema keywords before using `AnyOfSchema`.
 
 ```php
 use Prism\Prism\Schema\AnyOfSchema;
@@ -266,19 +265,19 @@ $userSchema = new ObjectSchema(
 ```php
 // Required and Non-nullable (most strict)
 new StringSchema('email', 'Primary email', nullable: false);
-// requireFields: ['email']
+// requiredFields: ['email']
 
 // Required but Nullable (must be present, can be null)
 new StringSchema('bio', 'User bio', nullable: true);
-// requireFields: ['bio']
+// requiredFields: ['bio']
 
 // Optional and Non-nullable (can be omitted, but if present cannot be null)
 new StringSchema('phone', 'Phone number', nullable: false);
-// requireFields: []
+// requiredFields: []
 
 // Optional and Nullable (most permissive)
 new StringSchema('website', 'Personal website', nullable: true);
-// requireFields: []
+// requiredFields: []
 ```
 
 ### Provider Considerations

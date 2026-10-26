@@ -561,11 +561,11 @@ Models with thinking capabilities stream their reasoning process separately:
 use Prism\Prism\Enums\StreamEventType;
 
 foreach ($stream as $event) {
-    match ($event->type()) {
-        StreamEventType::ThinkingDelta => echo "[Thinking] " . $event->delta,
-        StreamEventType::TextDelta => echo $event->delta,
-        default => null,
-    };
+    if ($event->type() === StreamEventType::ThinkingDelta) {
+        echo '[Thinking] '.$event->delta;
+    } elseif ($event->type() === StreamEventType::TextDelta) {
+        echo $event->delta;
+    }
 }
 ```
 

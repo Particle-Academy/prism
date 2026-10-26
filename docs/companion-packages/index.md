@@ -1,79 +1,33 @@
 # Companion Packages
 
-Prism core does one job: it shuttles your application to eighteen LLM provider
-APIs and gets out of the way. Everything *agentic* — durable sessions, memory,
-sandboxed file access, tools from servers you don't own — lives in a companion
-package built on top of it.
+Add sessions, memory, scoped files, remote tools or telemetry to a Prism application with companion packages. Install the packages you need alongside `particle-academy/prism`.
 
-That split is deliberate, and it's worth a paragraph because it explains why
-your favourite feature isn't in core.
+## Available packages
 
-Every capability added to core is a capability all eighteen providers have to
-carry, and keep carrying, forever. The cost is invisible on the day it's added
-and permanent afterwards. So the question for anything agentic isn't "is this
-useful?" — it's "which companion owns it?" Core stays small, the companions move
-fast, and you install only what you actually use.
+| Package | Use |
+|---|---|
+| [Harness](/companion-packages/harness) | Durable sessions, modes, tool authorization and subagents |
+| [MCP](/companion-packages/mcp) | Connect remote MCP tools with trust policies and result controls |
+| [Memory](/companion-packages/memory) | Store context and retrieve related memories within a token budget |
+| [Workspace](/companion-packages/workspace) | Read and write files within a scoped storage directory |
+| [Perplexity](https://github.com/Particle-Academy/prism-perplexity) | Use Perplexity endpoints outside the core provider API |
+| [OpenTelemetry](/advanced/telemetry) | Export Prism telemetry as OpenTelemetry spans |
 
-## What's available
+## Installation
 
-| Package | What it gives you | Status |
-|---|---|---|
-| [**Harness**](/companion-packages/harness) | Durable agent sessions — threads that survive the request | **RC — in testing** |
-| [**MCP**](/companion-packages/mcp) | Tools from servers you don't own, behind a visible trust boundary | First slice |
-| [**Memory**](/companion-packages/memory) | Persistent context and semantic recall | First slice, not yet on Packagist |
-| [**Workspace**](/companion-packages/workspace) | A sandboxed place for an agent to keep its work | First slice, not yet on Packagist |
-| **Perplexity** | The Perplexity endpoints that don't fit the provider abstraction | Available |
-| **OpenTelemetry** | Prism's telemetry as GenAI-convention spans — see [Telemetry](/advanced/telemetry) | In development |
-
-> [!WARNING]
-> These are young packages and they say so. Each README opens with a status note
-> listing what works and what's deliberately still missing — read it before you
-> build on one. An absence recorded as a plan is very different from an absence
-> nobody noticed, and we try hard to keep ours in the first category.
-
-## How they fit together
-
-They compose, and they compose *loosely* — through Prism's own message value
-objects rather than through each other:
-
-```
-                    ┌─────────────┐
-                    │ prism (core)│  providers, text, tools, structured output
-                    └──────┬──────┘
-                           │
-     ┌──────────┬──────────┼──────────┬──────────────┐
-     │          │          │          │              │
-  Harness    Memory    Workspace     MCP        OpenTelemetry
-  sessions   recall     files      remote tools    spans
-```
-
-You can use Memory without sessions, sessions without Memory, or both. None of
-them requires another, and that's on purpose: a hard dependency between two of
-them would take the choice away from you.
-
-Core depends on **none** of them.
-
-## Installing
-
-Four are on Packagist today:
+All of these packages are available through Composer:
 
 ```bash
 composer require particle-academy/prism-harness
 composer require particle-academy/prism-mcp
+composer require particle-academy/prism-memory
+composer require particle-academy/prism-workspace
 composer require particle-academy/prism-perplexity
 composer require particle-academy/prism-opentelemetry
 ```
 
-**Memory** and **Workspace** aren't published yet. Until they are, point Composer
-at the repository directly:
+Install each package separately as needed. Follow its guide for migrations, configuration, credentials and authorization requirements.
 
-```json
-{
-    "repositories": [
-        { "type": "vcs", "url": "https://github.com/Particle-Academy/prism-memory" }
-    ]
-}
-```
+## Combining packages
 
-> [!NOTE]
-> The companions are built against Prism (`prism-php/prism`) and track its releases.
+Memory can supply context to a Prism request, Workspace can supply file tools, and MCP can supply tools from a remote server. Harness manages sessions and tool execution; OpenTelemetry observes Prism calls. Check each package's requirements before composing integrations.

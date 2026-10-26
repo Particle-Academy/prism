@@ -113,7 +113,7 @@ Providers are not consistent in their support of sending raw contents, base64 an
 Prism converts between supported representations where possible. The following conversions and limitations apply.
 
 ### Supported conversions
-- Where a provider does not support URLs: Prism will fetch the URL and use base64 or rawContent.
+- A URL stays a reference. If your provider needs audio bytes, call `fetchPublicUrlContent()` explicitly for a user- or model-supplied URL. Use the unguarded `fetchUrlContent()` only for URLs your application trusts. See [Fetching remote media](/input-modalities/images#fetching-remote-media) for limits and refusals.
 - Where you provide a file, base64 or rawContent: Prism will switch between base64 and rawContent depending on what the provider accepts.
 
 ### Limitations

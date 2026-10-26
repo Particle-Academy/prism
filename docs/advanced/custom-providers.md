@@ -92,6 +92,8 @@ Your provider inherits a default `handleRequestException` method that handles co
 ```php
 use Illuminate\Http\Client\RequestException;
 use Prism\Prism\Exceptions\PrismException;
+use Prism\Prism\Exceptions\PrismRateLimitedException;
+use Prism\Prism\Providers\Provider;
 
 class MyCustomProvider extends Provider
 {
@@ -102,7 +104,7 @@ class MyCustomProvider extends Provider
         // Handle provider-specific error codes
         match ($e->response->getStatusCode()) {
             429 => throw PrismRateLimitedException::make(
-                rateLimits: $this->processRateLimits($e->response),
+                rateLimits: [],
                 retryAfter: $e->response->header('retry-after') === ''
                     ? null
                     : (int) $e->response->header('retry-after'),

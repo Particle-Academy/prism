@@ -85,7 +85,7 @@ use Prism\Prism\Providers\Anthropic\Enums\AnthropicCacheType;
 use Prism\Prism\ValueObjects\Messages\UserMessage;
 use Prism\Prism\ValueObjects\Media\Document;
 
-(new UserMessage('I am a long re-usable user message.'))->withProviderOptions(['cacheType' => AnthropicCacheType::ephemeral])
+(new UserMessage('I am a long re-usable user message.'))->withProviderOptions(['cacheType' => AnthropicCacheType::ephemeral]);
 ```
 **Important:** To enable prompt caching:
 - System messages must use `withSystemPrompt()` or `withSystemPrompts()` (Anthropic does not allow SystemMessages in the messages array)
@@ -310,11 +310,11 @@ When using thinking (adaptive or manual), the reasoning process streams separate
 use Prism\Prism\Enums\StreamEventType;
 
 foreach ($stream as $event) {
-    match ($event->type()) {
-        StreamEventType::ThinkingDelta => echo "[Thinking] " . $event->delta,
-        StreamEventType::TextDelta => echo $event->delta,
-        default => null,
-    };
+    if ($event->type() === StreamEventType::ThinkingDelta) {
+        echo '[Thinking] '.$event->delta;
+    } elseif ($event->type() === StreamEventType::TextDelta) {
+        echo $event->delta;
+    }
 }
 ```
 
@@ -481,7 +481,7 @@ Either in prism/config.php:
 
 ```php
         'anthropic' => [
-            ...
+            // Other provider settings...
             'anthropic_beta' => 'code-execution-2025-05-22',
         ],
 
@@ -821,4 +821,4 @@ Therefore, for Anthropic we:
 
 ### Images
 
-Does not support `Image::fromURL`
+`Image::fromUrl()` sends an image URL to Anthropic as a URL reference. Local files, raw bytes, base64 content and provider file IDs are also supported. Choose a model that accepts images.

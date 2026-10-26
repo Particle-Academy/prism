@@ -8,10 +8,10 @@ Replicate is a cloud platform that makes it easy to run machine learning models 
 'replicate' => [
     'api_key' => env('REPLICATE_API_KEY', ''),
     'url' => env('REPLICATE_URL', 'https://api.replicate.com/v1'),
-    'webhook_url' => env('REPLICATE_WEBHOOK_URL', null),
     'use_sync_mode' => env('REPLICATE_USE_SYNC_MODE', true), // Use Prefer: wait header
-    'polling_interval' => env('REPLICATE_POLLING_INTERVAL', 1000), // milliseconds
-    'max_wait_time' => env('REPLICATE_MAX_WAIT_TIME', 60), // seconds
+    'polling_interval' => (int) env('REPLICATE_POLLING_INTERVAL', 1000), // milliseconds
+    'max_wait_time' => (int) env('REPLICATE_MAX_WAIT_TIME', 60), // seconds
+    'download_hosts' => ['replicate.delivery'],
 ]
 ```
 
@@ -19,10 +19,12 @@ Replicate is a cloud platform that makes it easy to run machine learning models 
 
 - **`api_key`**: Your Replicate API token (get one at [replicate.com/account](https://replicate.com/account))
 - **`url`**: Base API URL (default: `https://api.replicate.com/v1`)
-- **`webhook_url`**: Optional webhook URL for async completion notifications  
 - **`use_sync_mode`**: Enable sync mode with `Prefer: wait` header (default: `true`) - reduces latency
 - **`polling_interval`**: Time between prediction status checks in milliseconds (default: 1000ms) - used when sync mode times out
 - **`max_wait_time`**: Maximum time to wait for prediction completion in seconds (default: 60s)
+- **`download_hosts`**: Hosts allowed for generated-image downloads. An entry also allows its subdomains. Keep this list limited to trusted image hosts. This setting is read from `config/prism.php`, rather than from the third argument to `using()`.
+
+Polling settings must be integers; cast values read from environment variables as shown above.
 
 ## How Replicate Works
 
@@ -115,7 +117,7 @@ use Prism\Prism\Enums\StreamEventType;
 use Prism\Prism\Facades\Prism;
 
 $stream = Prism::text()
-    ->using('replicate', 'meta-llama-3-8b-instruct')
+    ->using('replicate', 'meta/meta-llama-3-8b-instruct')
     ->withPrompt('Write a short story about a robot')
     ->asStream();
 
@@ -148,6 +150,8 @@ $image = $response->firstImage();
 echo $image->url;
 ```
 
+Prism attempts to download generated images only from HTTPS URLs whose host matches `download_hosts`. If the host is refused, the download fails, or the returned body exceeds 25 MiB, the image retains its URL and has no base64 content. The host check covers the initial URL; it is not the public-address and redirect guard used by [`fetchPublicUrlContent()`](/input-modalities/images#fetching-remote-media). Use network egress controls when returned URLs are not trusted. These image-download settings do not apply to audio downloads.
+
 **Popular image models:**
 - `bytedance/seedream-4` - Fast, high-quality generation (1-4 steps)
 - `black-forest-labs/flux-dev` - Development model with more control
@@ -172,18 +176,23 @@ $response = Prism::image()
 
 Convert text to natural-sounding speech.
 
+::: warning Audio download boundary
+Replicate TTS automatically downloads the returned audio URL with its authenticated API client. The image `download_hosts` setting does not protect this download, and the API authorization header is reused. Restrict this capability to trusted models and apply network egress controls before enabling it for untrusted requests.
+:::
+
 ```php
 use Prism\Prism\Facades\Prism;
 
 $response = Prism::audio()
     ->using('replicate', 'jaaari/kokoro-82m:f559560eb822dc509045f3921a1921234918b91739db4bf3daab2169b71c7a13')
     ->withInput('Hello! Welcome to Replicate text-to-speech.')
-    ->withVoice('af_bella') 
+    ->withVoice('af_bella')
+    ->withProviderOptions(['voice' => 'af_bella'])
     ->asAudio();
 
 $audio = $response->audio;
 if ($audio->hasBase64()) {
-  file_put_contents("output.mp3", base64_decode($audio->base64));
+  file_put_contents("output.mp3", $audio->rawContent());
   echo "Audio saved as: output.mp3";
 }
 ```
@@ -193,6 +202,8 @@ if ($audio->hasBase64()) {
 - `af_nicole`
 - `am_fenrir` 
 -  `am_puck`
+
+Set `withVoice()` to initialize the audio request, and also pass the model's `voice` input through provider options. Replicate sends provider options as prediction inputs; it does not map the generic voice field.
 
 **Provider-specific options:**
 
@@ -205,6 +216,7 @@ $response = Prism::audio()
   ->withInput("Hello! Welcome to Replicate text-to-speech.")
   ->withVoice("af_jessica")
   ->withProviderOptions([
+    "voice" => "af_jessica",
     "speed" => 2 // Speech speed multiplier
   ])
   ->asAudio();
@@ -218,7 +230,7 @@ Transcribe audio files to text using Whisper.
 use Prism\Prism\Facades\Prism;
 use Prism\Prism\ValueObjects\Media\Audio;
 
-$audioFile = new Audio('path/to/audio.mp3');
+$audioFile = Audio::fromLocalPath('path/to/audio.mp3');
 
 $response = Prism::audio()
     ->using('replicate', 'vaibhavs10/incredibly-fast-whisper:3ab86df6c8f54c11309d4d1f930ac292bad43ace52d10c80d87eb258b3c9f79c')
@@ -289,17 +301,7 @@ foreach ($response->embeddings as $embedding) {
 
 ## Model Versioning
 
-Replicate models are versioned using SHA-256 hashes. Prism automatically maps friendly model names to their latest stable versions:
-
-```php
-// These are equivalent:
-->using('replicate', 'meta/meta-llama-3.1-405b-instruct')
-->using('replicate', 'meta/meta-llama-3.1-405b-instruct:e7...') // Full version hash
-```
-
-**Best practice:** Use the short name (without version hash) to automatically get the latest stable version.
-
-For models that are not officially maintained by Replicate, include the version hash.
+Prism sends the model string unchanged in the prediction's `version` field. It does not resolve friendly names to version hashes. Supply the model identifier or version accepted by your Replicate endpoint; use an explicit version when you need a fixed model revision.
 
 ## Async Predictions & Polling
 
@@ -321,17 +323,14 @@ $response = Prism::text()
 ### Custom Polling Configuration
 
 ```php
-// Set custom polling per provider instance
-$prism = Prism::text()
-    ->using(
-        new \Prism\Prism\Providers\Replicate\Replicate(
-            apiKey: env('REPLICATE_API_KEY'),
-            url: 'https://api.replicate.com/v1',
-            pollingInterval: 500,  // Poll every 500ms
-            maxWaitTime: 120       // Wait up to 2 minutes
-        ),
-        'meta/meta-llama-3.1-405b-instruct'
-    );
+use Prism\Prism\Facades\Prism;
+
+$request = Prism::text()
+    ->using('replicate', 'meta/meta-llama-3.1-405b-instruct', [
+        'polling_interval' => 500,
+        'max_wait_time' => 120,
+    ])
+    ->withPrompt('Generate text');
 ```
 
 ## Error Handling
@@ -394,18 +393,13 @@ Disable sync mode for very long predictions:
 You can also configure sync mode per provider instance:
 
 ```php
-use Prism\Prism\Providers\Replicate\Replicate;
+use Prism\Prism\Facades\Prism;
 
-$prism = Prism::text()
-    ->using(
-        new Replicate(
-            apiKey: env('REPLICATE_API_KEY'),
-            url: 'https://api.replicate.com/v1',
-            useSyncMode: true,  // Enable sync mode
-            maxWaitTime: 60      // Max 60s for Prefer: wait
-        ),
-        'meta/meta-llama-3.1-405b-instruct'
-    )
+$response = Prism::text()
+    ->using('replicate', 'meta/meta-llama-3.1-405b-instruct', [
+        'use_sync_mode' => true,
+        'max_wait_time' => 60,
+    ])
     ->withPrompt('Generate text')
     ->asText();
 ```

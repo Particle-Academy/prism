@@ -51,7 +51,7 @@ $response = Prism::text()
     )
     ->asText();
 
-// From a YouTube URL (automatically extracts the video ID)
+// From a YouTube URL (passed to Gemini as a full URL reference)
 $response = Prism::text()
     ->using(Provider::Gemini, 'gemini-2.5-flash')
     ->withPrompt(
@@ -127,7 +127,7 @@ The specific supported formats depend on the provider. Gemini is currently the m
 
 ## YouTube Video Support
 
-Pass a YouTube URL to `Video::fromUrl()`. Prism extracts the video ID and formats it for the provider.
+Pass a supported YouTube URL to `Video::fromUrl()`. Gemini receives the full URL as a `file_uri`; Prism does not extract a video ID or download the video.
 
 Supported YouTube URL formats:
 
@@ -153,7 +153,7 @@ Providers are not consistent in their support of sending raw contents, base64 an
 Prism converts between supported representations where possible. The following conversions and limitations apply.
 
 ### Supported conversions
-- Where a provider does not support URLs: Prism will fetch the URL and use base64 or rawContent.
+- A URL stays a reference. If your provider needs video bytes, call `fetchPublicUrlContent()` explicitly for a user- or model-supplied URL. Use the unguarded `fetchUrlContent()` only for URLs your application trusts. See [Fetching remote media](/input-modalities/images#fetching-remote-media) for limits and refusals.
 - Where you provide a file, base64 or rawContent: Prism will switch between base64 and rawContent depending on what the provider accepts.
 
 ### Limitations

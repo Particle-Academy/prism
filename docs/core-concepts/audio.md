@@ -133,8 +133,8 @@ Access audio file information:
 $audio = Audio::fromLocalPath('/path/to/audio.mp3');
 
 echo "MIME type: " . $audio->mimeType();
-echo "Has local path: " . ($audio->hasLocalPath() ? 'Yes' : 'No');
-echo "File size: " . $audio->size() . " bytes";
+echo "Local path: " . ($audio->localPath() ?? 'No local path');
+echo "Content size: " . strlen($audio->rawContent() ?? '') . " bytes";
 ```
 
 ## Working with Responses
@@ -408,7 +408,7 @@ test('can transcribe speech-to-text', function () {
     
     Prism::fake([$fakeTranscription]);
 
-    $audioFile = Audio::fromLocalPath('/fake/path/test.mp3');
+    $audioFile = Audio::fromRawContent('owned test audio', 'audio/mpeg');
     
     $response = Prism::audio()
         ->using('openai', 'whisper-1')

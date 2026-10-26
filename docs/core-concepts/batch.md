@@ -204,7 +204,7 @@ $list = Prism::batch()
     ->using(Provider::OpenAI)
     ->list(limit: 20);
 
-foreach ($list->batches as $job) {
+foreach ($list->data as $job) {
     echo "{$job->id}: {$job->status->name}\n";
 }
 
@@ -234,7 +234,7 @@ Use `whenProvider()` when your batch logic needs to handle both providers from t
 $job = Prism::batch()
     ->using($providerName)
     ->whenProvider('openai', fn ($r) => $r->withProviderOptions(['completion_window' => '24h']))
-    ->create(items: $items, inputFileId: $inputFileId);
+    ->create(items: $items);
 ```
 
 ## Client Options

@@ -169,7 +169,7 @@ use Prism\Prism\Enums\ToolChoice;
 $response = Prism::text()
     ->using('z', 'glm-4.6')
     ->withPrompt('Search for information')
-    ->withTools([$searchTool, $weatherTool])
+    ->withTools($tools)
     ->withToolChoice(ToolChoice::Any)
     ->asText();
 
@@ -177,7 +177,7 @@ $response = Prism::text()
 $response = Prism::text()
     ->using('z', 'glm-4.6')
     ->withPrompt('Get the weather')
-    ->withTools([$searchTool, $weatherTool])
+    ->withTools($tools)
     ->withToolChoice('get_weather')
     ->asText();
 
@@ -185,7 +185,7 @@ $response = Prism::text()
 $response = Prism::text()
     ->using('z', 'glm-4.6')
     ->withPrompt('What do you think?')
-    ->withTools([$tools])
+    ->withTools($tools)
     ->withToolChoice(ToolChoice::Auto)
     ->asText();
 ```

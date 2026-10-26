@@ -81,8 +81,8 @@ $response = Prism::structured()
         'schema' => [
             'strict' => true
         ]
-    ])
-    // ... rest of your configuration
+    ]);
+// Add the provider, schema and prompt before calling asStructured().
 ```
 
 ### Qwen: JSON Schema Mode
@@ -193,9 +193,9 @@ if (!isset($response->structured['required_field'])) {
 Structured output supports several configuration options to fine-tune your generations:
 
 ### Model Configuration
-- `maxTokens` - Set the maximum number of tokens to generate
-- `temperature` - Control output randomness (provider-dependent)
-- `topP` - Alternative to temperature for controlling randomness (provider-dependent)
+- `withMaxTokens()` - Set the maximum number of tokens to generate
+- `usingTemperature()` - Control output randomness (provider-dependent)
+- `usingTopP()` - Alternative to temperature for controlling randomness (provider-dependent)
 
 ### Input Methods
 - `withPrompt` - Single prompt for generation

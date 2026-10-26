@@ -3,10 +3,11 @@
 **Persistent context and semantic recall** — vector storage, `remember`/`recall`,
 and token-budget-aware retrieval.
 
-> [!WARNING]
-> **Status: the first slice works end to end**, and it isn't on Packagist yet —
-> install from the repository. A vector store, a `remember`/`recall` pair, one
-> storage driver, queued batch embedding, and forgetting.
+Install the package with Composer:
+
+```bash
+composer require particle-academy/prism-memory
+```
 
 An agent's useful context outgrows its context window. A thread replayed whole
 is the crudest possible memory: it grows without bound, costs tokens linearly,
@@ -92,6 +93,7 @@ Prism::text()
     ->withSystemPrompt($instructions)                  // stable
     ->withSystemPrompt($relevant->asContext())         // changes as memory grows
     ->withPrompt($question)                            // changes every turn
+    ->asText();
 ```
 
 Stable content first, volatile last, on every provider. `ranked()` gives you

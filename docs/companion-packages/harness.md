@@ -158,24 +158,16 @@ spends its step budget guessing at an allowlist it can't see — while the
 workflow author, who made the actual mistake, sees only a run that produced a
 poor answer. Failing names the wrong tool to the person who typed it.
 
-## What isn't built {#what-isn-t-built}
+## Modes and tool authorization {#what-isn-t-built}
 
-Every row states its status, because an earlier version of this table didn't and
-it misled a reader into thinking tool gating was implemented.
+Modes select a provider, model, system prompt and available tools. Configure mode
+classes under `harness.modes` and select one with `usingMode()`. Tool authorization
+uses Laravel Gates; configure both the offered tools and the policy that permits
+their invocation. Subagents run nested requests with their own toolset and budget.
 
-| | Status | Shape when it lands |
-|---|---|---|
-| **Session** | **shipped** | Resolved per request from a store, keyed on participant + scope |
-| **Thread** | **shipped** | Eloquent models here; contract defined in Prism 0.113 |
-| **Controller** | *planned* | Singleton in the container; config file plus mode classes |
-| **Modes** | *planned* | One class per mode, container-resolved so they're testable |
-| **Permissions** | *planned* | Gates and Policies — "may this tool run" is an authorization question |
-| **Subagents** | *planned* | A Prism Tool wrapping a nested run, with a narrowed toolset |
-| **Event bus** | *planned* | Laravel events over Reverb — separate from Prism telemetry |
-| **Workspace** | *elsewhere* | Built as [prism-workspace](/companion-packages/workspace) |
-
-`usingMode()` stores a mode name on the session today. What a mode *does* — the
-model, tools and system prompt it implies — is the planned part.
+See the [Harness usage guide](https://github.com/Particle-Academy/prism-harness#usage)
+for mode registration, authorization and subagent configuration. File operations
+are provided by [Workspace](/companion-packages/workspace).
 
 ## Related
 

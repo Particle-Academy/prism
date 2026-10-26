@@ -68,4 +68,4 @@ $response = Prism::audio()
 
 ## Limitations
 
-- Text-to-speech is not yet implemented
+- Text-to-speech is available through `Prism::audio()->asAudio()`. See [Audio](/core-concepts/audio) for response handling.

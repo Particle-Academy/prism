@@ -8,16 +8,20 @@ Prism Server acts as a middleware, translating requests from OpenAI-compatible c
 
 ## Setting Up Prism Server
 
+::: danger Protect the endpoints before enabling them
+The default `prism_server.middleware` list is empty. Enabling the server without adding authentication and authorization exposes endpoints that spend your provider credentials. Apply your application's authentication, access policy and rate limits before making these routes reachable. The `api` middleware group alone does not authenticate callers.
+:::
+
 ### 1. Enable Prism Server
 
 First, make sure Prism Server is enabled in your `config/prism.php` file:
 
 ```php
-'prism_server' => [
+return ['prism_server' => [
     // The middleware that will be applied to the Prism Server routes.
     'middleware' => [],
     'enabled' => env('PRISM_SERVER_ENABLED', false),
-]
+]];
 ```
 
 ### 2. Register Your Prisms
@@ -105,7 +109,8 @@ With this setup, you can access your Prism models through a user-friendly chat i
 You can add middleware to the Prism Server routes by setting the `middleware` option in your `config/prism.php` file:
 
 ```php
-'prism_server' => [
-    'middleware' => ['api'],
-],
+// For an application configured to authenticate API tokens with Sanctum:
+return ['prism_server' => [
+    'middleware' => ['auth:sanctum'],
+]];
 ```

@@ -205,12 +205,13 @@ $stream = Prism::text()
     ->asStream();
 
 foreach ($stream as $event) {
-    match ($event->type()) {
-        StreamEventType::TextDelta => echo $event->delta,
-        StreamEventType::ToolCall => echo "Tool called: {$event->toolName}\n",
-        StreamEventType::ToolResult => echo "Tool result: " . json_encode($event->result) . "\n",
-        default => null,
-    };
+    if ($event->type() === \Prism\Prism\Enums\StreamEventType::TextDelta) {
+        echo $event->delta;
+    } elseif ($event->type() === \Prism\Prism\Enums\StreamEventType::ToolCall) {
+        echo "Tool called: {$event->toolCall->name}\n";
+    } elseif ($event->type() === \Prism\Prism\Enums\StreamEventType::ToolResult) {
+        echo 'Tool result: '.json_encode($event->toolResult->result)."\n";
+    }
 }
 ```
 
@@ -310,7 +311,7 @@ Visit [Requesty](https://requesty.ai) for a complete list of available models.
 - ✅ Image Support
 - ✅ Video Support
 - ✅ Document Support
-- ❌ Embeddings (not yet implemented)
+- Embeddings through `Prism::embeddings()`
 - ❌ Image Generation (not yet implemented)
 
 ## API Reference

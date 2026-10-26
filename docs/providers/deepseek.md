@@ -42,8 +42,8 @@ Does not support embeddings.
 
 ### Tool Choice
 
-Does not support tool choice.
+Use `withToolChoice()` with `ToolChoice::Auto` or a tool name to control tool selection. This integration rejects `ToolChoice::Any` and `ToolChoice::None`.
 
 ### Images
 
-Does not support images.
+The integration maps image parts into image URL or base64 content. Select a model that accepts image input; provider and model support determine whether the request succeeds.

@@ -110,7 +110,7 @@ Prism::fake([
                 ->withToolCalls([/* tool calls */])
                 ->withToolResults([/* tool results */])
                 ->withUsage(new Usage(1000, 750))
-                ->withMeta(new Meta(id: 123, model: 'test-model'))
+                ->withMeta(new Meta(id: '123', model: 'test-model'))
                 ->withMessages([/* Second step messages */])
                 ->withSystemPrompts([/* Second step system prompts */])
                 ->withAdditionalContent([/* Second step additional data */])

@@ -10,8 +10,9 @@ own application logic) between the model and the action:
   decision is supplied. **Deny-by-default**: a tool call that never receives an
   approval is refused, never executed.
 
-Both work across all providers for text and structured requests; streaming
-events are emitted for Anthropic and OpenAI.
+Use these controls with providers that support custom tools. Approval and
+client-executed streaming are supported by Anthropic, Azure, DeepSeek, Gemini,
+Groq, Mistral, Ollama, OpenAI, OpenRouter, Qwen, Requesty, Vertex, xAI and Z.
 
 ## Client-executed tools
 
@@ -121,7 +122,7 @@ authorize the approving user in your app before sending an approval.
 
 ## Streaming
 
-For Anthropic and OpenAI streams, a pending approval emits a
+On a supported provider's stream, a pending approval emits a
 `ToolApprovalRequestEvent` (`tool_approval_request`) carrying the
 `approvalId`, the tool call, and its arguments — then the stream ends with
 `FinishReason::ToolCalls`. The event is broadcastable

@@ -52,6 +52,7 @@ Client-side with the `useChat` hook:
 
 ```javascript
 import { useChat } from '@ai-sdk/react';
+import { DefaultChatTransport } from 'ai';
 import { useState } from 'react';
 
 export default function Chat() {
@@ -59,15 +60,22 @@ export default function Chat() {
     const [input, setInput] = useState('');
 
     const { messages, sendMessage, status } = useChat({
-        transport: {
+        transport: new DefaultChatTransport({
             api: '/api/chat',
-        },
+            prepareSendMessagesRequest: ({ messages }) => ({
+                body: {
+                    message: messages.at(-1).parts
+                        .filter(part => part.type === 'text')
+                        .map(part => part.text).join('\n'),
+                },
+            }),
+        }),
     });
 
     const handleSubmit = (e) => {
         e.preventDefault();
         if (input.trim() && status === 'ready') {
-            sendMessage(input);
+            sendMessage({ text: input });
             setInput('');
         }
     };
@@ -102,8 +110,7 @@ export default function Chat() {
 }
 ```
 
-> [!NOTE]
-> This example uses AI SDK 5.0, which introduced significant changes to the `useChat` hook. The hook no longer manages input state internally, and you'll need to use the `sendMessage` function directly instead of `handleSubmit`.
+This example uses the AI SDK 5 transport API and sends the latest user message as `message`, matching the Laravel route above. To retain conversation history, validate the incoming messages and map them to Prism message objects in your application. Apply your application's authentication and rate limits to the route. See [AI SDK transport configuration](https://ai-sdk.dev/docs/ai-sdk-ui/transport).
 
 For more advanced usage, including tool support and custom options, see the [Vercel AI SDK UI documentation](https://ai-sdk.dev/docs/reference/ai-sdk-ui).
 
@@ -112,8 +119,9 @@ For more advanced usage, including tool support and custom options, see the [Ver
 For real-time multi-user applications that need to process AI requests in the background:
 
 ```php
-// Job Class
 <?php
+
+// Job class
 
 namespace App\Jobs;
 
@@ -458,16 +466,24 @@ When using `asDataStreamResponse()`, artifacts are sent as custom data parts wit
 
 ```javascript
 import { useChat } from '@ai-sdk/react';
+import { DefaultChatTransport } from 'ai';
 import { useState } from 'react';
 
 export default function Chat() {
     const [input, setInput] = useState('');
     const [artifacts, setArtifacts] = useState([]);
 
-    const { messages, sendMessage, status, data } = useChat({
-        transport: {
+    const { messages, sendMessage, status } = useChat({
+        transport: new DefaultChatTransport({
             api: '/api/chat',
-        },
+            prepareSendMessagesRequest: ({ messages }) => ({
+                body: {
+                    message: messages.at(-1).parts
+                        .filter(part => part.type === 'text')
+                        .map(part => part.text).join('\n'),
+                },
+            }),
+        }),
         onData: (data) => {
             // Handle artifact data messages
             if (data.type === 'data-artifact') {
@@ -481,10 +497,10 @@ export default function Chat() {
             {/* Display artifacts */}
             <div className="artifacts">
                 {artifacts.map((artifact, i) => (
-                    artifact.mime_type.startsWith('image/') && (
+                    artifact.mimeType.startsWith('image/') && (
                         <img
                             key={artifact.id || i}
-                            src={`data:${artifact.mime_type};base64,${artifact.data}`}
+                            src={`data:${artifact.mimeType};base64,${artifact.data}`}
                             alt={`Generated artifact ${i + 1}`}
                         />
                     )
@@ -507,7 +523,7 @@ export default function Chat() {
             <form onSubmit={(e) => {
                 e.preventDefault();
                 if (input.trim() && status === 'ready') {
-                    sendMessage(input);
+                    sendMessage({ text: input });
                     setInput('');
                 }
             }}>

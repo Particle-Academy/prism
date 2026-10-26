@@ -171,16 +171,16 @@ Images can be created from various sources:
 use Prism\Prism\ValueObjects\Media\Image;
 
 // From a URL
-Image::fromUrl('https://example.com/image.png')
+Image::fromUrl('https://example.com/image.png');
 
 // From a local file
-Image::fromLocalPath('/path/to/image.jpg')
+Image::fromLocalPath('/path/to/image.jpg');
 
 // From a storage disk
-Image::fromStoragePath('/path/to/image.jpg', 'my-disk')
+Image::fromStoragePath('/path/to/image.jpg', 'my-disk');
 
 // From base64
-Image::fromBase64($base64Data, 'image/jpeg')
+Image::fromBase64($base64Data, 'image/jpeg');
 ```
 
 > [!NOTE]

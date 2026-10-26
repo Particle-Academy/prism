@@ -108,8 +108,23 @@ Providers are not consistent in their support of sending raw contents, base64 an
 Prism converts between supported representations where possible. The following conversions and limitations apply.
 
 ### Supported conversions
-- Where a provider does not support URLs: Prism will fetch the URL and use base64 or rawContent.
+- A URL stays a reference. Prism does not download it when reading media content. If the provider requires bytes, fetch them explicitly before making the provider request.
 - Where you provide a file, base64 or rawContent: Prism will switch between base64 and rawContent depending on what the provider accepts.
 
 ### Limitations
 - Where a provider only supports URLs: if you provide a file path, raw contents or base64, for security reasons Prism does not create a URL for you and your request will fail.
+
+## Fetching remote media
+
+For a URL supplied by a user or model, use the guarded fetch before passing the image to a provider that needs bytes:
+
+```php
+use Prism\Prism\ValueObjects\Media\Image;
+
+$image = Image::fromUrl('https://example.com/diagram.png')
+    ->fetchPublicUrlContent();
+```
+
+`fetchPublicUrlContent()` rejects non-HTTP schemes, private, loopback and reserved addresses, including hostnames resolving to those addresses. It checks redirect destinations and defaults to five redirects and a 32 MiB response limit. It throws `Prism\Prism\Exceptions\PrismUrlRefused` when a URL, redirect or response size is refused. These checks do not pin DNS results to the eventual connection; use network egress restrictions where that boundary matters.
+
+Use `fetchUrlContent()` only for a URL your application explicitly trusts. It performs an unguarded HTTP fetch, with no public-address, redirect or response-size checks. Neither method runs automatically. The same fetch methods are available on documents, audio and video.

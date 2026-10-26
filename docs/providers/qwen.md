@@ -138,13 +138,13 @@ Images can be provided via URL, local file, or base64:
 
 ```php
 // From URL
-Image::fromUrl('https://example.com/photo.jpeg')
+Image::fromUrl('https://example.com/photo.jpeg');
 
 // From local file
-Image::fromLocalPath('/path/to/image.png')
+Image::fromLocalPath('/path/to/image.png');
 
 // From base64
-Image::fromBase64($base64Data, 'image/png')
+Image::fromBase64($base64Data, 'image/png');
 ```
 
 ### Available VL Models
@@ -255,12 +255,13 @@ $response = Prism::text()
     ->asStream();
 
 foreach ($response as $event) {
-    match (true) {
-        $event instanceof \Prism\Prism\Streaming\Events\TextDeltaEvent => echo $event->delta,
-        $event instanceof \Prism\Prism\Streaming\Events\ToolCallEvent => echo "Calling: {$event->toolCall->name}\n",
-        $event instanceof \Prism\Prism\Streaming\Events\ToolResultEvent => echo "Result received\n",
-        default => null,
-    };
+    if ($event instanceof \Prism\Prism\Streaming\Events\TextDeltaEvent) {
+        echo $event->delta;
+    } elseif ($event instanceof \Prism\Prism\Streaming\Events\ToolCallEvent) {
+        echo "Calling: {$event->toolCall->name}\n";
+    } elseif ($event instanceof \Prism\Prism\Streaming\Events\ToolResultEvent) {
+        echo 'Result: '.json_encode($event->toolResult->result)."\n";
+    }
 }
 ```
 
@@ -277,11 +278,11 @@ $stream = Prism::text()
     ->asStream();
 
 foreach ($stream as $event) {
-    match ($event->type()) {
-        StreamEventType::ThinkingDelta => echo "[Thinking] " . $event->delta . "\n",
-        StreamEventType::TextDelta => echo $event->delta,
-        default => null,
-    };
+    if ($event->type() === StreamEventType::ThinkingDelta) {
+        echo '[Thinking] '.$event->delta."\n";
+    } elseif ($event->type() === StreamEventType::TextDelta) {
+        echo $event->delta;
+    }
 }
 ```
 
@@ -479,7 +480,7 @@ For complete image generation documentation, see [Image Generation](/core-concep
 
 ### Tool Choice
 
-Qwen's `tool_choice` parameter only supports `"auto"` and `"none"`. Forcing a specific tool by name is not supported and will throw an `InvalidArgumentException`:
+This integration accepts `ToolChoice::Auto` or the default `null`. It rejects `ToolChoice::None`, `ToolChoice::Any` and a specific tool name with an `InvalidArgumentException`:
 
 ```php
 // This works

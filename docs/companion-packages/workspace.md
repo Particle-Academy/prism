@@ -4,9 +4,13 @@
 disk with an agent-shaped API over it, and a path guard that is the actual
 product.
 
-> [!WARNING]
-> **Status: files only.** Code execution is deferred, deliberately. Not on
-> Packagist yet — install from the repository.
+Install the package with Composer:
+
+```bash
+composer require particle-academy/prism-workspace
+```
+
+Workspace provides file operations. It does not execute code.
 
 ```php
 use Prism\Workspace\Facades\PrismWorkspace;

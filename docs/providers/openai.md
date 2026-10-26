@@ -40,10 +40,11 @@ Two things to expect when you do this:
   Responses API are each supported only if that endpoint implements them.
   Prism sends the same request either way, so an unsupported feature surfaces as
   an error from the endpoint rather than from Prism.
-- **Model names drive behaviour.** Prism infers some capabilities from the model
-  name — structured-output mode, for example, is resolved from the `gpt-` family
-  prefixes. An endpoint serving `llama-3.1-70b` under the OpenAI provider will
-  not be treated as structured-output capable.
+- **Structured mode depends on the model name.** Legacy `gpt-3.5-turbo`, `gpt-4`
+  and `gpt-4-*` names, plus `gpt-4o-2024-05-13`, use JSON mode. The `o1-mini`
+  and `o1-preview` names and their `2024-09-12` snapshots are rejected. Other
+  names, including custom model names, use JSON Schema structured output by
+  default. Your endpoint must support the selected mode.
 
 If the endpoint you are targeting already has a dedicated Prism provider —
 Groq, Mistral, DeepSeek, xAI, OpenRouter, Requesty, Qwen, Ollama, Azure — prefer
@@ -100,7 +101,7 @@ $response = Prism::structured()
         'schema' => [ // [!code focus]
             'strict' => true // [!code focus]
         ] // [!code focus]
-    ]) // [!code focus]
+    ]); // [!code focus]
 ```
 
 > [!WARNING]
@@ -260,7 +261,7 @@ $response = Prism::structured()
         'metadata' => [ // [!code focus]
             'project_id' => 23 // [!code focus]
         ] // [!code focus]
-    ]) // [!code focus]
+    ]); // [!code focus]
 ```
 
 ### Previous Responses
@@ -271,7 +272,7 @@ Prism supports OpenAI's [conversation state](https://platform.openai.com/docs/gu
 $response = Prism::structured()
     ->withProviderOptions([ // [!code focus]
         'previous_response_id' => 'response_id' // [!code focus]
-    ]) // [!code focus]
+    ]); // [!code focus]
 ```
 
 ### Truncation
@@ -280,7 +281,7 @@ $response = Prism::structured()
 $response = Prism::structured()
     ->withProviderOptions([ // [!code focus]
         'truncation' => 'auto' // [!code focus]
-    ]) // [!code focus]
+    ]); // [!code focus]
 ```
 
 ### Service Tiers
@@ -291,7 +292,7 @@ Prism supports OpenAI's [Service Tier Configuration](https://platform.openai.com
 $response = Prism::text()
     ->withProviderOptions([ // [!code focus]
         'service_tier' => 'priority' // [!code focus]
-    ]) // [!code focus]
+    ]); // [!code focus]
 ```
 
 > [!WARNING]
@@ -422,11 +423,11 @@ Reasoning models like `gpt-5` stream their thinking process separately from the 
 use Prism\Prism\Enums\StreamEventType;
 
 foreach ($stream as $event) {
-    match ($event->type()) {
-        StreamEventType::ThinkingDelta => echo "[Thinking] " . $event->delta,
-        StreamEventType::TextDelta => echo $event->delta,
-        default => null,
-    };
+    if ($event->type() === StreamEventType::ThinkingDelta) {
+        echo '[Thinking] '.$event->delta;
+    } elseif ($event->type() === StreamEventType::TextDelta) {
+        echo $event->delta;
+    }
 }
 ```
 
@@ -511,7 +512,7 @@ Prism::text()
     ->withMessages([
         new UserMessage('Who are you?', additionalAttributes: ['name' => 'TJ']),
     ])
-    ->asText()
+    ->asText();
 ```
 
 ## Image Generation

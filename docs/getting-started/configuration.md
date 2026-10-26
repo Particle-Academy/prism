@@ -39,7 +39,7 @@ Request timeouts can also be set by using the `withClientOptions()` method.
 ```php
 Prism::text()
   ->withClientOptions(['timeout' => 120]) // [!code focus]
-  ->asText()
+  ->asText();
 ```
 
 ## Provider Configuration

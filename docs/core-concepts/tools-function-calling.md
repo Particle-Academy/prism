@@ -123,7 +123,7 @@ $tool = Tool::as('calculate')
     ->for('Perform calculations')
     ->withNumberParameter('value', 'The number to process')
     ->using(function (float $value): string {
-        return "Calculated result: {$value * 2}";
+        return 'Calculated result: '.($value * 2);
     });
 ```
 
@@ -321,7 +321,10 @@ $this
 ```
 
 ```php
-public function __invoke(string $query, string $scope, ?int $limit = null): string
+interface SearchHandler
+{
+    public function __invoke(string $query, string $scope, ?int $limit = null): string;
+}
 ```
 
 Each `--parameter` is `name:type[:description]`. The types are `string`,
@@ -628,8 +631,8 @@ Tools returning `string` continue to work unchanged. The `ToolOutput` return typ
 
 ```php
 // Both are valid:
-->using(fn (string $query): string => "Result: {$query}");
-->using(fn (string $query): ToolOutput => new ToolOutput(result: "Result: {$query}"));
+$tool->using(fn (string $query): string => "Result: {$query}");
+$tool->using(fn (string $query): ToolOutput => new ToolOutput(result: "Result: {$query}"));
 ```
 
 ## Provider Tools
@@ -678,7 +681,7 @@ new ProviderTool(
     type: 'code_execution_20250522',  // Required: The provider tool identifier
     name: 'code_execution',           // Optional: Custom name for the tool
     options: []                       // Optional: Provider-specific options
-)
+);
 ```
 
 - **type**: The provider-specific tool identifier (required)

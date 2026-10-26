@@ -169,7 +169,6 @@ $response = Prism::audio()
     ->withInput($audioFile)
     ->withProviderOptions([
         'response_format' => 'verbose_json',
-        'timestamp_granularities' => ['segment'], // word, segment
     ])
     ->asText();
 
@@ -181,6 +180,8 @@ foreach ($segments as $segment) {
     echo "End: " . $segment['end'] . "s\n";
 }
 ```
+
+Prism does not forward `timestamp_granularities` to Groq. Use the segment information returned by `verbose_json` when available.
 
 #### Transcription Usage
 

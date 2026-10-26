@@ -44,7 +44,7 @@ $response = Prism::embeddings()
     ->asEmbeddings();
 
 /** @var Embedding $embedding */
-foreach ($embeddings as $embedding) {
+foreach ($response->embeddings as $embedding) {
     // Do something with your embeddings
     $embedding->embedding;
 }
@@ -205,7 +205,7 @@ $response = Prism::embeddings()
 Read results and metadata from the embeddings response:
 
 ```php
-namespace Prism\Prism\ValueObjects\Embedding;
+use Prism\Prism\ValueObjects\Embedding;
 
 // Get an array of Embedding value objects
 $embeddings = $response->embeddings;
