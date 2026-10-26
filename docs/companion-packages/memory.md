@@ -1,149 +1,115 @@
 # Prism Memory
 
-**Persistent context and semantic recall** — vector storage, `remember`/`recall`,
-and token-budget-aware retrieval.
+Store text and conversation-derived records by owner and scope, then retrieve related context with embeddings and a token budget.
 
-Install the package with Composer:
+## Installation
 
 ```bash
 composer require particle-academy/prism-memory
+php artisan vendor:publish --tag=memory-config
+php artisan migrate
 ```
 
-An agent's useful context outgrows its context window. A thread replayed whole
-is the crudest possible memory: it grows without bound, costs tokens linearly,
-and eventually stops fitting. This stores what was said and retrieves **only the
-parts that matter now**.
+Settings live in `config/memory.php`. Configure the embedding provider's credentials in Prism. The default store is a database table; its portable migration loads automatically. Publish `memory-migrations` only when you need local migration files.
+
+For PostgreSQL with pgvector, configure the `pgvector` driver, choose dimensions matching the embedding model, publish `memory-pgvector-migrations` and run migrations. The database role must be allowed to install the `vector` extension.
+
+## Remembering and recalling
+
+The owner can be an Eloquent model or a stable string. Authorize the owner and scope in your application before resolving them:
 
 ```php
-$memory = PrismMemory::for($user, scope: 'support');
+use Prism\Memory\Facades\PrismMemory;
+use Prism\Prism\Facades\Prism;
 
-$memory->remember($response->messages);
+// $user is the authenticated owner. Inline embedding allows immediate recall.
+$memory = PrismMemory::for($user, scope: 'support')->synchronously();
+$ids = $memory->remember('The customer prefers email for billing questions.');
 
-$relevant = $memory->recall('billing address', budget: 1500);
+$relevant = $memory->recall('billing contact preference', budget: 1500);
 
-Prism::text()
-    ->using(Provider::Anthropic, 'claude-sonnet-4-5')
-    ->withSystemPrompt($instructions)
+$response = Prism::text()
+    ->using('anthropic', 'claude-sonnet-5-5')
+    ->withSystemPrompt('Use recalled context as reference material.')
     ->withSystemPrompt($relevant->asContext())
-    ->withPrompt($question)
+    ->withPrompt('How should we contact this customer about billing?')
     ->asText();
 ```
 
-## Handing a recollection to Prism
+`remember(iterable|Message|string $subject, array $metadata = [], ?Carbon $occurredAt = null): array` accepts a string, one core message, or iterable messages such as `$response->messages`. It returns record IDs. Metadata values are scalar or null; role and record-kind metadata are populated by the package. Tool results are stored by default.
 
-> [!WARNING]
-> Use `withSystemPrompt($relevant->asContext())`. **Not**
-> `withMessages($relevant->asMessages())->withPrompt(...)`.
->
-> Prism refuses a request carrying both an explicit message list and a prompt —
-> deliberately, because there's no defensible order to merge them in. That makes
-> the second form a trap of an unusually nasty shape: it works in development
-> against an empty store, and throws the first time recall actually returns
-> something.
+Embedding normally runs through the `EmbedMemories` queue job after records are written. A record cannot be recalled before its vector is stored. Run your configured queue, inspect `pending()`, or call `embedPending(?int $batch = null)` to process pending records. `synchronously()` returns a copy that embeds new records inline. A synchronous Laravel queue also runs dispatched jobs inline.
 
-`asMessages()` returns **one** system message, not one per memory. Replaying
-recollections as prior user and assistant turns tells the model a fragment was
-the last thing said — untrue about the conversation, and it invites the model to
-answer the recalled question instead of the one being asked.
+Repeated content/role/tool identity within a collection replaces its existing record. Changing the embedding model or dimensions changes the embedding space; migrate or re-embed data rather than mixing incompatible vectors.
 
-## recall()
+## Recall options
 
 ```php
+use Prism\Memory\ValueObjects\Weighting;
+
 $relevant = $memory->recall(
-    'billing address',
-    budget: 1500,                                    // fill a token budget, not a fixed k
+    query: 'billing address',
+    limit: 8,
+    budget: 1500,
     weighting: new Weighting(relevance: 0.7, recency: 0.3),
+    minScore: 0.2,
     filter: ['role' => 'user'],
 );
 ```
 
-**Token budgets, not top-k.** You know your context window; a memory layer that
-returns five passages whether or not they fit has left the hard part to you.
-`budget` fills up to an estimated token count, and doesn't stop at the first
-memory that doesn't fit — that would hand back one where the budget had room for
-six.
+The full signature is `recall(string $query, ?int $limit = null, ?int $budget = null, ?Weighting $weighting = null, ?float $minScore = null, array $filter = []): Recollection`. A budget selects records within an estimated token count; it is not an exact model-token or billing bound. The candidate search uses the configured overfetch limit.
 
-**Relevance and recency are separate axes.** Pure similarity returns the most
-*similar* memory, which isn't the most *useful* one: "what is my billing
-address" matches every previous time the address came up, including the one
-since superseded.
+`Weighting` accepts `relevance`, `recency` and `halfLifeSeconds`; weights must be nonnegative with a nonzero total, and half-life must be positive. The defaults use relevance alone. `filter` matches metadata, including lists of accepted scalar values.
 
-Each result keeps its score **broken into parts** — `similarity`, `recency`,
-`score`. One blended number tells you a memory ranked third and nothing about
-whether it was a close match that was old or a weak match that was fresh, and
-those call for opposite fixes.
+## Recollection
 
-## Ordering is a cache property
+| Member | Use |
+|---|---|
+| `asContext()` | One text block for a system prompt |
+| `asSystemMessage()` | One core SystemMessage |
+| `asMessages()` | Empty array or one SystemMessage |
+| `all()`, iteration | Chronological records with stable ID ordering for time ties |
+| `ranked()` | Records sorted by score |
+| `estimatedTokens` | Token estimate for the selected records |
+| `digest()` | SHA-256 of the rendered context |
+| `isEmpty()`, `count()` | Inspect the result |
 
-**A `Recollection` is chronological, not score-ordered.** That looks like a
-missed opportunity to rank, and it's load-bearing.
+Each recalled record includes content, kind, role, similarity, recency, combined score, occurrence time and metadata. Use `withSystemPrompt($relevant->asContext())` alongside a new prompt. A nonempty explicit `withMessages()` list cannot be combined with `withPrompt()`; append the user message explicitly when using a message list.
 
-Anthropic and OpenAI both price a cached **prefix** at a fraction of a fresh
-one, and recalled memories sit inside it. Score order is unstable by nature: two
-memories a thousandth of a cosine apart swap places when a third arrives, when
-the query is reworded, when a recency weight ticks over. Same set, different
-order, different prefix, missed cache — and your usage numbers then say the
-request got *more* expensive without saying why.
+Stored content can include untrusted instructions. Retain handler authorization and tool restrictions when using recalled material.
 
-A memory's position in time never changes, so adding one appends rather than
-reshuffles — the one mutation a prefix cache survives.
+## Forgetting and retention
 
 ```php
-Prism::text()
-    ->withSystemPrompt($instructions)                  // stable
-    ->withSystemPrompt($relevant->asContext())         // changes as memory grows
-    ->withPrompt($question)                            // changes every turn
-    ->asText();
+$deleted = $memory->forget($ids);    // Specific records in this collection.
+$total = $memory->count();
 ```
 
-Stable content first, volatile last, on every provider. `ranked()` gives you
-score order, for looking at rather than for building a prompt.
+`forget()` with no IDs, or an empty array, deletes the entire owner/scope collection. `forgetBefore(DateTimeInterface $before)` deletes records by occurrence time. Both return the deletion count; authorize destructive operations before calling them.
 
-> [!TIP]
-> `$relevant->digest()` fingerprints the exact bytes a recollection contributes.
-> Log it, and a change in your provider's cache-read token count stops being a
-> mystery: either the digest moved and the miss is explained, or it didn't and
-> the cause is elsewhere.
+`retention` is disabled by default. Configured expiry is checked during retrieval; expiry does not replace a deletion policy for stored rows.
 
-## remember()
+## Configuration
 
-Takes `$response->messages` — the whole exchange including tool steps — or a
-string, or a single message.
+| Key | Default / purpose |
+|---|---|
+| `default_scope`, `remember_tool_results` | `default`, true |
+| `embeddings.provider`, `embeddings.model`, `embeddings.batch` | `openai`, `text-embedding-3-small`, 96 |
+| `recall.limit`, `recall.overfetch`, `recall.min_score` | 8, 8, null |
+| `recall.relevance`, `recall.recency`, `recall.half_life` | 1.0, 0.0, 604800 seconds |
+| `recall.query_cache` | 300 seconds for repeated query embeddings |
+| `retention` | null; optional lifetime in seconds |
+| `store`, `require_durable` | `database`, true |
+| `drivers.database.connection`, `table` | Database connection and `memory_vectors` |
+| `drivers.database.index` | `strategy`, `bits`, `candidates`, `seed`, `exact_scan_limit` |
+| `drivers.pgvector.*` | Connection/table, `dimensions` (1536), `ef_search` (100) |
 
-**It doesn't embed inside the request.** A record is written immediately and
-embedded afterwards through your queue, because embedding is a provider round
-trip and doing it inline means every turn waits on the previous turn's
-bookkeeping.
+The published file maps these to `MEMORY_*` variables, including `MEMORY_EMBEDDINGS_PROVIDER/MODEL/BATCH`, `MEMORY_RECALL_*`, `MEMORY_RETENTION`, `MEMORY_STORE`, `MEMORY_REQUIRE_DURABLE`, `MEMORY_DB_CONNECTION`, `MEMORY_INDEX_*` and `MEMORY_PGVECTOR_*`. Changing database signature bits or seed requires re-indexing stored signatures.
 
-So **a memory isn't recallable until its vector arrives.** `$memory->pending()`
-watches that; `$memory->synchronously()` opts out, visibly, at the call site.
-Laravel's default connection runs jobs inline, so a fresh install behaves as
-though embedding were synchronous.
+## Harness integration and errors
 
-A turn producing six memories costs **one** provider call, not six. Writing is
-idempotent — the record id is a digest of content and role, so a conversation
-re-recorded after a retry doesn't double the store.
+With Harness installed, `Prism\Memory\Harness\MemoryContextRecall` implements its context recall contract, and `MemoryEvictionSink` stores evicted messages. Construct both with the same memory manager and authorized owner; use the same Harness-supplied scope for storage and retrieval. Their optional configuration does not install Harness automatically.
 
-## Forgetting
+Exceptions under `Prism\Memory\Exceptions` are `EmbeddingFailed`, `EmbeddingSpaceMismatch`, `InvalidVector`, `UnsafeMemoryConfiguration` and `UnstorableMemory`. Handle queue failures and embedding/provider errors rather than treating missing vectors as successful recall. An application-specific vector backend implements `Contracts\VectorStore` and registers it through the store manager's `extend()` method.
 
-```php
-$memory->forget($ids);              // specific memories
-$memory->forget();                  // this owner, this scope, all of it
-$memory->forgetBefore($date);       // everything that HAPPENED before $date
-```
-
-**A hard delete, not a flag.** "Forget this" is a request a person is entitled
-to make about what a system knows of them, and a soft delete answers it with a
-row that still exists. `forget()` returns how many rows went, because that's an
-assertion someone may later have to evidence.
-
-`forgetBefore()` cuts on when the remembered thing *occurred*, not when the row
-was written — so a conversation backfilled last week from two years ago is
-forgotten by the age of the conversation.
-
-Retention is off by default, and expiry is enforced **on read**, so a memory
-past its window is never recalled just because nothing pruned it.
-
-## Related
-
-- [Harness](/companion-packages/harness) — owns the threads this reads
+See the [package guide](https://github.com/Particle-Academy/prism-memory) for custom stores and integration setup.

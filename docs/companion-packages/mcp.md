@@ -1,147 +1,120 @@
 # Prism MCP
 
-**Tools from a server you don't own, offered to your model as ordinary Prism
-tools** — across a trust boundary you can see.
+Consume remote MCP tools as Prism tools, with explicit trust declarations, optional definition pins, invocation gates and bounded results.
+
+## Installation
 
 ```bash
 composer require particle-academy/prism-mcp
+php artisan vendor:publish --tag=prism-mcp-config
 ```
 
-```php
-use Prism\Mcp\Facades\PrismMcp;
+Settings live in `config/prism-mcp.php`. Configure an application-controlled server endpoint and credentials. This client uses Streamable HTTP and speaks MCP revision `2026-07-28`; the server must support that revision. It does not provide stdio transport or an OAuth authorization flow.
 
-$tools = PrismMcp::server('github')->tools();
+## Configure a server
 
-Prism::text()
-    ->using('anthropic', 'claude-sonnet-4-5')
-    ->withTools($tools)
-    ->withPrompt('Which of our open PRs touch the billing module?')
-    ->asText();
-```
-
-> [!WARNING]
-> **Status: first slice.** The client, over Streamable HTTP, speaking MCP
-> revision `2026-07-28`. stdio transport, OAuth, and the legacy protocol eras
-> are deliberately not here yet — the package README lists them as a plan.
-
-## Read this part
-
-When you connect to an MCP server, you are not fetching data. You are letting a
-third party **write into your model's instructions**, and then letting your model
-**act on what they write back**.
-
-Tool names, descriptions, parameter descriptions, enum values, annotations and
-every tool *result* are authored by whoever runs that server, and all of them
-reach your model as text it treats as authoritative.
-
-Two things make this different from untrusted input your app already handles:
-
-**It's instructions, not data.** You escape user input before HTML and bind it
-before SQL. There's no equivalent escape for text reaching a language model,
-because instruction and data are the same channel.
-
-**It can change under you.** A tool a third party publishes changes whenever
-they like, between two calls. A server can publish a benign `search` tool, wait
-to be adopted, then rewrite its description. Reviewing a tool once doesn't
-prevent that.
-
-And an injected instruction isn't confined to that server — every *other* tool
-in the same run is available to it, including your own database and mail tools.
-
-## Nothing reaches the model until you say so
-
-**A server with no trust declaration refuses, before any request is sent** — so
-a misconfigured app never even tells the server it has an audience.
+Add an entry under the existing `servers` key:
 
 ```php
-// config/prism-mcp.php
-'github' => [
-    'url' => env('MCP_GITHUB_URL'),
-    'trust' => [
-        'tools' => ['search_repositories', 'get_file_contents'],
+'servers' => [
+    'github' => [
+        'url' => env('MCP_GITHUB_URL'),
+        'headers' => [
+            'Authorization' => 'Bearer '.env('MCP_GITHUB_TOKEN', ''),
+        ],
+        'trust' => [
+            'tools' => ['search_repositories', 'get_file_contents'],
+        ],
+        'gate' => 'laravel',
     ],
 ],
 ```
 
-Or, when you genuinely accept whatever that server publishes today and next week
-— reasonable for one you operate yourself:
+Define the application's `mcp.call` Gate before using this example. Trust chooses which definitions reach the model; the Gate decides whether the current actor may invoke a trusted tool. The default gate is null, which permits trusted calls. Laravel's default ability is configurable at `gates.laravel.ability` and receives server name, tool name and arguments after the Gate user.
 
 ```php
-'trust' => ['tools' => '*'],
+use Prism\Mcp\Facades\PrismMcp;
+use Prism\Prism\Facades\Prism;
+
+$tools = PrismMcp::server('github')->tools();
+
+$response = Prism::text()
+    ->using('anthropic', 'claude-sonnet-5-5')
+    ->withTools($tools)
+    ->withMaxSteps(3)
+    ->withPrompt('Find repositories relevant to our billing integration.')
+    ->asText();
 ```
 
-There's no way to skip this. The ad-hoc form people reach for when trying a
-server out refuses just as firmly, because exempting the exploratory path puts
-the hole exactly where the exploring happens.
+Tool names are namespaced by server for the model. Keep server descriptions and results untrusted; admission and framing do not make remote instructions safe to obey.
 
-## Pin a definition and a rewrite is refused
+## Trust and pins
 
-Opt-in, per tool. Record the digest of a definition you've actually read:
+`tools()` refuses an undeclared trust policy before contacting the server. An explicit tool list admits those names. `trust.tools = '*'` or `trustingEveryTool()` admits whatever the server publishes; choose it only when that is your intended policy.
 
-```php
-'trust' => [
-    'tools' => ['search_repositories'],
-    'pins' => ['search_repositories' => 'sha256:…'],
-],
-```
-
-Get the digests with the artisan command:
+Inspect definitions and obtain digests before pinning:
 
 ```bash
-php artisan prism-mcp:pins github
+php artisan prism-mcp:pins github --tool=search_repositories --json
 ```
 
-The digest covers name, title, description and input schema — everything the
-model will read. It excludes annotations, which the spec already tells clients
-to distrust, and sorts keys recursively so a server reordering its JSON doesn't
-read as a rewritten tool.
+The command contacts the configured server through the raw client without offering tools to a model. Review the definition, then copy its exact digest into `trust.pins[<tool-name>]` or pass the map to `pinning()`. Pins detect a changed reviewed definition; they do not establish that its behavior or output is trustworthy.
 
-This is the one defence against a rewrite that actually holds, because it
-doesn't depend on recognising malice — only on noticing change.
+## Connection options
 
-## Results are bounded and framed
+The ad-hoc form has the same trust requirement:
 
-The discussion around MCP focuses on tool *descriptions*. The **result** path is
-worse and gets less attention: a description is read once at discovery, while a
-result arrives mid-run, already framed as the trusted output of a tool the model
-chose to call.
+```php
+use Prism\Mcp\Facades\PrismMcp;
 
-- **Bounded.** Over `max_result_bytes` (256 KB default) the call is **refused,
-  not truncated** — a silently cut result reads to a model as a complete one.
-- **Framed.** Wrapped in a delimiter naming the source server, with a **per-call
-  random nonce**, so a server that learns the delimiter can't close it early.
-- **Filterable.** `->filteringResults(fn ($text, $server, $tool) => …)`.
+// $mcpUrl is an application-approved endpoint; $mcpToken is server-side.
+$connection = PrismMcp::client($mcpUrl, ['name' => 'internal'])
+    ->trusting(['lookup_order'])
+    ->withToken($mcpToken)
+    ->withTimeout(15)
+    ->withMaxResultBytes(65536);
 
-The **error** path gets identical treatment, because `isError: true` is the same
-channel from an attacker's point of view.
+$tools = $connection->tools();
+```
 
-## Interoperability
-
-> [!WARNING]
-> This client speaks `2026-07-28` **only**, and `laravel/mcp` `v1.0.0-beta.1`
-> implements the previous revision — `initialize`, then a session. So a
-> `laravel/mcp` server is **not reachable from this client** until `laravel/mcp`
-> ships `2026-07-28`.
->
-> A client and a server in one estate read as interoperable, so it's said here
-> rather than left to be discovered.
-
-## Which package for which direction
-
-They aren't alternatives — they're the two ends of the protocol.
-
-| You are… | Use |
+| Method | Purpose |
 |---|---|
-| **consuming** a server you don't own | `prism-mcp` |
-| **exposing** your own tools over MCP | `laravel/mcp` |
-| offering your own tools to your own Prism agent | neither — `Tool::make()` |
+| `trusting($names)`, `trustingEveryTool()` | Definition admission policy |
+| `pinning($digests)` | Add definition pins |
+| `withTimeout($seconds)` | Transport timeout |
+| `withHeaders($headers)`, `withToken($token)` | Server-side request credentials |
+| `usingGate(ToolGate $gate)` | Invocation authorization |
+| `filteringResults(Closure $filter)` | Transform result text; receives text, server and tool |
+| `withMaxResultBytes($bytes)` | Refuse oversized results |
+| `withoutProvenanceFraming()` | Disable result framing; use only with your own equivalent controls |
+| `withoutCache()`, `cachingFor($seconds, $store = null)` | Tool-list caching |
+| `config()` | Inspect resolved server configuration |
+| `client()` | Raw protocol client; bypasses tool trust, pins, gates and result controls |
 
-`prism-mcp` will not grow a server direction. A package whose whole
-justification is *what you must not trust about the other end* has no business
-also being the other end.
+Use application-authorized endpoints and credentials. A raw client call is outside the guarded Prism-tool path.
 
-> [!NOTE]
-> `prism-php/relay` was the previous answer to consuming MCP servers. It's
-> superseded — this package declares `replace`. Relay hardcodes protocol
-> `2024-11-05`, guesses a tool's calling convention from its parameter names,
-> and has no trust boundary of any kind.
+## Results and failures
+
+Results, including error results, are size-checked and framed with source attribution and a per-call delimiter nonce. Over-limit results raise `ResultTooLarge`; they are not silently truncated. Filters can transform text before it reaches the model. Framing remains a prompt-injection mitigation rather than an authorization mechanism.
+
+Exceptions under `Prism\Mcp\Exceptions` include `McpException`, `ServerNotConfigured`, `ServerNotTrusted`, `ToolDefinitionChanged`, `ToolDenied`, `ResultTooLarge`, `MirroredParameterRefused`, `ProtocolFailure`, `TransportFailure`, `ToolCallFailed`, `ServerTimedOut`, `UnsupportedProtocolVersion` and `UnsupportedTransport`. Handle them separately from a model choosing not to call a tool.
+
+Core tool handling can convert invocation exceptions to `ToolError` results instead of propagating them. Configure a redacted failure callback when appropriate and inspect tool failures; see [tool error handling](/core-concepts/tools-function-calling#error-handling).
+
+## Configuration reference
+
+| Key | Default / purpose |
+|---|---|
+| `client.name`, `client.version` | Self-reported client identification; name uses `PRISM_MCP_CLIENT_NAME` or `APP_NAME` |
+| `defaults.timeout` | 30 seconds, via `PRISM_MCP_TIMEOUT` |
+| `defaults.cache_ttl` | null honors server TTL; 0 disables caching |
+| `defaults.max_result_bytes` | 262144 bytes |
+| `defaults.frame_results` | true |
+| `defaults.gate` | null, via `PRISM_MCP_GATE` |
+| `servers.<name>.*` | Endpoint, headers, trust, pins and per-server overrides |
+| `gates.laravel.ability` | `mcp.call` |
+| `gates.fms.feature`, `gates.fms.per_server` | `mcp.tools`, true; optional Feature Management System integration |
+
+Custom gates implement `Prism\Mcp\Contracts\ToolGate`. The `fms` gate requires its optional Feature Management System package. To expose your application's own tools as an MCP server, use a server package such as `laravel/mcp`; check protocol compatibility independently. For application-local Prism tools, use `(new Tool)->as(...)`.
+
+See the [package guide](https://github.com/Particle-Academy/prism-mcp) for protocol and custom-gate integration.

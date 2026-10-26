@@ -1,176 +1,149 @@
 # Prism Harness
 
-**Durable agent sessions for Laravel** — threads, modes, tool permissions and
-subagents, on top of Prism.
+Harness adds persistent conversations, session settings, modes, tool authorization, approvals and subagents to Laravel applications using Prism.
 
-> [!WARNING]
-> **Release candidate — still in testing.** Conversation persistence and session
-> rehydration are implemented and tested. **Modes, permissions and subagents are
-> design, not code yet** — see [What isn't built](#what-isn-t-built). Treat the
-> API as settling rather than settled, and pin a version.
+## Installation
 
 ```bash
 composer require particle-academy/prism-harness
+php artisan vendor:publish --tag=prism-harness-config
 php artisan migrate
+php artisan harness:doctor
 ```
 
-## The problem it solves
-
-A Prism call is a request. It starts, it answers, it's gone.
-
-That's exactly right for generating text, and wrong for an *agent* — something
-that runs across many turns, pauses for a human, gets picked up an hour later by
-a different queue worker, and is expected to remember what it was doing.
-
-**Resolved, never held.** A Laravel request boots, serves and dies, so a session
-can't be an object you keep in memory. Every call rebuilds one from a store,
-which is exactly what lets a fresh worker see the same mode, model and
-conversation as the request that set them.
-
-## Threads
-
-A thread is the durable conversation. It's an Eloquent model here; the contract
-it satisfies lives in Prism core as of 0.113, which is why `withThread()` works
-on any provider.
-
-```php
-use Prism\Harness\Models\Thread;
-
-$thread = Thread::forParticipant($user, 'support');
-
-$response = Prism::text()
-    ->using(Provider::Anthropic, 'claude-sonnet-4-5')
-    ->withThread($thread)              // everything said so far
-    ->withPrompt('And after that?')    // the turn being taken now
-    ->asText();
-
-$thread->record($response->messages);  // the full exchange, tool steps included
-```
-
-`record()` takes `$response->messages`, so tool calls and their results are
-persisted too — not just the visible text.
-
-> [!TIP]
-> `withThread()` is in **core**, not here. Composing a thread into a request is
-> a general capability every provider should honour, so it belongs where they
-> all live. Harness owns the storage and the lifecycle.
+Settings live in `config/prism-harness.php`. Package migrations are loaded automatically; publish them with `prism-harness-migrations` only when you need local migration files. Configure provider credentials in Prism before sending a request.
 
 ## Sessions
 
-A session pairs a participant with a scope, and carries the mode and model a run
-should use.
+Resolve a session for a persisted Eloquent participant and an application-authorized scope:
 
 ```php
 use Prism\Harness\Facades\PrismHarness;
 
-$session = PrismHarness::for($user)->session('support');
+// $user is the authenticated, persisted application participant.
+$session = PrismHarness::for($user)->session('support')
+    ->usingProvider('anthropic')
+    ->usingModel('claude-sonnet-5-5')
+    ->usingMode('chat');
 
-$session->usingMode('plan')->usingModel('claude-sonnet-4-5');
+$result = $session->send('Explain how to update my billing address.');
 
-$session->thread();     // the durable conversation for this participant + scope
-$session->model();      // what a run should use
+echo $result->text();
+$thread = $session->thread();
 ```
 
-### Locking
+`AgentResponse` exposes `runId`, the core `response`, optional `parentRunId`/`rootRunId`, and `text()`, `correlation()`, `isChildRun()`, `awaitingApproval()` and `pendingApprovals()`. Inspect `$result->response->finishReason` for truncation or a step ending in tool calls.
 
-Two workers can hold the same session at once — a queued job finishing a run
-while the user sends another message is ordinary, not exotic.
+`usingProvider()`, `usingModel()`, `usingMode()` and `usingMaxSteps()` persist session choices. A per-run `$toolNames` argument narrows the mode's toolset; it cannot add a tool outside that mode.
 
-```php
-$session->lock(function (Session $session) {
-    // whatever must not happen twice
-});
-```
+`newConversation()` retires the current thread and creates another at the same participant/scope. `forget()` clears ephemeral settings without deleting the conversation. `state()`, `key()` and `scope()` expose session metadata. Capability state uses `capability($name)`, `usingCapability($name, $state)` and `forgetCapability($name)`.
 
-On timeout `lock()` **throws `SessionLocked` rather than running anyway**, since
-running anyway would defeat the only thing it's for. Locks carry an expiry, so a
-worker that dies mid-run doesn't hold the session forever.
+## Modes, tools and skills
 
-## Configuring stores
-
-Session state is split across two slots, and they have genuinely different
-durability needs:
+Define modes under `agent.modes` in the existing configuration:
 
 ```php
-'stores' => [
-    'ephemeral' => 'redis',      // recommended in production
-    'durable'   => 'database',
-],
-```
-
-> [!WARNING]
-> **A store that reports itself volatile is refused for durable state, loudly,
-> at resolve time.** Redis is the natural home for live session state, but the
-> `redis` connection in a typical Laravel app is a *cache* — something is
-> entitled to flush it. The package can't tell from the inside whether yours is
-> persistent, so `redis` reports volatile by default and pointing the durable
-> slot at it throws `UnsafeStateConfiguration`, with both ways out named in the
-> message.
-
-If your Redis really is persistent, say so — it's an assertion about your
-infrastructure, not a preference:
-
-```php
-'drivers' => [
-    'redis' => [
-        'durable' => true,
+'agent' => [
+    'provider' => 'anthropic',
+    'model' => 'claude-sonnet-5-5',
+    'default' => 'support',
+    'authorize_tools' => true,
+    'modes' => [
+        'support' => [
+            'system_prompt' => 'Help with support requests using the offered tools.',
+            'tools' => ['lookup_order'],
+            'skills' => [],
+            'max_steps' => 4,
+            'requires_approval' => [],
+            'provider_options' => ['effort' => 'medium'],
+        ],
     ],
 ],
 ```
 
-## Driving a workflow engine
+Merge these settings with your existing `agent` configuration. Mode keys are `system_prompt`, `tools`, `skills`, `max_steps`, `requires_approval`, `provider_options` and `subagents`. Select provider/model with session setters or `agent.provider`/`agent.model`; placing them in a mode entry does not select them.
 
-Harness ships an optional bridge to
-[fancy-flow](https://github.com/Particle-Academy/fancy-flow-php), so a workflow
-graph's `llm_call` and `agent` nodes run on Prism.
+Register application-owned Prism tools in a service provider's `boot()` method:
 
 ```php
-use Prism\Harness\Flow\PrismLlmClient;
-use Prism\Harness\Flow\HarnessToolInvoker;
+use Prism\Harness\Tools\ToolRegistry;
 
-$client = new PrismLlmClient(
-    defaultProvider: 'anthropic',
-    session: $session,          // the run becomes durable
-    tools: ['search' => $searchTool],
+// $lookupOrder is a Prism Tool whose handler authorizes access to each order.
+app(ToolRegistry::class)->register($lookupOrder);
+```
+
+The registry also accepts `registerMany()`, `registerFactory($name, Closure $factory)` and `registerProvider(Closure $provider)`. Session-aware factories/providers receive the session.
+
+Enable `agent.authorize_tools` and define `harness.tool` to filter tools before offering them. The optional `harness.tool.call` Gate checks invocation arguments. Both receive the participant as the Gate user, then `$session`, `$tool`, and, for call authorization, `$arguments`. Keep data-level authorization in handlers too. Defining the offer Gate while disabling authorization raises `UnsafeAuthorizationConfiguration`.
+
+Skill names load `SKILL.md` from the package's `resources/skills/<name>/` directory. Selected skills extend the system prompt and make `skill_read` available for referenced resources; a skill is not a file in the application's Workspace.
+
+## Approvals
+
+A tool's `requiresApproval()` or a mode's `requires_approval` list can pause a run. A list containing `*` covers every offered tool. Store the pending requests and present them to an authorized user:
+
+```php
+if ($result->awaitingApproval()) {
+    $pending = $result->pendingApprovals();
+    // Persist the pending IDs and display the exact proposed calls.
+}
+```
+
+After authenticating and authorizing the decision, reload the participant's session and call `approve($requestOrId)` or `deny($requestOrId, reason: $reason)`. For multiple pending calls, submit decisions together; resuming after just one leaves unanswered calls denied:
+
+```php
+use Prism\Prism\ValueObjects\ToolApprovalResponse;
+
+// $authorizedDecisions contains every decision validated by your application.
+$decisions = array_map(
+    fn (array $decision) => new ToolApprovalResponse(
+        approvalId: $decision['approval_id'],
+        approved: $decision['approved'],
+        reason: $decision['reason'] ?? null,
+    ),
+    $authorizedDecisions,
 );
+$result = $session->decide($decisions);
 ```
 
-Given a session, each node runs against that session's thread — so a workflow
-that pauses for approval, checkpoints, and resumes later comes back to an agent
-that remembers. Without a session it degrades to a stateless completion, which
-is right for a one-shot `llm_call`.
+Do not approve from model output or unvalidated request values. Decisions continue the stored conversation; do not resend the original prompt.
 
-> [!NOTE]
-> fancy-flow is a **suggested** dependency, never required. It needs PHP 8.4 and
-> Harness supports 8.2, so making it a hard dependency would drop two supported
-> PHP versions to gain an integration most applications don't use. Nothing in
-> `Flow/` autoloads unless you wire it.
+## Streaming and structured output
 
-Tools offered to a flow go through an allowlist, and a node asking for one that
-isn't on it **raises** rather than returning "unknown tool" as a result:
+`stream($prompt, ?array $toolNames = null, array $additionalContent = [], ?RunContext $context = null)` yields core stream events. Consume the generator and handle terminal failures; an early delta is not proof of successful completion.
 
-```php
-new HarnessToolInvoker(['search' => $searchTool]);
-```
+`sendStructured($prompt, Schema $schema, ...)` returns `StructuredAgentResponse`, with `structured()`, `text()` and run correlation. Invalid output raises `StructuredSchemaViolation`. Your application's domain rules still need validation. See the core [schemas](/core-concepts/schemas) and [streaming](/core-concepts/streaming-output) guides.
 
-A model handed "unknown tool" as a tool *result* treats it as information and
-spends its step budget guessing at an allowlist it can't see — while the
-workflow author, who made the actual mistake, sees only a run that produced a
-poor answer. Failing names the wrong tool to the person who typed it.
+## Threads and locks
 
-## Modes and tool authorization {#what-isn-t-built}
+To use persistent history without the agent runtime, resolve `Prism\Harness\Models\Thread::forParticipant($user, $scope)`, supply it to core `withThread()`, then call `$thread->record($response->messages)`. Preserve the complete messages, including tool and provider replay data.
 
-Modes select a provider, model, system prompt and available tools. Configure mode
-classes under `harness.modes` and select one with `usingMode()`. Tool authorization
-uses Laravel Gates; configure both the offered tools and the policy that permits
-their invocation. Subagents run nested requests with their own toolset and budget.
+`$session->lock($callback, ttlSeconds: 10, waitSeconds: 5)` runs the callback under the session store's lock and raises `SessionLocked` if it cannot acquire it. Agent runs have their own `agent.lock_ttl` and `agent.lock_wait`. Choose expiry bounds for the workload and avoid wrapping a run in an unrelated nested lock.
 
-See the [Harness usage guide](https://github.com/Particle-Academy/prism-harness#usage)
-for mode registration, authorization and subagent configuration. File operations
-are provided by [Workspace](/companion-packages/workspace).
+## Subagents, tasks and integrations
 
-## Related
+A mode's `subagents` map names child configurations with `description`, `mode`, optional `scope`, `max_steps`, `max_cost_usd`, `max_seconds` and `max_output_tokens_per_call`. The child mode must exist. `RunBudget` tracks these bounds across nested runs; cost enforcement needs configured pricing and per-call output bounds. Inspect child outcomes and the core finish reason instead of treating a budget stop as a complete answer.
 
-- [Human-in-the-Loop](/core-concepts/human-in-the-loop) — the core primitives
-- [Memory](/companion-packages/memory) — when a thread outgrows the context window
-- [Workspace](/companion-packages/workspace) — where a session's agent keeps files
+`PrismHarness::tasks($list)` and `$session->tasks()` return durable task sources. `add($instruction, $id)` creates work; `claim($worker, leaseSeconds: ...)` leases it, and `extendLease($task, $worker, $ledger, $budget, $leaseSeconds)` renews an owned lease within its run budget. Configure `tasks.lease_seconds` and `tasks.lock_wait`; lease loss must be handled before recording completion.
+
+Run events are `RunStarted`, `RunFinished` and `RunFailed` under `Prism\Harness\Events`. Voice integration is available through `VoiceExchange`. Optional `Flow\PrismLlmClient` and `Flow\HarnessToolInvoker` adapters require the corresponding Fancy Flow package; they are not installed by core. See the [package guide](https://github.com/Particle-Academy/prism-harness#usage) for these integrations and their requirements.
+
+## Configuration and failures
+
+| Settings | Purpose |
+|---|---|
+| `default_scope`, `ephemeral_ttl` | Session addressing and ephemeral-state lifetime; supply an integer TTL in PHP configuration |
+| `stores.ephemeral`, `stores.durable` | Both default to `database`; configure Redis explicitly when used |
+| `drivers.database.*`, `drivers.redis.*` | Connection/table or Redis prefix and durability declaration |
+| `context.*` | Recent-turn retention, recall budget and summarization |
+| `agent.provider`, `agent.model`, `agent.default`, `agent.modes` | Default runtime and modes |
+| `agent.lock_ttl`, `agent.lock_wait` | Run-lock expiry and acquisition wait |
+| `agent.authorize_tools`, `agent.max_steps_ceiling` | Gate enforcement and ceiling on session step overrides |
+| `agent.max_output_tokens_per_call`, `pricing`, `cost_observer` | Per-call output bounds, pricing and observed cost |
+| `tasks.lease_seconds`, `tasks.lock_wait` | Durable task leasing |
+
+A durable slot refuses volatile stores with `UnsafeStateConfiguration`. Redis reports volatile unless `drivers.redis.durable` is explicitly true; set it only for infrastructure you operate durably.
+
+Exceptions under `Prism\Harness\Exceptions` include `SessionLocked`, `RunNotPermitted`, `ToolNotAvailable`, `CallRefused`, `StructuredSchemaViolation`, `UnsafeStateConfiguration`, `UnsafeAuthorizationConfiguration`, `UnsafeAudioSource`, `UnacceptableAttachment`, `UnmappableContent`, `UnmappableTask`, `InvalidTaskIdentifier`, `InvalidTaskLease`, `InvalidTaskOutcome`, `LeaseNotExtendable` and `TaskNotReleasable`. Core provider failures can also propagate.
+
+`php artisan harness:doctor` checks stores, authorization, mode definitions, tool references and skills. Resolve its failures before running agents.

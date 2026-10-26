@@ -1,21 +1,21 @@
 # Companion Packages
 
-Add sessions, memory, scoped files, remote tools or telemetry to a Prism application with companion packages. Install the packages you need alongside `particle-academy/prism`.
+Install companion packages alongside `particle-academy/prism` for persistent sessions, semantic memory, scoped file access, remote tools and telemetry export.
 
 ## Available packages
 
-| Package | Use |
-|---|---|
-| [Harness](/companion-packages/harness) | Durable sessions, modes, tool authorization and subagents |
-| [MCP](/companion-packages/mcp) | Connect remote MCP tools with trust policies and result controls |
-| [Memory](/companion-packages/memory) | Store context and retrieve related memories within a token budget |
-| [Workspace](/companion-packages/workspace) | Read and write files within a scoped storage directory |
-| [Perplexity](https://github.com/Particle-Academy/prism-perplexity) | Use Perplexity endpoints outside the core provider API |
-| [OpenTelemetry](/advanced/telemetry) | Export Prism telemetry as OpenTelemetry spans |
+| Package | Use | Setup |
+|---|---|---|
+| [Harness](/companion-packages/harness) | Conversations, session modes, approvals, authorization and subagents | Publish configuration, migrate and run `harness:doctor` |
+| [MCP](/companion-packages/mcp) | Consume remote tools with trust, pins and invocation controls | Configure server endpoints, credentials and trust |
+| [Memory](/companion-packages/memory) | Store records and recall relevant context | Configure embeddings, migrate and run the embedding queue |
+| [Workspace](/companion-packages/workspace) | Guard file operations within an owner-scoped disk | Configure the disk, owner addressing and authorization |
+| [Perplexity](https://github.com/Particle-Academy/prism-perplexity) | Perplexity endpoints outside the core provider API | Configure provider credentials and transport |
+| [OpenTelemetry](/advanced/telemetry) | Export core telemetry events as spans | Install the exporter and configure a trusted telemetry sink |
 
 ## Installation
 
-All of these packages are available through Composer:
+Choose the packages your application needs:
 
 ```bash
 composer require particle-academy/prism-harness
@@ -26,8 +26,10 @@ composer require particle-academy/prism-perplexity
 composer require particle-academy/prism-opentelemetry
 ```
 
-Install each package separately as needed. Follow its guide for migrations, configuration, credentials and authorization requirements.
+Run each guide's setup for its configuration, migrations, credentials and access policies. Installing a companion does not automatically expose its capabilities to a model.
 
 ## Combining packages
 
-Memory can supply context to a Prism request, Workspace can supply file tools, and MCP can supply tools from a remote server. Harness manages sessions and tool execution; OpenTelemetry observes Prism calls. Check each package's requirements before composing integrations.
+Harness owns the conversation and run lifecycle. Memory supplies recalled context or stores evicted turns. Workspace provides file operations you can wrap in application-authorized tools. MCP supplies remote tools after trust admission and invocation policy. OpenTelemetry exports events emitted by core.
+
+Authorize participant/owner scopes before resolving them, preserve provider replay data when persisting conversations, and keep tool policies active when introducing recalled or remote content. Each package's guide describes the controls and defaults you must configure.
