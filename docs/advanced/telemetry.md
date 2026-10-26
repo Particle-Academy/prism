@@ -100,7 +100,7 @@ use Prism\Prism\Facades\Prism;
 use Prism\Prism\Enums\Provider;
 
 $response = Prism::text()
-    ->using(Provider::Anthropic, 'claude-sonnet-4-5')
+    ->using(Provider::Anthropic, 'claude-sonnet-5-5')
     ->withTelemetryMetadata(userId: (string) $user->id, sessionId: $conversation->id)
     ->withPrompt('Summarise this thread')
     ->asText();

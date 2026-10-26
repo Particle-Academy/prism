@@ -183,7 +183,7 @@ $contentSchema = new AnyOfSchema(
 );
 ```
 
-`AnyOfSchema` combines alternative schema branches. Its `toArray()` includes those alternatives; provider-specific mapping can adjust them. Support depends on the provider's schema dialect, selected structured mode and model. Check the [provider guides](/providers/openai#structured-output) and validate the result in your application.
+`AnyOfSchema` combines alternative schema branches. Its `toArray()` includes those alternatives; provider-specific mapping can adjust them. Support depends on the provider's schema dialect, selected structured mode and model. Check the [provider guides](/providers/openai#structured-output-mode) and validate the result in your application.
 
 ## Raw JSON Schema and constraints
 

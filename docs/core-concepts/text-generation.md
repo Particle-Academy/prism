@@ -258,11 +258,11 @@ The value is passed through to the provider. Top-K sampling considers only the K
 
 `withClientOptions`
 
-Under the hood we use Laravel's [HTTP client](https://laravel.com/docs/11.x/http-client#main-content). You can use this method to pass any of Guzzles [request options](https://docs.guzzlephp.org/en/stable/request-options.html) e.g. `->withClientOptions(['timeout' => 30])`.
+Under the hood we use Laravel's [HTTP client](https://laravel.com/docs/13.x/http-client#main-content). You can use this method to pass any of Guzzles [request options](https://docs.guzzlephp.org/en/stable/request-options.html) e.g. `->withClientOptions(['timeout' => 30])`.
 
 `withClientRetry`
 
-Under the hood we use Laravel's [HTTP client](https://laravel.com/docs/11.x/http-client#main-content). You can use this method to set [retries](https://laravel.com/docs/11.x/http-client#retries) e.g. `->withClientRetry(3, 100)`.
+Under the hood we use Laravel's [HTTP client](https://laravel.com/docs/13.x/http-client#main-content). You can use this method to set [retries](https://laravel.com/docs/13.x/http-client#retries) e.g. `->withClientRetry(3, 100)`.
 
 `usingProviderConfig`
 
@@ -357,7 +357,9 @@ foreach ($response->messages as $message) {
 
 ### Why Generation Stopped
 
-`$response->meta` contains the provider response ID, model, reported rate-limit buckets and optional service tier. `$response->toolResults` contains executed tool results; `$response->additionalContent` contains provider-specific state such as reasoning, citations or billing evidence. Preserve provider state with message history when continuing a conversation. Raw payloads can be `null` when a provider does not populate them; treat them as sensitive when storing or logging.
+`$response->meta` contains the provider response ID, model, reported rate-limit buckets and optional service tier. On a text response, `toolCalls` and `toolResults` describe the final step; inspect each item in `$response->steps` for earlier tool activity. A final text answer can therefore have an empty top-level `toolResults` array after tools ran on a preceding step. Structured responses aggregate their tool calls/results across steps.
+
+`$response->additionalContent` contains provider-specific state such as reasoning, citations or billing evidence. Preserve provider state with message history when continuing a conversation. Raw payloads can be `null` when a provider does not populate them; treat them as sensitive when storing or logging.
 
 `$response->finishReason` tells you how the model ended its turn. Check it before you trust `$response->text`:
 

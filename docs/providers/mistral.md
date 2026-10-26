@@ -22,7 +22,7 @@ the exception message.
 
 ### Reasoning Effort
 
-Adjustable reasoning is currently supported by `mistral-small-latest` via the `reasoning_effort` parameter.
+Use `reasoning_effort` with a model that supports it, such as `mistral-small-latest` or `mistral-medium-3-5`.
 
 ```php
 use Prism\Prism\Facades\Prism;
@@ -39,7 +39,7 @@ $response = Prism::text()
 echo $response->text;
 
 // Access the reasoning process
-echo $response->additionalContent['thinking'];
+echo $response->additionalContent['thinking'] ?? '';
 ```
 
 More details in the official Mistral documentation:
@@ -48,13 +48,14 @@ https://docs.mistral.ai/capabilities/reasoning/adjustable
 ## Reasoning Models
 ### Using Reasoning Models
 
-Simply specify a reasoning model when making your request. The thinking process is automatically included in the response:
+Request a thinking trace with a compatible model and `reasoning_effort: high`. Prism exposes thinking separately when returned:
 
 ```php
 use Prism\Prism\Facades\Prism;
 
 $response = Prism::text()
-    ->using('mistral', 'magistral-medium-latest')
+    ->using('mistral', 'mistral-medium-3-5')
+    ->withProviderOptions(['reasoning_effort' => 'high'])
     ->withPrompt('What is the capital of France?')
     ->asText();
 
@@ -63,7 +64,7 @@ echo $response->text;
 // "The capital of France is Paris."
 
 // Access the reasoning process
-echo $response->additionalContent['thinking'];
+echo $response->additionalContent['thinking'] ?? '';
 // "Okay, the user asked about the capital of France. I know that the capital of France is Paris..."
 ```
 
@@ -75,12 +76,13 @@ On the Response (easiest when not using tools):
 
 ```php
 $response = Prism::text()
-    ->using('mistral', 'magistral-medium-latest')
+    ->using('mistral', 'mistral-medium-3-5')
+    ->withProviderOptions(['reasoning_effort' => 'high'])
     ->withPrompt('What is the meaning of life in popular fiction?')
     ->asText();
 
 // Get the reasoning process
-$thinking = $response->additionalContent['thinking'];
+$thinking = $response->additionalContent['thinking'] ?? '';
 
 // Get the final answer
 $answer = $response->text;
@@ -97,14 +99,15 @@ $tools = [
 ];
 
 $response = Prism::text()
-    ->using('mistral', 'magistral-medium-latest')
+    ->using('mistral', 'mistral-medium-3-5')
+    ->withProviderOptions(['reasoning_effort' => 'high'])
     ->withTools($tools)
     ->withMaxSteps(3)
     ->withPrompt('What time is the Tigers game today?')
     ->asText();
 
 // Access thinking from the first step
-$thinking = $response->steps->first()->additionalContent['thinking'];
+$thinking = $response->steps->first()?->additionalContent['thinking'] ?? '';
 ```
 
 ### Understanding the Response Structure

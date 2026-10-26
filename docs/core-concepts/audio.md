@@ -308,7 +308,7 @@ $transcription = Prism::audio()
 
 // Then use in a text conversation
 $response = Prism::text()
-    ->using('openai', 'gpt-4')
+    ->using('openai', 'gpt-4.1')
     ->withMessages([
         new UserMessage('', [
             new Text('User asked: '),

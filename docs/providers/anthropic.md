@@ -211,11 +211,12 @@ Prism::text()
 ### Manual thinking (legacy)
 
 > [!WARNING]
-> Manual thinking with `enabled` and a token budget is deprecated on Claude 4.6 and rejected by the 5.x models. Use adaptive thinking instead. Manual thinking is still required for older models (Sonnet 4.5, Opus 4.5, Sonnet 3.7, etc.).
+> Manual thinking with `enabled` and a token budget is deprecated on Claude 4.6 and rejected by the 5.x models. Use adaptive thinking instead. Use the Opus 4.5 example only while that model remains available; consult [model retirement dates](https://platform.claude.com/docs/en/about-claude/model-deprecations).
 
 ```php
 Prism::text()
-    ->using('anthropic', 'claude-3-7-sonnet-latest')
+    ->using('anthropic', 'claude-opus-4-5-20251101')
+    ->withMaxTokens(4096)
     ->withPrompt('What is the meaning of life, the universe and everything in popular fiction?')
     ->withProviderOptions(['thinking' => ['enabled' => true]])
     ->asText();
@@ -227,7 +228,8 @@ You can override the config (or its default) using `withProviderOptions`:
 
 ```php
 Prism::text()
-    ->using('anthropic', 'claude-3-7-sonnet-latest')
+    ->using('anthropic', 'claude-opus-4-5-20251101')
+    ->withMaxTokens(4096)
     ->withPrompt('What is the meaning of life, the universe and everything in popular fiction?')
     ->withProviderOptions([
         'thinking' => [
@@ -293,11 +295,9 @@ Thinking blocks have to go back to Anthropic complete and unmodified, in their o
 
 A `cacheType` on an `AssistantMessage` that carries `content_blocks` goes on its last cacheable block; thinking and fallback blocks never get `cache_control`.
 
-### Extended output mode
+### Output limits
 
-Claude Sonnet 3.7 also brings extended output mode which increase the output limit to 128k tokens.
-
-This feature is currently in beta, so you will need to enable to by adding `output-128k-2025-02-19` to your Anthropic anthropic_beta config (see [Configuration](#configuration) above).
+Set `withMaxTokens()` within the selected model's output limit. Manual thinking budgets must leave room for the answer within that limit. Check the [model catalog](https://platform.claude.com/docs/en/models/overview) for the selected model.
 
 ## Streaming
 
@@ -306,13 +306,13 @@ Claude supports streaming responses in real-time. All the standard streaming met
 ```php
 // Stream events
 $stream = Prism::text()
-    ->using('anthropic', 'claude-3-7-sonnet-latest')
+    ->using('anthropic', 'claude-sonnet-5-5')
     ->withPrompt('Write a story')
     ->asStream();
 
 // Server-Sent Events
 return Prism::text()
-    ->using('anthropic', 'claude-3-7-sonnet-latest')
+    ->using('anthropic', 'claude-sonnet-5-5')
     ->withPrompt(request('message'))
     ->asEventStreamResponse();
 ```
@@ -348,8 +348,9 @@ $weatherTool = Tool::as('get_weather')
     ->using(fn (string $location): string => "Weather in {$location}: 72°F, sunny");
 
 $stream = Prism::text()
-    ->using('anthropic', 'claude-sonnet-4-5-20250929')
+    ->using('anthropic', 'claude-sonnet-5-5')
     ->withTools([$weatherTool])
+    ->withMaxSteps(2)
     ->withPrompt('What is the weather in San Francisco?')
     ->asStream();
 ```
@@ -668,13 +669,13 @@ $response = Prism::structured()
         ],
         ['forecast', 'recommendation']
     ))
-    ->using(Provider::Anthropic, 'claude-sonnet-4-5-20250929')
+    ->using(Provider::Anthropic, 'claude-sonnet-5-5')
     ->withPrompt('What\'s the weather like and what should I wear?')
     ->asStructured();
 ```
 
 **Limitations:**
-- Only available on Claude Sonnet 4.5+ and Claude Opus 4.1+
+- Requires a model that supports native structured output
 - Cannot be used with citations
 - Some JSON Schema features are not supported (see [Schema Limitations](#schema-limitations))
 
@@ -697,9 +698,10 @@ $response = Prism::structured()
         ],
         ['forecast', 'recommendation']
     ))
-    ->using(Provider::Anthropic, 'claude-3-5-sonnet-latest')
+    ->using(Provider::Anthropic, 'claude-sonnet-5-5')
     ->withPrompt('What\'s the weather like and what should I wear?')
     ->withProviderOptions(['use_tool_calling' => true])
+    ->withToolChoice(\Prism\Prism\Enums\ToolChoice::Auto)
     ->asStructured();
 ```
 
@@ -713,7 +715,7 @@ Prism adds the "use the structured output tool" instruction once, before the fir
 
 #### Combining Custom Tools with Structured Output
 
-You can combine custom tools with structured output to gather data before returning a structured response. This requires tool calling mode to be enabled:
+You can combine custom tools with structured output to gather data before returning a structured response. Native structured output supports custom tools on compatible models. The example uses the default native mode:
 
 ```php
 use Prism\Prism\Facades\Prism;
@@ -737,11 +739,10 @@ $weatherTool = Tool::as('get_weather')
     ->using(fn (string $location): string => "Weather in {$location}: 72°F, sunny");
 
 $response = Prism::structured()
-    ->using('anthropic', 'claude-3-5-sonnet-latest')
+    ->using('anthropic', 'claude-sonnet-5-5')
     ->withSchema($schema)
     ->withTools([$weatherTool])
     ->withMaxSteps(3)
-    ->withProviderOptions(['use_tool_calling' => true]) // Required for Anthropic
     ->withPrompt('What is the weather in San Francisco and should I wear a coat?')
     ->asStructured();
 
@@ -756,7 +757,7 @@ foreach ($response->toolCalls as $toolCall) {
 
 > [!IMPORTANT]
 > When using custom tools with structured output on Anthropic, you must:
-> - Set `use_tool_calling: true` in provider options
+> - Choose a model supporting native structured output and tools, or use the explicit tool-mode controls above
 > - Set `maxSteps` to at least 2
 
 For complete documentation on combining tools with structured output, see [Structured Output - Combining with Tools](/core-concepts/structured-output#combining-structured-output-with-tools).
@@ -778,8 +779,9 @@ $weatherTool = Tool::as('get_weather')
     ->using(fn (string $location): string => "Weather in {$location}: 72°F, sunny");
 
 $response = Prism::text()
-    ->using('anthropic', 'claude-sonnet-4-5-20250929')
+    ->using('anthropic', 'claude-sonnet-5-5')
     ->withTools([$weatherTool])
+    ->withMaxSteps(2)
     ->withPrompt('What is the weather in San Francisco?')
     ->asText();
 ```

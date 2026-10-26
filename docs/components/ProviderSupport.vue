@@ -4,8 +4,8 @@
       Built-in Prism integrations; individual models can support fewer features.
       Image means images attached to text requests, not image generation.
       Adapted structured output requests JSON without native schema enforcement.
-      Planned capabilities have no implementation yet. Separate provider packages
-      are outside this table.
+      Unsupported cells have no implementation in this integration. Separate
+      provider packages are outside this table.
     </p>
     <div style="overflow-x: auto !important; display: block !important; width: 100% !important;">
       <table style="width: max-content !important; min-width: 850px !important;">
@@ -35,21 +35,6 @@
                     stroke-width="2"
                     stroke-linecap="round"
                     stroke-linejoin="round"
-                  />
-                </svg>
-                <svg
-                  v-else-if="provider[feature.toLowerCase()] === 'planned'"
-                  class="w-6 h-6"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  xmlns="http://www.w3.org/2000/svg"
-                >
-                  <circle
-                    cx="12"
-                    cy="12"
-                    r="8"
-                    stroke="orange"
-                    stroke-width="2"
                   />
                 </svg>
                 <svg
@@ -107,17 +92,7 @@
         </svg>
         <span>Supported</span>
       </div>
-      <div class="flex items-center gap-2">
-        <svg
-          class="w-5 h-5"
-          viewBox="0 0 24 24"
-          fill="none"
-          xmlns="http://www.w3.org/2000/svg"
-        >
-          <circle cx="12" cy="12" r="8" stroke="orange" stroke-width="2" />
-        </svg>
-        <span>Planned Support</span>
-      </div>
+
       <div class="flex items-center gap-2">
         <svg
           class="w-5 h-5"
@@ -158,7 +133,6 @@
 
 <script>
 const Supported = "supported";
-const Planned = "planned";
 const Adapted = "adapted";
 const Unsupported = "unsupported";
 
@@ -199,8 +173,8 @@ export default {
           structured: Supported,
           embeddings: Supported,
           image: Supported,
-          "speech-to-text": Planned,
-          "text-to-speech": Planned,
+          "speech-to-text": Unsupported,
+          "text-to-speech": Unsupported,
           tools: Supported,
           documents: Unsupported,
           moderation: Unsupported,
@@ -249,7 +223,7 @@ export default {
           text: Supported,
           streaming: Supported,
           structured: Supported,
-          embeddings: Planned,
+          embeddings: Unsupported,
           image: Supported,
           "speech-to-text": Supported,
           "text-to-speech": Supported,
@@ -380,11 +354,11 @@ export default {
           streaming: Supported,
           structured: Supported,
           embeddings: Unsupported,
-          image: Supported,
+          image: Unsupported,
           "speech-to-text": Unsupported,
           "text-to-speech": Unsupported,
           tools: Unsupported,
-          documents: Supported,
+          documents: Unsupported,
           moderation: Unsupported,
         },
         {

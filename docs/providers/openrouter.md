@@ -39,7 +39,7 @@ use Prism\Prism\Facades\Prism;
 use Prism\Prism\Enums\Provider;
 
 $response = Prism::text()
-    ->using(Provider::OpenRouter, 'openai/gpt-4-turbo')
+    ->using(Provider::OpenRouter, 'openai/gpt-4.1')
     ->withPrompt('Tell me a story about AI.')
     ->asText();
 
@@ -60,10 +60,10 @@ use Prism\Prism\Schema\StringSchema;
 $schema = new ObjectSchema('person', 'Person information', [
     new StringSchema('name', 'The person\'s name'),
     new StringSchema('occupation', 'The person\'s occupation'),
-]);
+], requiredFields: ['name', 'occupation']);
 
 $response = Prism::structured()
-    ->using(Provider::OpenRouter, 'openai/gpt-4-turbo')
+    ->using(Provider::OpenRouter, 'openai/gpt-4.1')
     ->withPrompt('Generate a person profile for John Doe.')
     ->withSchema($schema)
     ->asStructured();
@@ -86,9 +86,10 @@ $weatherTool = Tool::as('get_weather')
     });
 
 $response = Prism::text()
-    ->using(Provider::OpenRouter, 'openai/gpt-4-turbo')
+    ->using(Provider::OpenRouter, 'openai/gpt-4.1')
     ->withPrompt('What is the weather like in New York?')
     ->withTools([$weatherTool])
+    ->withMaxSteps(2)
     ->asText();
 
 echo $response->text;
@@ -179,7 +180,7 @@ use Prism\Prism\Enums\Provider;
 use Prism\Prism\Enums\StreamEventType;
 
 $stream = Prism::text()
-    ->using(Provider::OpenRouter, 'openai/gpt-4-turbo')
+    ->using(Provider::OpenRouter, 'openai/gpt-4.1')
     ->withPrompt('Tell me a long story about AI.')
     ->asStream();
 
@@ -211,9 +212,10 @@ $weatherTool = Tool::as('get_weather')
     });
 
 $stream = Prism::text()
-    ->using(Provider::OpenRouter, 'openai/gpt-4-turbo')
+    ->using(Provider::OpenRouter, 'openai/gpt-4.1')
     ->withPrompt('What is the weather like in multiple cities?')
     ->withTools([$weatherTool])
+    ->withMaxSteps(2)
     ->asStream();
 
 foreach ($stream as $event) {

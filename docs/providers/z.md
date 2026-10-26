@@ -130,6 +130,7 @@ $response = Prism::text()
     ->using('z', 'glm-4.6')
     ->withPrompt('What is the weather in San Francisco?')
     ->withTools([$weatherTool])
+    ->withMaxSteps(2)
     ->asText();
 ```
 

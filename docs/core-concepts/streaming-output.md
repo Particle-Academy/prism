@@ -42,7 +42,7 @@ For apps using Vercel's AI SDK, use the Data Protocol adapter which provides com
 ```php
 Route::post('/api/chat', function () {
     return Prism::text()
-        ->using('openai', 'gpt-4')
+        ->using('openai', 'gpt-4.1')
         ->withPrompt(request('message'))
         ->asDataStreamResponse();
 });
@@ -739,7 +739,7 @@ Access raw events for complete control over handling:
 
 ```php
 $events = Prism::text()
-    ->using('openai', 'gpt-4')
+    ->using('openai', 'gpt-4.1')
     ->withPrompt('Explain quantum physics')
     ->asStream();
 

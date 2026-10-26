@@ -115,7 +115,7 @@ Anthropic uses native structured outputs by default (Claude Sonnet 4.5 and later
 > [!WARNING]
 > Tool calling mode forces the model to call Prism's output tool, and Claude Opus 5.5, Sonnet 5.5 and Fable 5.1 reject a forced tool choice with a 400. On those models, stay with native mode, or add `->withToolChoice(ToolChoice::Auto)` to tool calling mode. With `Auto` the model is asked to use the tool, but the schema isn't enforced.
 
-For older models, you can use tool calling mode as a fallback:
+Tool calling mode is also available. This current-model example selects `Auto` explicitly; the model can decline the output tool, so validate the result:
 
 ```php
 use Prism\Prism\Facades\Prism;
@@ -126,13 +126,14 @@ $response = Prism::structured()
     ->withSchema($schema)
     ->withPrompt('天氣怎麼樣？應該穿什麼？') // Chinese text with potential quotes
     ->withProviderOptions(['use_tool_calling' => true])
+    ->withToolChoice(\Prism\Prism\Enums\ToolChoice::Auto)
     ->asStructured();
 ```
 
 **When to use tool calling mode with Anthropic:**
 - Using older models that don't support native structured outputs
 - Working with non-English content that may contain quotes on older models
-- When you need to combine structured output with custom tools
+- When explicitly using a compatible model's tool-based output workflow; current native mode can also combine your tools
 
 > [!NOTE]
 > Tool calling mode cannot be used with Anthropic's citations feature.
@@ -148,7 +149,9 @@ When working with structured responses, you have access to both the structured d
 use Prism\Prism\Facades\Prism;
 
 $response = Prism::structured()
+    ->using('openai', 'gpt-4.1')
     ->withSchema($schema)
+    ->withPrompt('Review the movie Inception')
     ->asStructured();
 
 // Access the structured data as a PHP array

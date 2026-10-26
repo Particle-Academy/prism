@@ -536,22 +536,13 @@ Use the image generation API with a supported OpenAI model. Available options de
 
 ### Supported Models
 
-| Model | Description |
-|-------|-------------|
-| `gpt-image-1` | GPT image model. Use this for new work |
-| `dall-e-3` | Deprecated by OpenAI |
-| `dall-e-2` | Deprecated by OpenAI |
-
-> [!NOTE]
-> OpenAI has deprecated the DALL-E models and defaults image generation to its GPT
-> image models. Prism continues to support `dall-e-3` and `dall-e-2`; point new work
-> at `gpt-image-1`.
+Use an available GPT Image model, such as `gpt-image-2.5-sunburst`. DALL-E models and `gpt-image-1` have been removed from the API; see [OpenAI's deprecations](https://developers.openai.com/api/docs/deprecations) and [current image guide](https://developers.openai.com/api/docs/guides/image-generation).
 
 ### Basic Usage
 
 ```php
 $response = Prism::image()
-    ->using('openai', 'gpt-image-1')
+    ->using('openai', 'gpt-image-2.5-sunburst')
     ->withPrompt('A serene mountain landscape at sunset')
     ->generate();
 
@@ -559,34 +550,34 @@ $image = $response->firstImage();
 file_put_contents('landscape.png', base64_decode($image->base64));
 ```
 
-### GPT-Image-1 Options
+### GPT Image Options
 
-GPT-Image-1 offers advanced features including image editing and format control:
+GPT Image offers advanced features including image editing and format control:
 
 ```php
 $response = Prism::image()
-    ->using('openai', 'gpt-image-1')
+    ->using('openai', 'gpt-image-2.5-sunburst')
     ->withPrompt('A detailed architectural rendering of a modern house')
     ->withProviderOptions([
         'size' => '1536x1024',              // Various sizes supported
-        'quality' => 'high',                // standard, high
+        'quality' => 'high',                // low, medium, high, xhigh, max, auto
         'output_format' => 'webp',          // png, webp, jpeg
         'output_compression' => 85,         // Compression level (0-100)
-        'background' => 'transparent',      // transparent, white, black
-        'moderation' => true,               // Enable content moderation
+        'background' => 'transparent',      // transparent, opaque, auto
+        'moderation' => 'auto',             // auto or low
     ])
     ->generate();
 ```
 
-### Image Editing with GPT-Image-1
+### Image Editing with GPT Image
 
-GPT-Image-1 supports sophisticated image editing operations using the `withPrompt` method with Image value objects:
+GPT Image supports sophisticated image editing operations using the `withPrompt` method with Image value objects:
 
 ```php
 use Prism\Prism\ValueObjects\Media\Image;
 
 $response = Prism::image()
-    ->using('openai', 'gpt-image-1')
+    ->using('openai', 'gpt-image-2.5-sunburst')
     ->withPrompt('Add a vaporwave sunset to the background', [
         Image::fromLocalPath('tests/Fixtures/diamond.png'),
     ])
@@ -595,7 +586,7 @@ $response = Prism::image()
         'output_format' => 'png',
         'quality' => 'high',
     ])
-    ->withClientOptions(['timeout' => 9999])
+    ->withClientOptions(['timeout' => 180])
     ->generate();
 
 file_put_contents('edited-image.png', base64_decode($response->firstImage()->base64));
@@ -607,7 +598,7 @@ For precise control over which parts of the image to edit, use a mask image:
 
 ```php
 $response = Prism::image()
-    ->using('openai', 'gpt-image-1')
+    ->using('openai', 'gpt-image-2.5-sunburst')
     ->withPrompt('Add a vaporwave sunset to the background', [
         Image::fromLocalPath('tests/Fixtures/diamond.png'),
     ])
@@ -626,7 +617,7 @@ You can also edit with multiple images for more complex operations. Use the `as(
 
 ```php
 $response = Prism::image()
-    ->using('openai', 'gpt-image-1')
+    ->using('openai', 'gpt-image-2.5-sunburst')
     ->withPrompt('Combine these images with a futuristic theme', [
         Image::fromLocalPath('tests/Fixtures/diamond.png')->as('diamond.png'),
         Image::fromLocalPath('tests/Fixtures/sunset.png')->as('sunset-background.png'),
@@ -639,58 +630,13 @@ $response = Prism::image()
     ->generate();
 ```
 
-### DALL-E 3 Options
-
-DALL-E 3 is deprecated by OpenAI. Configure its output options:
-
-```php
-$response = Prism::image()
-    ->using('openai', 'dall-e-3')
-    ->withPrompt('A futuristic cityscape with flying cars')
-    ->withProviderOptions([
-        'size' => '1792x1024',          // 1024x1024, 1024x1792, 1792x1024
-        'quality' => 'hd',              // standard, hd
-        'style' => 'vivid',             // vivid, natural
-    ])
-    ->generate();
-
-// DALL-E 3 automatically revises prompts for better results
-if ($response->firstImage()->hasRevisedPrompt()) {
-    echo "Revised prompt: " . $response->firstImage()->revisedPrompt;
-}
-```
-
-### DALL-E 2 Options
-
-DALL-E 2 is deprecated by OpenAI. It supports generating multiple images per request:
-
-```php
-$response = Prism::image()
-    ->using('openai', 'dall-e-2')
-    ->withPrompt('Abstract geometric patterns')
-    ->withProviderOptions([
-        'n' => 4,                       // Number of images (1-10)
-        'size' => '1024x1024',          // 256x256, 512x512, 1024x1024
-        'response_format' => 'url',     // url only
-        'user' => 'user-123',           // Optional user identifier
-    ])
-    ->generate();
-
-// Process multiple images
-foreach ($response->images as $image) {
-    echo "Image: {$image->url}\n";
-}
-```
-
 ### Response Format
 
-`gpt-image-1` returns base64-encoded image data. The DALL-E models return a URL by
-default, or base64 when `response_format` is set to `b64_json`. Check which one the
-response carries:
+GPT Image returns base64 data. Omit `response_format`; select PNG, JPEG or WebP with `output_format`. Inspect returned data before saving it:
 
 ```php
 $response = Prism::image()
-    ->using('openai', 'gpt-image-1')
+    ->using('openai', 'gpt-image-2.5-sunburst')
     ->withPrompt('Digital artwork')
     ->generate();
 
@@ -701,7 +647,7 @@ if ($image->hasBase64()) {
 }
 
 if ($image->hasUrl()) {
-    echo "<img src='{$image->url}' alt='Generated image'>";
+    echo htmlspecialchars($image->url, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
 }
 ```
 
@@ -711,6 +657,8 @@ Use OpenAI's text-to-speech and speech-to-text APIs through Prism's audio builde
 
 
 ### Text-to-Speech
+
+OpenAI's Speech API models are scheduled for removal on January 6, 2027. Its replacement uses the Realtime API, which this audio builder does not implement; changing the model ID alone will not migrate a request. See the [audio retirement notice](/core-concepts/audio#text-to-speech) and [OpenAI's guide](https://developers.openai.com/api/docs/guides/text-to-speech).
 
 Convert text into natural-sounding speech with various voice options:
 

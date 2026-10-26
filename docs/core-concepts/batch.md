@@ -23,12 +23,21 @@ $job = Prism::batch()
     ->using(Provider::Anthropic)
     ->create(items: $items);
 
-// 2. Poll
-while ($job->status !== BatchStatus::Completed) {
+// 2. Poll from a worker with an application-chosen deadline.
+$deadline = time() + 3600;
+$terminal = [BatchStatus::Completed, BatchStatus::Failed, BatchStatus::Expired, BatchStatus::Cancelled];
+while (! in_array($job->status, $terminal, true)) {
+    if (time() >= $deadline) {
+        throw new RuntimeException('Batch is still pending; retain its ID and poll later.');
+    }
     sleep(30);
     $job = Prism::batch()
         ->using(Provider::Anthropic)
         ->retrieve($job->id);
+}
+
+if ($job->status !== BatchStatus::Completed) {
+    throw new RuntimeException('Handle the unsuccessful batch and its errors before reading results.');
 }
 
 // 3. Get results
@@ -121,7 +130,11 @@ The batch doesn't complete immediately. Poll the status until it reaches a termi
 ```php
 use Prism\Prism\Batch\BatchStatus;
 
+$deadline = time() + 3600;
 do {
+    if (time() >= $deadline) {
+        throw new RuntimeException('Retain the batch ID and schedule another status check.');
+    }
     sleep(30);
 
     $job = Prism::batch()

@@ -506,10 +506,10 @@ echo $response->text;
 
 // Inspect tool usage
 
-if ($response->toolResults) {
-    foreach ($response->toolResults as $toolResult) {
+foreach ($response->steps as $step) {
+    foreach ($step->toolResults as $toolResult) {
         echo "Tool: " . $toolResult->toolName . "\n";
-        echo "Result: " . $toolResult->result . "\n";
+        echo "Result: " . json_encode($toolResult->result) . "\n";
     }
 }
 
@@ -523,6 +523,8 @@ foreach ($response->steps as $step) {
     }
 }
 ```
+
+Text-response `toolCalls` and `toolResults` contain the final step's activity; a normal final answer often has neither. Read earlier calls, results and artifacts from `steps`. Structured responses aggregate those fields across steps.
 
 For raw tool arguments, `arguments()` returns an associative PHP array. Use `argumentsAsObject()` when serializing an argument object, especially an empty object or numeric property names; `argumentsAsJson()` encodes that object as JSON. Invalid argument JSON raises `PrismException` when decoded.
 
@@ -592,18 +594,18 @@ $rawContent = $artifact->rawContent();
 
 ### Handling Artifacts in Streams
 
-Artifacts are emitted as `ArtifactEvent` through all streaming methods:
+Artifacts are emitted as `ArtifactEvent` through all streaming methods. These examples use the application-owned `$imageTool` above and an existing writable `output/` directory. Generate storage filenames yourself; tool names and artifact IDs are identifiers, not trusted paths. The callback example assumes your application has an `Attachment` model and an authorized `$conversationId`:
 
 ```php
 use Prism\Prism\Facades\Prism;
 use Prism\Prism\Streaming\Events\ArtifactEvent;
 
 // Using asStream()
-foreach (Prism::text()->withTools([$imageTool])->asStream() as $event) {
+foreach (Prism::text()->using('anthropic', 'claude-sonnet-5-5')->withPrompt('Generate an image of a sunset')->withTools([$imageTool])->withMaxSteps(2)->asStream() as $event) {
     if ($event instanceof ArtifactEvent) {
         $artifact = $event->artifact;
         file_put_contents(
-            "output/{$event->toolName}_{$artifact->id}.png",
+            'output/'.bin2hex(random_bytes(16)).'.bin',
             $artifact->rawContent()
         );
     }
@@ -611,7 +613,10 @@ foreach (Prism::text()->withTools([$imageTool])->asStream() as $event) {
 
 // Using asDataStreamResponse() with callback
 Prism::text()
+    ->using('anthropic', 'claude-sonnet-5-5')
     ->withTools([$imageTool])
+    ->withPrompt('Generate an image of a sunset')
+    ->withMaxSteps(2)
     ->asDataStreamResponse(function ($pendingRequest, $events) use ($conversationId) {
         foreach ($events as $event) {
             if ($event instanceof ArtifactEvent) {
@@ -631,17 +636,18 @@ In non-streaming mode, artifacts are available on the `ToolResult` objects:
 
 ```php
 $response = Prism::text()
+    ->using('anthropic', 'claude-sonnet-5-5')
     ->withTools([$imageTool])
     ->withMaxSteps(3)
     ->withPrompt('Generate an image of a sunset')
     ->asText();
 
-foreach ($response->toolResults as $result) {
+foreach ($response->steps->flatMap(fn ($step) => $step->toolResults) as $result) {
     if ($result->hasArtifacts()) {
         foreach ($result->artifacts as $artifact) {
             // Process artifact
             file_put_contents(
-                "output/{$artifact->id}.png",
+                'output/'.bin2hex(random_bytes(16)).'.bin',
                 $artifact->rawContent()
             );
         }
