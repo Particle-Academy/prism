@@ -22,9 +22,33 @@ Replicate is a cloud platform that makes it easy to run machine learning models 
 - **`use_sync_mode`**: Enable sync mode with `Prefer: wait` header (default: `true`) - reduces latency
 - **`polling_interval`**: Time between prediction status checks in milliseconds (default: 1000ms) - used when sync mode times out
 - **`max_wait_time`**: Maximum time to wait for prediction completion in seconds (default: 60s)
-- **`download_hosts`**: Hosts allowed for generated-image downloads. An entry also allows its subdomains. Keep this list limited to trusted image hosts. This setting is read from `config/prism.php`, rather than from the third argument to `using()`.
+- **`download_hosts`**: Hosts allowed for generated audio and image downloads. An entry also allows its subdomains. Keep this list limited to trusted media hosts. This setting is read from `config/prism.php`, rather than from the third argument to `using()`.
 
 Polling settings must be integers; cast values read from environment variables as shown above.
+
+## Output downloads
+
+Generated audio and image downloads use a separate HTTP client without API
+credentials or per-request client options. Set
+`prism.providers.replicate.download_hosts` to the hostnames you trust; the default
+is `['replicate.delivery']` and includes their subdomains. An empty list disables
+media downloads. URLs must use HTTPS on port 443 without embedded credentials.
+Redirects are refused. Downloads have a 30-second timeout, a 10-second connection
+timeout and a 25 MiB limit, enforced while reading the response stream.
+
+A refused or failed audio download throws `PrismException`. Image generation
+keeps the output URL with `base64` set to `null` when downloading fails.
+
+SSE connections accept only the exact HTTPS hosts `stream.replicate.com` and
+`streaming.api.replicate.com` on port 443, without embedded credentials or
+redirects. The modern `stream.replicate.com` endpoint uses the separate
+credential-free client; only the legacy `streaming.api.replicate.com` endpoint
+receives API authentication. `download_hosts` controls media downloads, not SSE
+connections. Other stream hosts, including custom gateways, are refused.
+
+The media allowlist trusts the named hosts and their DNS configuration; it does
+not apply the public-address guard from
+[`fetchPublicUrlContent()`](/input-modalities/images#fetching-remote-media).
 
 ## How Replicate Works
 
@@ -150,7 +174,7 @@ $image = $response->firstImage();
 echo $image->url;
 ```
 
-Prism attempts to download generated images only from HTTPS URLs whose host matches `download_hosts`. If the host is refused, the download fails, or the returned body exceeds 25 MiB, the image retains its URL and has no base64 content. The host check covers the initial URL; it is not the public-address and redirect guard used by [`fetchPublicUrlContent()`](/input-modalities/images#fetching-remote-media). Use network egress controls when returned URLs are not trusted. These image-download settings do not apply to audio downloads.
+Generated images follow the [output download policy](#output-downloads). If a download is refused or fails, the image retains its URL and has no base64 content.
 
 **Popular image models:**
 - `bytedance/seedream-4` - Fast, high-quality generation (1-4 steps)
@@ -176,9 +200,8 @@ $response = Prism::image()
 
 Convert text to natural-sounding speech.
 
-::: warning Audio download boundary
-Replicate TTS automatically downloads the returned audio URL with its authenticated API client. The image `download_hosts` setting does not protect this download, and the API authorization header is reused. Restrict this capability to trusted models and apply network egress controls before enabling it for untrusted requests.
-:::
+The returned audio URL follows the same [output download policy](#output-downloads)
+as generated images. A refused or failed download throws `PrismException`.
 
 ```php
 use Prism\Prism\Facades\Prism;

@@ -7,6 +7,7 @@ namespace Prism\Prism\Providers\Replicate\Handlers;
 use Generator;
 use Illuminate\Http\Client\PendingRequest;
 use Prism\Prism\Exceptions\PrismException;
+use Prism\Prism\Providers\Replicate\Concerns\DownloadsOutputs;
 use Prism\Prism\Providers\Replicate\Concerns\HandlesPredictions;
 use Prism\Prism\Providers\Replicate\Maps\FinishReasonMap;
 use Prism\Prism\Providers\Replicate\Maps\MessageMap;
@@ -25,6 +26,7 @@ use Throwable;
 
 class Stream
 {
+    use DownloadsOutputs;
     use HandlesPredictions;
 
     protected StreamState $state;
@@ -103,13 +105,29 @@ class Stream
      */
     protected function processSSEStream(string $streamUrl, string $predictionId): Generator
     {
-        // Connect to the SSE stream with proper headers
-        $response = $this->client
+        // Only the legacy SSE endpoint requires API authentication. The modern
+        // endpoint is credential-free, like Replicate's current JS client.
+        if (! $this->isAllowedOutputUrl($streamUrl, ['stream.replicate.com', 'streaming.api.replicate.com'], allowSubdomains: false)) {
+            throw new PrismException('Replicate stream URL refused: expected a documented HTTPS streaming host.');
+        }
+
+        $client = strtolower((string) parse_url($streamUrl, PHP_URL_HOST)) === 'streaming.api.replicate.com'
+            ? $this->client
+            : $this->outputClient();
+
+        $response = $client
             ->withHeaders(['Accept' => 'text/event-stream'])
             ->withOptions(['stream' => true])
+            ->withoutRedirecting()
             ->get($streamUrl);
 
         $stream = $response->getBody();
+
+        if (! $response->successful()) {
+            $stream->close();
+
+            throw new PrismException('Replicate stream connection failed.');
+        }
 
         $textStarted = false;
         $finalStatus = 'succeeded';
