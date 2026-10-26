@@ -25,6 +25,32 @@ Prism::text() // [!code focus]
 > [!NOTE]
 > Using `withProviderOptions` will override settings like `topP` and `temperature`
 
+## Thinking, model lifetime and generation length
+
+For text, structured and streaming requests, `withProviderOptions(['thinking' => false])` sets Ollama's top-level `think` value. `withReasoning(false)` also sets `think: false` unless `thinking` is explicitly provided. Select a model and Ollama version that support the chosen value.
+
+`keep_alive` sets the top-level model lifetime. The integration also merges provider options into Ollama's `options` object. The default `num_predict` is 2048 when `withMaxTokens()` is absent; a provider option with the same name overrides it. The option named `thinking`, rather than `think`, controls the top-level field.
+
+## Tools
+
+Use `withTools([$tool])` and `withMaxSteps()` on a text request with a tool-capable model. Prism executes server tools, returns tool results to the model and supports the [approval controls](/core-concepts/human-in-the-loop). Explicit tool choice is unsupported.
+
+## Embeddings
+
+```php
+use Prism\Prism\Facades\Prism;
+
+$response = Prism::embeddings()
+    ->using('ollama', 'nomic-embed-text')
+    ->fromArray(['First document', 'Second document'])
+    ->withProviderOptions(['keep_alive' => '5m'])
+    ->asEmbeddings();
+
+$vectors = $response->embeddings;
+```
+
+Pull the embedding model into your Ollama server before requesting it. `dimensions` and `keep_alive` are sent as top-level embedding fields; remaining provider options are sent in `options`. The model must support the requested dimensions. The response includes `usage`, `meta` and `raw`.
+
 ## Streaming
 
 Ollama supports streaming responses from your local models. All standard streaming methods are supported:

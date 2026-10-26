@@ -8,6 +8,52 @@
 ],
 ```
 
+## Text, tools and images
+
+```php
+use Prism\Prism\Facades\Prism;
+use Prism\Prism\Facades\Tool;
+
+$tool = Tool::as('multiply')
+    ->for('Multiply two numbers')
+    ->withNumberParameter('left', 'First factor')
+    ->withNumberParameter('right', 'Second factor')
+    ->using(fn (float $left, float $right): string => (string) ($left * $right));
+
+$response = Prism::text()
+    ->using('groq', 'llama-3.3-70b-versatile')
+    ->withTools([$tool])
+    ->withMaxSteps(3)
+    ->withPrompt('What is 12 times 13?')
+    ->asText();
+```
+
+Groq tool choice accepts `ToolChoice::Auto`, `ToolChoice::Any` or a tool name. `ToolChoice::None` is rejected by this integration. Approval-required and client-executed tools are supported; see [Human-in-the-Loop](/core-concepts/human-in-the-loop).
+
+With a vision-capable model, pass `Image::fromUrl()`, local image bytes or base64 in a user message as described in [Images](/input-modalities/images). URLs are passed to Groq as references. Choose models from [Groq's model catalog](https://console.groq.com/docs/models) for the capability you need.
+
+## Structured output
+
+```php
+use Prism\Prism\Schema\ObjectSchema;
+use Prism\Prism\Schema\StringSchema;
+
+$response = Prism::structured()
+    ->using('groq', 'llama-3.3-70b-versatile')
+    ->withSchema(new ObjectSchema(
+        'answer', 'An answer', [new StringSchema('text', 'Answer text')],
+        requiredFields: ['text'],
+    ))
+    ->withPrompt('Describe a database index.')
+    ->asStructured();
+```
+
+The structured handler sends `json_object` mode and schema instructions. Validate application constraints after decoding; this path does not send a native JSON Schema constraint.
+
+## Errors
+
+HTTP 429 raises `PrismRateLimitedException` with parsed rate-limit buckets and retry-after information; 413 raises `PrismRequestTooLargeException`, and 529 raises `PrismProviderOverloadedException`. Other failed HTTP requests include Groq's error details. See [Error Handling](/advanced/error-handling).
+
 ## Streaming
 
 The Groq integration supports the standard streaming methods:
@@ -43,7 +89,7 @@ The Groq integration supports text-to-speech and speech-to-text requests.
 
 ### Text-to-Speech
 
-Groq offers PlayAI TTS models that can convert text into natural-sounding speech with support for multiple languages and voices.
+Use Groq's [Orpheus TTS models](https://console.groq.com/docs/text-to-speech/orpheus) for English or Saudi Arabic speech. Select a voice supported by the chosen model.
 
 #### Basic TTS Usage
 
@@ -51,9 +97,9 @@ Groq offers PlayAI TTS models that can convert text into natural-sounding speech
 use Prism\Prism\Facades\Prism;
 
 $response = Prism::audio()
-    ->using('groq', 'playai-tts')
+    ->using('groq', 'canopylabs/orpheus-v1-english')
     ->withInput('Hello, welcome to our application!')
-    ->withVoice('Fritz-PlayAI')
+    ->withVoice('troy')
     ->asAudio();
 
 // Save the audio file
@@ -67,26 +113,24 @@ Control audio format and quality:
 
 ```php
 $response = Prism::audio()
-    ->using('groq', 'playai-tts')
+    ->using('groq', 'canopylabs/orpheus-v1-english')
     ->withInput('Testing different audio settings.')
-    ->withVoice('Celeste-PlayAI')
+    ->withVoice('hannah')
     ->withProviderOptions([
         'response_format' => 'wav',        // wav (default)
-        'speed' => 1.2,                    // Speed: 0.5 to 5.0
-        'sample_rate' => 48000,            // Sample rate options: 8000, 16000, 22050, 24000, 32000, 44100, 48000
     ])
     ->asAudio();
 
-echo "Audio type: " . $response->audio->getMimeType();
+echo "Audio type: " . ($response->audio->mimeType() ?? 'unknown');
 ```
 
 #### Arabic Text-to-Speech
 
 ```php
 $response = Prism::audio()
-    ->using('groq', 'playai-tts-arabic')
+    ->using('groq', 'canopylabs/orpheus-arabic-saudi')
     ->withInput('مرحبا بكم في تطبيقنا')
-    ->withVoice('Amira-PlayAI')
+    ->withVoice('fahad')
     ->asAudio();
 
 file_put_contents('arabic_speech.wav', base64_decode($response->audio->base64));

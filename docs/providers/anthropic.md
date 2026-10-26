@@ -4,6 +4,7 @@
 ```php
 'anthropic' => [
     'api_key' => env('ANTHROPIC_API_KEY', ''),
+    'url' => env('ANTHROPIC_URL', 'https://api.anthropic.com/v1'),
     'version' => env('ANTHROPIC_API_VERSION', '2023-06-01'),
     'default_thinking_budget' => env('ANTHROPIC_DEFAULT_THINKING_BUDGET', 1024),
     // Include beta strings as a comma separated list (e.g. output-128k-2025-02-19, code-execution-2025-05-22).
@@ -12,6 +13,16 @@
 ```
 
 You can also override `anthropic_beta` per request with `->using('anthropic', $model, ['anthropic_beta' => '...'])`. On top of the configured list, Prism adds the betas a request's provider options need (`fallbacks`, `thinking.display: updates`, `thinking.block_binding`), de-duplicated, on every request and step.
+## Models and remote MCP
+
+Use model IDs available to your account, such as `claude-sonnet-5-5` or `claude-opus-5-5`; consult the [Anthropic model catalog](https://platform.claude.com/docs/en/models/overview) for availability and retirement dates. Examples marked as legacy thinking require an older model that still supports token-budget thinking.
+
+The `mcp_servers` request provider option is forwarded to Anthropic for text and structured requests. Configure the remote servers, credentials and required Anthropic beta headers according to [Anthropic's MCP connector](https://platform.claude.com/docs/en/agents-and-tools/mcp-connector). These servers execute on the provider side. To connect MCP tools for execution and authorization in your application, use [Prism MCP](/companion-packages/mcp).
+
+## Errors
+
+HTTP 429 raises `PrismRateLimitedException` with rate-limit buckets and optional retry-after information. HTTP 413 raises `PrismRequestTooLargeException`; 529 raises `PrismProviderOverloadedException`. Other HTTP failures use `PrismException`. See [Error Handling](/advanced/error-handling) for retry and logging guidance.
+
 ## Prompt caching
 
 Prompt caching reuses eligible content across requests. Configure a five-minute or one-hour TTL according to the provider's caching requirements.
@@ -30,7 +41,7 @@ use Prism\Prism\ValueObjects\Messages\UserMessage;
 use Prism\Prism\ValueObjects\Messages\SystemMessage;
 
 Prism::text()
-    ->using(Provider::Anthropic, 'claude-3-5-sonnet-20241022')
+    ->using(Provider::Anthropic, 'claude-sonnet-5-5')
     ->withSystemPrompt(
         (new SystemMessage('I am a long re-usable system message.'))
     )
@@ -38,7 +49,9 @@ Prism::text()
         (new UserMessage('I am a long re-usable user message.'))
     ])
     ->withTools([
-        Tool::as('cache me')
+        Tool::as('cache_me')
+            ->for('Return a reusable example result')
+            ->using(fn (): string => 'Example result')
     ])
     ->withProviderOptions(['cache_control' => ['type' => 'ephemeral']])
     ->asText();
@@ -61,7 +74,7 @@ use Prism\Prism\ValueObjects\Messages\UserMessage;
 use Prism\Prism\ValueObjects\Messages\SystemMessage;
 
 Prism::text()
-    ->using(Provider::Anthropic, 'claude-3-5-sonnet-20241022')
+    ->using(Provider::Anthropic, 'claude-sonnet-5-5')
     ->withSystemPrompt(
         (new SystemMessage('I am a long re-usable system message.'))
             ->withProviderOptions(['cacheType' => 'ephemeral', 'cacheTtl' => '1h'])
@@ -71,7 +84,9 @@ Prism::text()
             ->withProviderOptions(['cacheType' => 'ephemeral'])
     ])
     ->withTools([
-        Tool::as('cache me')
+        Tool::as('cache_me')
+            ->for('Return a reusable example result')
+            ->using(fn (): string => 'Example result')
             ->withProviderOptions(['cacheType' => 'ephemeral'])
     ])
     ->asText();
@@ -105,7 +120,7 @@ To enable tool result caching, use the `tool_result_cache_type` provider option 
 use Prism\Prism\Facades\Prism;
 
 $response = Prism::text()
-    ->using('anthropic', 'claude-3-5-sonnet-20241022')
+    ->using('anthropic', 'claude-sonnet-5-5')
     ->withMaxSteps(30)
     ->withTools([new WeatherTool()])
     ->withProviderOptions([
@@ -453,7 +468,7 @@ use Prism\Prism\ValueObjects\Messages\UserMessage;
 use Prism\Prism\ValueObjects\Media\Document;
 
 Prism::text()
-    ->using(Provider::Anthropic, 'claude-3-5-sonnet-20241022')
+    ->using(Provider::Anthropic, 'claude-sonnet-5-5')
     ->withMessages([
         new UserMessage(
             content: "Is the grass green and the sky blue?",
@@ -471,42 +486,6 @@ Prism supports [Anthropic's citations feature](https://docs.anthropic.com/en/doc
 
 Please note that citations cannot be used with native structured output mode (the default). If you need citations with structured output, use tool calling mode via `withProviderOptions(['use_tool_calling' => true, 'citations' => true])`. Note however that citations with tool calling mode can produce unreliable output, so you should implement proper error handling.
 
-## Code execution
-
-Anthropic offers built-in code execution capabilities that allow your AI to run code in a secure environment. This is a provider tool that executes code using Anthropic's infrastructure. For more information about the difference between custom tools and provider tools, see [Tools & Function Calling](/core-concepts/tools-function-calling#provider-tools).
-
-To enable code execution, you will first need to enable the beta feature.
-
-Either in prism/config.php:
-
-```php
-        'anthropic' => [
-            // Other provider settings...
-            'anthropic_beta' => 'code-execution-2025-05-22',
-        ],
-
-```
-
-Or in your env file (assuming config/prism.php reflects the default prism setup):
-
-```
-ANTHROPIC_BETA="code-execution-2025-05-22"
-```
-
-You may then use code execution as follows:
-
-```php
-use Prism\Prism\Facades\Prism;
-use Prism\Prism\ValueObjects\ProviderTool;
-
-Prism::text()
-    ->using('anthropic', 'claude-3-5-haiku-latest')
-    ->withPrompt('Solve the equation 3x + 10 = 14.')
-    ->withProviderTools([new ProviderTool(type: 'code_execution_20250522', name: 'code_execution')])
-    ->asText();
-
-```
-
 ### Enabling citations
 
 Anthropic require citations to be enabled on all documents in a request. To enable them, using the `withProviderOptions()` method when building your request:
@@ -518,7 +497,7 @@ use Prism\Prism\ValueObjects\Messages\UserMessage;
 use Prism\Prism\ValueObjects\Media\Document;
 
 $response = Prism::text()
-    ->using(Provider::Anthropic, 'claude-3-5-sonnet-20241022')
+    ->using(Provider::Anthropic, 'claude-sonnet-5-5')
     ->withMessages([
         new UserMessage(
             content: "Is the grass green and the sky blue?",
@@ -553,7 +532,7 @@ $footnoteId = 1;
 
 /** @var MessagePartWithCitations $messageChunk  */
 foreach ($messageChunks as $messageChunk) {
-    $text .= $messageChunk->outputText;
+    $text .= htmlspecialchars($messageChunk->outputText, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
     
     /** @var Citation $citation */
     foreach ($messageChunk->citations as $citation) {
@@ -571,7 +550,26 @@ foreach ($messageChunks as $messageChunk) {
 }
 ```
 
-Note that when using streaming, Anthropic does not stream citations in the same way. Instead, of building the context as above, yield text to the browser in the usual way and pair text up with the relevant footnote using the `citationIndex` on the text chunk's additionalContent parameter.
+When streaming, consume `CitationEvent` objects with `StreamEventType::Citation`. Each carries `citation`, `messageId`, `blockIndex` and optional `metadata`; correlate it with the matching text block. See [Streaming Output](/core-concepts/streaming-output) for event payloads.
+
+## Code execution
+
+Use a provider tool to run code in Anthropic's hosted environment. It executes on Anthropic's infrastructure rather than in your PHP application. Check the [code execution API](https://platform.claude.com/docs/en/agents-and-tools/tool-use/code-execution-tool) for model compatibility and tool versions.
+
+```php
+use Prism\Prism\Facades\Prism;
+use Prism\Prism\ValueObjects\ProviderTool;
+
+$response = Prism::text()
+    ->using('anthropic', 'claude-opus-5-5')
+    ->withPrompt('Use code to calculate the mean of 1, 2, 3, 4 and 5.')
+    ->withProviderTools([
+        new ProviderTool(type: 'code_execution_20250825', name: 'code_execution'),
+    ])
+    ->asText();
+```
+
+This tool version does not require a beta header. Other provider features can still require entries in `ANTHROPIC_BETA`. See [Provider Tools](/core-concepts/tools-function-calling#provider-tools) for the distinction from tools your application executes.
 
 ## Context management
 

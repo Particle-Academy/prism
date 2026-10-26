@@ -55,6 +55,8 @@ export GOOGLE_APPLICATION_CREDENTIALS=/path/to/service-account.json
 
 ## Basic Usage
 
+Authentication is resolved in order: explicit access token, explicit service-account file, `GOOGLE_APPLICATION_CREDENTIALS` service-account file, then the local `gcloud` authorized-user ADC file. This implementation does not discover metadata-server credentials. Missing/unreadable files, malformed service-account keys, signing failures and token-refresh failures raise `PrismException`. Keep credential files server-side and grant only the Cloud permissions your application requires.
+
 ### Text Generation
 
 ```php
@@ -159,6 +161,8 @@ $response = Prism::embeddings()
 $embedding = $response->embeddings[0]->embedding;
 ```
 
+Vertex embeddings accept one text input per request; passing multiple inputs raises `PrismException`. Set `outputDimensionality` through provider options for a compatible model. The embedding `usage->tokens` field contains Vertex's `metadata.billableCharacterCount`, not a tokenizer count. Inspect `raw` if you need the provider's original accounting.
+
 ## Streaming
 
 Vertex AI supports streaming responses for real-time output:
@@ -221,6 +225,14 @@ $response = Prism::text()
 echo $response->usage->thoughtTokens;
 ```
 
+## Generation options and caching
+
+Text, structured and streaming requests accept `thinkingConfig`, `thinkingBudget`, `thinkingLevel` and `safetySettings`. Budget replaces the complete thinking configuration; level takes precedence over both. Non-streaming budget/level requests copy `includeThoughts` when supplied; streaming shorthand forces it to `true`. Use the complete `thinkingConfig` form for explicit stream thought-display controls.
+
+Use `cachedContentName` to reference an existing resource. Alternatively, mark a stable message prefix with `withCacheHint()` and opt in with `cacheStablePrefix => true` or an integer TTL in seconds. This can create a billable cache resource. The default TTL is one hour; integer TTLs are at least 60 seconds. An explicit cached resource name takes precedence. A stable prefix without a remaining prompt does not create a resource.
+
+For Google Search on text and structured requests, use `withProviderTools([new ProviderTool('google_search')])` with `Prism\Prism\ValueObjects\ProviderTool`. `searchGrounding => true` is a streaming shortcut only when no provider tools were supplied. Check model support for search and custom-tool combinations.
+
 ## Available Models
 
 Vertex AI provides access to Google's Gemini model family:
@@ -278,14 +290,4 @@ VERTEX_REGION=global
 
 ## Differences from Gemini API
 
-While Vertex AI uses the same underlying Gemini models, there are key differences:
-
-| Feature | Gemini API | Vertex AI |
-|---------|------------|-----------|
-| Authentication | API Key | OAuth 2.0 / Service Account |
-| Pricing | Pay-as-you-go | Google Cloud billing |
-| Data residency | Global | Regional control |
-| Enterprise features | Limited | Full (VPC, audit logs, etc.) |
-| SLA | None | Enterprise SLA available |
-
-Choose Vertex AI when you need enterprise-grade security, compliance, or integration with other Google Cloud services.
+Use the Gemini provider for API-key authentication, or Vertex for your Google Cloud project and regional endpoint. Their exposed capabilities and option mappings differ; check each guide before switching. Region selection alone does not establish a residency, compliance or SLA guarantee. Review [Vertex AI's locations and model availability](https://cloud.google.com/vertex-ai/generative-ai/docs/learn/locations) for your deployment.

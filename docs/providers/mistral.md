@@ -145,6 +145,62 @@ Mistral either reports `0` or leaves `cached_tokens` out when nothing came from 
 
 In a stream, Mistral sends usage on the last chunk of each response. The `StreamEndEvent` adds up every step of a tool loop, and each `StepFinishEvent` carries its own step's usage.
 
+## Structured output and tools
+
+```php
+use Prism\Prism\Facades\Prism;
+use Prism\Prism\Schema\ObjectSchema;
+use Prism\Prism\Schema\StringSchema;
+
+$response = Prism::structured()
+    ->using('mistral', 'mistral-small-latest')
+    ->withSchema(new ObjectSchema(
+        'summary', 'A summary', [new StringSchema('text', 'Summary text')],
+        requiredFields: ['text'],
+    ))
+    ->withPrompt('Summarize the purpose of a database index.')
+    ->asStructured();
+```
+
+Mistral structured output uses strict `json_schema` format. When tools are configured, the tool phase runs before the final schema-constrained generation. Use `withTools()`, `withMaxSteps()` and `withToolChoice()` as described in [Tools & Function Calling](/core-concepts/tools-function-calling).
+
+## Embeddings
+
+```php
+use Prism\Prism\Facades\Prism;
+
+$response = Prism::embeddings()
+    ->using('mistral', 'mistral-embed')
+    ->fromArray(['First document', 'Second document'])
+    ->asEmbeddings();
+
+$vector = $response->embeddings[0]->embedding;
+```
+
+Read vectors from `embeddings`, token counts from `usage`, and provider metadata from `meta`. Set `encoding_format` through provider options when required by your model.
+
+## Fill-in-the-middle
+
+Use a FIM-capable model to generate the missing text between a prefix and suffix:
+
+```php
+use Prism\Prism\Facades\Prism;
+
+$response = Prism::fim()
+    ->using('mistral', 'codestral-latest')
+    ->withPrompt('function add($a, $b) {')
+    ->withSuffix('}')
+    ->withMaxTokens(100)
+    ->withTemperature(0.2)
+    ->withTopP(0.9)
+    ->withStop(["\n\n"])
+    ->asText();
+
+echo $response->text;
+```
+
+FIM uses `withTemperature()` and `withTopP()`. Its response exposes `text`, `finishReason`, `usage` and `meta`. This handler sends only the mapped FIM fields; arbitrary provider options are not forwarded. See [Mistral's FIM API](https://docs.mistral.ai/api/endpoint/fim) for compatible model IDs.
+
 ## Audio Processing
 
 Use Mistral's Voxtral models for speech-to-text requests.
@@ -161,7 +217,7 @@ use Prism\Prism\ValueObjects\Media\Audio;
 $audioFile = Audio::fromLocalPath('/path/to/recording.mp3');
 
 $response = Prism::audio()
-    ->using('mistral', 'voxtral-mini-2507')
+    ->using('mistral', 'voxtral-mini-latest')
     ->withInput($audioFile)
     ->asText();
 
@@ -173,13 +229,13 @@ echo "Transcription: " . $response->text;
 Choose the right Voxtral model for your use case:
 
 ```php
-// For production transcription with highest accuracy
+// Select a transcription model enabled for your account.
 $response = Prism::audio()
     ->using('mistral', 'voxtral-small-latest')
     ->withInput($audioFile)
     ->asText();
 
-// For efficient transcription and edge deployment
+// Select a compatible transcription model.
 $response = Prism::audio()
     ->using('mistral', 'voxtral-mini-latest')
     ->withInput($audioFile)
@@ -187,7 +243,7 @@ $response = Prism::audio()
 
 // For optimized transcription-only service
 $response = Prism::audio()
-    ->using('mistral', 'voxtral-mini-2507')
+    ->using('mistral', 'voxtral-mini-latest')
     ->withInput($audioFile)
     ->asText();
 ```
@@ -198,7 +254,7 @@ Voxtral automatically detects languages or you can specify them for better accur
 
 ```php
 $response = Prism::audio()
-    ->using('mistral', 'voxtral-mini-2507')
+    ->using('mistral', 'voxtral-mini-latest')
     ->withInput($audioFile)
     ->withProviderOptions([
         'language' => 'en',           // ISO-639-1 code (optional)
@@ -208,7 +264,7 @@ $response = Prism::audio()
 
 // Multilingual support - single model handles multiple languages
 $response = Prism::audio()
-    ->using('mistral', 'voxtral-mini-2507')
+    ->using('mistral', 'voxtral-mini-latest')
     ->withInput($multilingualAudioFile)
     ->withProviderOptions([
         // Auto-detection works well for mixed-language content
@@ -221,9 +277,11 @@ $response = Prism::audio()
 
 Get detailed timing information with your transcriptions:
 
+Set `diarize => true` in provider options to request speaker diarization on a compatible transcription model. Other forwarded transcription options are `language`, `prompt`, `response_format`, `temperature` and `timestamp_granularities`. Read provider-specific fields from `additionalContent`.
+
 ```php
 $response = Prism::audio()
-    ->using('mistral', 'voxtral-mini-2507')
+    ->using('mistral', 'voxtral-mini-latest')
     ->withInput($audioFile)
     ->withProviderOptions([
         'timestamp_granularities' => ['segment'], // Available: word, segment
@@ -246,7 +304,7 @@ Improve transcription accuracy with contextual information:
 
 ```php
 $response = Prism::audio()
-    ->using('mistral', 'voxtral-mini-2507')
+    ->using('mistral', 'voxtral-mini-latest')
     ->withInput($audioFile)
     ->withProviderOptions([
         'prompt' => 'This is a medical consultation discussing patient symptoms and treatment options.',
@@ -258,10 +316,10 @@ $response = Prism::audio()
 
 #### Long-form Audio Processing
 
-Voxtral handles extended audio without chunking:
+Use a transcription model whose file and duration limits cover the input:
 
 ```php
-// Process up to 30 minutes of audio in a single request
+// Use a file within your selected transcription model's limits.
 $longAudioFile = Audio::fromLocalPath('/path/to/long_meeting.wav');
 
 $response = Prism::audio()
@@ -320,6 +378,7 @@ use Prism\Prism\ValueObjects\Messages\UserMessage;
 use Prism\Prism\ValueObjects\Messages\SystemMessage;
 use Prism\Prism\Providers\Mistral\Mistral;
 use Prism\Prism\Providers\Mistral\ValueObjects\OCRResponse;
+use Prism\Prism\ValueObjects\Media\Document;
 
 /** @var Mistral $provider */
 $provider = Prism::provider(\Prism\Prism\Enums\Provider::Mistral);
@@ -335,6 +394,8 @@ $ocrResponse = $provider->ocr(
  */
 $text = $ocrResponse->toText();
 ```
+
+Both OCR and document parts in text requests require `Document::fromUrl()`. Local paths, base64 and raw document bytes are refused; host a document at a URL accessible to Mistral or use another provider. Check the [model catalog](https://docs.mistral.ai/models) for available chat, embedding, transcription, FIM and OCR models.
 ::: tip
 The OCR endpoint response time can vary depending on the size of the document. We recommend doing this in the background like a queue with a longer timeout.
 :::

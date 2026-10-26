@@ -255,6 +255,26 @@ try {
 }
 ```
 
+## Image generation
+
+```php
+use Prism\Prism\Facades\Prism;
+
+$response = Prism::image()
+    ->using('xai', 'grok-imagine-image-2.0')
+    ->withPrompt('A blue notebook on a wooden desk')
+    ->withProviderOptions([
+        'n' => 1,
+        'response_format' => 'b64_json',
+        'aspect_ratio' => '1:1',
+    ])
+    ->generate();
+
+$image = $response->firstImage();
+```
+
+Image options include `n`, `response_format`, `aspect_ratio` and `resolution`; additional provider options are also forwarded. Use values supported by the selected [xAI image model](https://docs.x.ai/developers/model-capabilities/imagine). The response exposes `images`, `usage`, `meta` and `raw`. See [Image Generation](/core-concepts/image-generation) for saving results.
+
 ## Considerations
 
 ### Thinking Content Processing

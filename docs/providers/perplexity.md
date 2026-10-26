@@ -105,8 +105,7 @@ $response->usage->cost;   // e.g. 0.005, or null if the response carried none
 Only two Prism providers do this — Perplexity and OpenRouter. Everywhere else `cost` is null and
 you have to derive it. A `0.0` here is a genuine answer, not a missing one.
 
-The breakdown Perplexity sends alongside the total — input, output and request components — stays
-available on the raw response.
+The full provider usage ledger, including its cost breakdown, is available in `$response->additionalContent['usage']` when reported.
 
 > [!NOTE]
 > `tools: []` does not disable a preset's built-in tools. Perplexity exposes no public field
@@ -121,6 +120,30 @@ available on the raw response.
 ]
 ```
 
+## Server tools and request options
+
+Passing custom tools with `withTools()` raises `PrismException`. Perplexity executes its own server tools; request those through the `tools` provider option:
+
+```php
+use Prism\Prism\Facades\Prism;
+
+$response = Prism::text()
+    ->using('perplexity', 'low')
+    ->withPrompt('Find recent PHP documentation about enums.')
+    ->withProviderOptions([
+        'tools' => [['type' => 'web_search']],
+        'search_domain_filter' => ['php.net'],
+        'search_recency_filter' => 'month',
+    ])
+    ->asText();
+```
+
+The search-filter keys `search_domain_filter`, `search_recency_filter`, `search_after_date_filter`, `search_before_date_filter`, `last_updated_after_filter` and `last_updated_before_filter` are moved into the `web_search` tool's `filters`. Prism adds that tool when needed. Filters explicitly set on a tool take precedence over translated request filters. A tool's `filters` value must be an array.
+
+Supported request options also include `background`, `max_steps`, `models`, `previous_response_id`, `store`, `skills`, `metadata` and `language_preference`. `reasoning_effort` maps to `reasoning.effort`; an explicit `reasoning` object takes precedence. These are Agent API options, separate from Prism's local `withMaxSteps()` tool-loop limit. For background-job retrieval, cancellation and polling, see [Prism Perplexity](https://github.com/Particle-Academy/prism-perplexity).
+
+`search_mode` is refused when supplied. `return_images` and `return_related_questions` are refused unless their value is exactly `false`; those two no-op values are accepted and omitted. Remove unsupported Sonar options or express the request through a preset, server tool or structured prompt.
+
 ## Documents
 
 This integration sends text messages to the Perplexity Agent API. It does not send `Document` attachments. Extract document text in your application and include it in the prompt, or use a provider that supports document parts.
@@ -131,26 +154,18 @@ This integration does not send `Image` attachments. Use a provider that supports
 ## Considerations
 ### Message Order
 
-- Message order matters. Perplexity is strict about the message order being:
-
-1. `SystemMessage`
-2. `UserMessage`
-3. `AssistantMessage`
+Use `withSystemPrompt()` for Agent API instructions. User and assistant messages retain their order in `input`; a single user message is sent as a string. Tool-result messages have no client-tool continuation on this provider and are not sent.
 
 ### Additional fields
 Read provider-specific fields from `$response->additionalContent`. Available keys include `search_results`, `fetch_url_results`, `resolved_model`, `response_id`, `response_status`, `annotations`, `usage` and `reasoning`. Citation annotations are in `annotations`; there is no top-level `citations` key. Check whether a key is present before reading it.
 
 ### Token Usage
 
-Prism reports Perplexity's `prompt_tokens` and `completion_tokens` as they come back. Perplexity doesn't report cached input, so `cacheReadInputTokens` and `cacheWriteInputTokens` are always `null`.
-
-Perplexity's `reasoning_tokens` and `citation_tokens` sit outside the [Token Usage](/core-concepts/text-generation#token-usage) contract. Its `total_tokens` is just prompt plus completion, so there's no way to tell whether reasoning is already counted in `completion_tokens`. Rather than guess, Prism leaves `completionTokens` as reported and `thoughtTokens` as `null`.
-
-That also means `Usage` isn't your Perplexity bill. Reasoning and citation tokens (billed on Sonar Deep Research) and the per-request and search fees aren't in it, so use Perplexity's own usage dashboard when you need the full cost.
+`usage.input_tokens` maps to `promptTokens` and `usage.output_tokens` maps to `completionTokens`, with the older `prompt_tokens`/`completion_tokens` keys used as fallbacks. Cache and thought token fields remain `null`. `usage.cost.total_cost` maps to `Usage::$cost`, including a reported zero; absence leaves `cost` null. Read the full ledger from `additionalContent['usage']` rather than deriving a bill from token counts alone.
 
 ### Structured Output
 
-Perplexity supports two types of structured outputs: JSON Schema and Regex; but currently Prism only supports JSON Schema.
+Prism sends `response_format: json_schema` with your schema to the Agent API. Regex output constraints are not exposed by this integration.
 
 Here's an example of how to use JSON Schema for structured output:
 

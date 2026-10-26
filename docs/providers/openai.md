@@ -6,6 +6,8 @@
     'url' => env('OPENAI_URL', 'https://api.openai.com/v1'),
     'api_key' => env('OPENAI_API_KEY', ''),
     'organization' => env('OPENAI_ORGANIZATION', null),
+    'project' => env('OPENAI_PROJECT', null),
+    'api_format' => env('OPENAI_API_FORMAT', 'responses'),
 ]
 ```
 
@@ -301,6 +303,8 @@ $response = Prism::text()
 > 
 ### Reasoning Models
 
+On the Responses API, `withReasoning(false)` sends `reasoning: {effort: minimal}` unless an explicit `reasoning` provider option is supplied. It does not guarantee that the model performs no reasoning or incurs no reasoning-token cost. Model support for an effort value is determined by OpenAI.
+
 OpenAI's reasoning models like `gpt-5`, `gpt-5-mini`, and `gpt-5-nano` use advanced reasoning capabilities to think through complex problems before responding. These models excel at multi-step problem solving, coding, scientific reasoning, and complex analysis tasks.
 
 #### Reasoning Effort
@@ -517,6 +521,17 @@ Prism::text()
 
 ## Image Generation
 
+For image understanding in text requests, set resolution detail on the image itself:
+
+```php
+use Prism\Prism\ValueObjects\Media\Image;
+
+$image = Image::fromUrl('https://example.com/diagram.png')
+    ->withProviderOptions(['detail' => 'high']);
+```
+
+Pass this image through `withPrompt($prompt, [$image])`. Request-level `detail` is not the per-image setting. Choose the detail value supported by your model.
+
 Use the image generation API with a supported OpenAI model. Available options depend on the model.
 
 ### Supported Models
@@ -723,8 +738,8 @@ For higher quality audio output, use the model:
 $response = Prism::audio()
     ->using('openai', 'gpt-4o-mini-tts')
     ->withInput('This is high-quality audio generation.')
+    ->withVoice('nova')
     ->withProviderOptions([
-        'voice' => 'nova',
         'response_format' => 'wav',    // Higher quality format
     ])
     ->asAudio();
@@ -738,14 +753,14 @@ Control the output format and quality:
 $response = Prism::audio()
     ->using('openai', 'gpt-4o-mini-tts')
     ->withInput('Testing different audio formats.')
+    ->withVoice('echo')
     ->withProviderOptions([
-        'voice' => 'echo',
         'response_format' => 'opus',   // mp3, opus, aac, flac, wav, pcm
         'speed' => 1.25,              // Speed: 0.25 to 4.0
     ])
     ->asAudio();
 
-echo "Audio type: " . $response->audio->getMimeType();
+echo "Audio type: " . ($response->audio->mimeType() ?? 'unknown');
 ```
 
 For more information on the available options, please refer to the [OpenAI API documentation](https://platform.openai.com/docs/guides/text-to-speech).
@@ -786,6 +801,8 @@ if ($response->usage !== null) {
 ```
 
 #### Language Detection
+
+For transcription models that require automatic chunking, set `chunking_strategy => 'auto'` in provider options. The audio handler also forwards `language`, `prompt`, `response_format`, `service_tier` and `temperature`.
 
 Whisper can automatically detect the language or you can specify it:
 
@@ -908,7 +925,7 @@ Whisper has a file size limit of 25 MB. For larger files, consider:
 // Check file size before processing
 $audio = Audio::fromLocalPath('/path/to/large-audio.mp3');
 
-if ($audio->size() > 25 * 1024 * 1024) { // 25 MB
+if (strlen($audio->rawContent() ?? '') > 25 * 1024 * 1024) { // 25 MiB
     echo "File too large for processing";
 } else {
     $response = Prism::audio()
@@ -919,6 +936,10 @@ if ($audio->size() > 25 * 1024 * 1024) { // 25 MB
 ```
 
 For more information on the available options, please refer to the [OpenAI API documentation](https://platform.openai.com/docs/guides/speech-to-text).
+
+## Files and batches
+
+Use [Files](/core-concepts/files) to upload media or batch-input files, and [Batch Processing](/core-concepts/batch) to submit and retrieve asynchronous jobs. These operations use `Prism::files()->using('openai')` and `Prism::batch()->using('openai')`; the model belongs on each batch request item, rather than on the batch client.
 
 ## Moderation
 

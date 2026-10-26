@@ -262,6 +262,32 @@ $response = Prism::text()
     ->asText();
 ```
 
+### Message caching and strict schemas
+
+Set `cacheType` on a message to add cache control to its content:
+
+```php
+use Prism\Prism\ValueObjects\Messages\SystemMessage;
+
+$system = (new SystemMessage('Reusable application instructions'))
+    ->withProviderOptions(['cacheType' => 'ephemeral']);
+```
+
+Supply it to `withSystemPrompt($system)` and select a compatible routed model. The Requesty mapper does not forward a per-message `cacheTtl` option. Set `withProviderOptions(['strict' => true])` on individual tools for strict function schemas. Structured requests use `json_schema` with `strict: true`; read decoded results from `$response->structured`.
+
+### Embeddings
+
+```php
+use Prism\Prism\Facades\Prism;
+
+$response = Prism::embeddings()
+    ->using('requesty', 'openai/text-embedding-3-small')
+    ->fromInput('A document to index')
+    ->asEmbeddings();
+```
+
+Use an embedding model available through your Requesty account. Provider options are forwarded in the embedding payload; the response exposes `embeddings`, `usage` and `meta`.
+
 ### Provider Routing & Advanced Options
 
 Use `withProviderOptions()` to forward Requesty-specific controls such as model preferences or sampling parameters. Prism automatically forwards the native request values for `temperature`, `top_p`, and `max_tokens`, so you can continue tuning them through the usual Prism API without duplicating them in `withProviderOptions()`.

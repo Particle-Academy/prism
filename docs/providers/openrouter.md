@@ -68,7 +68,7 @@ $response = Prism::structured()
     ->withSchema($schema)
     ->asStructured();
 
-echo $response->text;
+echo json_encode($response->structured);
 ```
 
 ### Tool Calling
@@ -306,6 +306,34 @@ foreach ($stream as $event) {
 }
 ```
 
+### Caching and strict tool schemas
+
+Set `cacheType` and optional `cacheTtl` on individual system, user or assistant messages, rather than on the request:
+
+```php
+use Prism\Prism\ValueObjects\Messages\SystemMessage;
+
+$system = (new SystemMessage('Reusable application instructions'))
+    ->withProviderOptions(['cacheType' => 'ephemeral', 'cacheTtl' => '1h']);
+```
+
+Pass it to `withSystemPrompt($system)` and use a model/router that supports the selected cache controls. Set `withProviderOptions(['strict' => true])` on each tool when you need strict tool schemas.
+
+`withReasoning(false)` supplies `reasoning: {exclude: true}` unless you set an explicit `reasoning` option. It controls returned reasoning content and does not guarantee lower reasoning cost.
+
+### Embeddings
+
+```php
+use Prism\Prism\Facades\Prism;
+
+$response = Prism::embeddings()
+    ->using('openrouter', 'openai/text-embedding-3-small')
+    ->fromInput('A document to index')
+    ->asEmbeddings();
+```
+
+Embedding provider options are forwarded in the payload. Read vectors from `embeddings`, token counts from `usage`, and provider metadata from `meta`. Select a model listed for embeddings in your router account.
+
 ### Token Usage
 
 OpenRouter's `prompt_tokens` includes the tokens it read from the cache and the tokens it wrote to it. Prism takes both out so the input buckets don't overlap, the same way it does for every other provider (see [Token Usage](/core-concepts/text-generation#token-usage)):
@@ -320,7 +348,7 @@ OpenRouter's `prompt_tokens` includes the tokens it read from the cache and the 
 
 A few things worth knowing:
 
-- OpenRouter's docs show cache writes inside `prompt_tokens`. That reads and writes never overlap is our reading of those docs rather than something they spell out.
+- Prism subtracts both reported cache-read and cache-write counts from `prompt_tokens` and clamps the result to zero.
 - A replayed response-cache hit can report more cached tokens than prompt tokens, so `promptTokens` never drops below `0`.
 - Streams take usage from the accounting chunk OpenRouter sends at the end of every response, which repeats the finish reason. Prism reads it once per step, and the final `StreamEndEvent` adds up every step of a tool loop. Each `StepFinishEvent` carries its own step's usage.
 
@@ -427,6 +455,8 @@ For detailed API documentation, visit [OpenRouter's API documentation](https://o
 
 ## Error Handling
 
+HTTP 400, 401, 402, 403 and 408 raise `PrismException` with bad-request, authentication, credits, moderation or timeout details respectively. HTTP 413 raises `PrismRequestTooLargeException`; 429 raises `PrismRateLimitedException`; 503 raises `PrismProviderOverloadedException`. Error details can include the upstream provider name. Treat response bodies as sensitive before logging them.
+
 The OpenRouter provider includes standard error handling for common issues:
 
 - Rate limiting
@@ -434,4 +464,4 @@ The OpenRouter provider includes standard error handling for common issues:
 - Provider overload
 - Invalid API key
 
-Errors are automatically mapped to appropriate Prism exceptions for consistent error handling across all providers. 
+Errors are automatically mapped to appropriate Prism exceptions for consistent error handling across all providers.

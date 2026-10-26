@@ -71,6 +71,8 @@ $response = Prism::text()
 
 ### Tool Calling
 
+For strict function schemas, set `withProviderOptions(['strict' => true])` on each tool. The text handler does not merge arbitrary request provider options into the DashScope payload: setting `enable_thinking` through request provider options has no effect.
+
 Qwen supports function calling with tools, allowing the model to request external data during generation:
 
 ```php
@@ -161,6 +163,8 @@ Image::fromBase64($base64Data, 'image/png');
 > VL model availability varies by region. Check the [official model list](https://www.alibabacloud.com/help/en/model-studio/models) for your deployment mode.
 
 ## Structured Output
+
+Select `usingStructuredMode(StructuredMode::Structured)` to send `json_schema`. The `schema.strict` request provider option defaults to `true` in that mode. `StructuredMode::Auto` and `StructuredMode::Json` send `json_object`. Import `Prism\Prism\Enums\StructuredMode` when selecting the mode.
 
 Qwen supports structured output through DashScope's native `response_format` parameter, with two modes:
 

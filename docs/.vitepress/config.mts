@@ -196,6 +196,10 @@ export default defineConfig({
                 link: "/providers/deepseek",
               },
               {
+                text: "Azure",
+                link: "/providers/azure",
+              },
+              {
                 text: "ElevenLabs",
                 link: "/providers/elevenlabs",
               },
@@ -238,6 +242,10 @@ export default defineConfig({
               {
                 text: "Voyage AI",
                 link: "/providers/voyageai",
+              },
+              {
+                text: "Vertex",
+                link: "/providers/vertex",
               },
               {
                 text: "XAI",

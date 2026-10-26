@@ -194,7 +194,7 @@ For complete tool documentation, see [Tools & Function Calling](/core-concepts/t
 
 ## Structured Output
 
-Z AI supports structured output through schema-based JSON generation, ensuring responses match your defined structure.
+Prism sends schema instructions and requests JSON-object output from Z AI. Validate application requirements after decoding.
 
 ### Basic Structured Output
 
@@ -236,6 +236,30 @@ dump($response->structured);
 ```
 
 For complete structured output documentation, see [Structured Output](/core-concepts/structured-output).
+
+## Streaming
+
+```php
+use Prism\Prism\Enums\StreamEventType;
+use Prism\Prism\Facades\Prism;
+
+$stream = Prism::text()
+    ->using('z', 'glm-4.6')
+    ->withPrompt('Explain the purpose of a database index.')
+    ->asStream();
+
+foreach ($stream as $event) {
+    if ($event->type() === StreamEventType::TextDelta) {
+        echo $event->delta;
+    }
+}
+```
+
+Tools and pending approvals use the shared [streaming events](/core-concepts/streaming-output).
+
+## Structured and provider options
+
+Structured requests use `json_object` mode with schema instructions and force `thinking: {type: disabled}`. This is not a native JSON Schema constraint; validate application requirements after decoding. The text, structured and stream handlers do not merge arbitrary request provider options into their payloads. Setting a value through `withProviderOptions()` does not make it an API option for these operations.
 
 ## Token Usage
 

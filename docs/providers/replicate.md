@@ -249,7 +249,7 @@ $response = Prism::audio()
     ->using('replicate', 'vaibhavs10/incredibly-fast-whisper:3ab86df6c8f54c11309d4d1f930ac292bad43ace52d10c80d87eb258b3c9f79c')
     ->withInput($audioFile)
     ->withProviderOptions([
-        'task' => 'translate',      // or 'translate' (to English)
+        'task' => 'translate',      // 'transcribe' or 'translate' (to English)
         'language' => 'english',           // Optional: specify source language
         'timestamp' => 'chunk',       // chunk, word, or false
         'batch_size' => 64,           // Batch size for processing
@@ -298,6 +298,12 @@ foreach ($response->embeddings as $embedding) {
 
 **Embeddings model:**
 - `mark3labs/embeddings-gte-base` - 768-dimensional embeddings
+
+## Prediction inputs and tools
+
+Provider options are merged into the prediction's `input` object; each model defines its input names and accepted values. They can override mapped input fields, so keep option construction under your application's control. The text handler maps the prompt, system prompt and sampling settings; the structured handler adds schema instructions and defaults `max_tokens` to 4096 unless provider options override it.
+
+Custom function tools are unsupported. Tools supplied through `withTools()` are not sent or executed; this handler does not create a tool loop or throw for their presence. Use a provider with custom-tool support when the model must request application functions.
 
 ## Model Versioning
 
