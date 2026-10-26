@@ -89,7 +89,8 @@ return [
             'use_sync_mode' => env('REPLICATE_USE_SYNC_MODE', true), // Use Prefer: wait header
             'polling_interval' => env('REPLICATE_POLLING_INTERVAL', 1000),
             'max_wait_time' => env('REPLICATE_MAX_WAIT_TIME', 60),
-            // Hosts generated images may be auto-downloaded from (https only).
+            // Hosts generated images/audio may be downloaded from (HTTPS, port 443;
+            // includes subdomains). Downloads omit API credentials and refuse redirects.
             'download_hosts' => ['replicate.delivery'],
         ],
         'qwen' => [

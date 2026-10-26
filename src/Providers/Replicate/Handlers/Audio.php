@@ -10,12 +10,14 @@ use Prism\Prism\Audio\SpeechToTextRequest;
 use Prism\Prism\Audio\TextResponse;
 use Prism\Prism\Audio\TextToSpeechRequest;
 use Prism\Prism\Exceptions\PrismException;
+use Prism\Prism\Providers\Replicate\Concerns\DownloadsOutputs;
 use Prism\Prism\Providers\Replicate\Concerns\HandlesPredictions;
 use Prism\Prism\ValueObjects\GeneratedAudio;
 use Prism\Prism\ValueObjects\Usage;
 
 class Audio
 {
+    use DownloadsOutputs;
     use HandlesPredictions;
 
     public function __construct(
@@ -68,7 +70,7 @@ class Audio
         }
 
         // Download audio content
-        $audioContent = $this->client->get($audioUrl)->body();
+        $audioContent = $this->downloadOutput($audioUrl);
         $base64Audio = base64_encode($audioContent);
 
         return new AudioResponse(

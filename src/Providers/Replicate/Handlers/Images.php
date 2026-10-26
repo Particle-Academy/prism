@@ -5,10 +5,10 @@ declare(strict_types=1);
 namespace Prism\Prism\Providers\Replicate\Handlers;
 
 use Illuminate\Http\Client\PendingRequest;
-use Illuminate\Support\Facades\Http;
 use Prism\Prism\Images\Request;
 use Prism\Prism\Images\Response;
 use Prism\Prism\Images\ResponseBuilder;
+use Prism\Prism\Providers\Replicate\Concerns\DownloadsOutputs;
 use Prism\Prism\Providers\Replicate\Concerns\HandlesPredictions;
 use Prism\Prism\ValueObjects\GeneratedImage;
 use Prism\Prism\ValueObjects\Meta;
@@ -16,6 +16,7 @@ use Prism\Prism\ValueObjects\Usage;
 
 class Images
 {
+    use DownloadsOutputs;
     use HandlesPredictions;
 
     public function __construct(
@@ -114,11 +115,6 @@ class Images
     }
 
     /**
-     * Maximum bytes accepted when downloading a generated image.
-     */
-    protected const MAX_DOWNLOAD_BYTES = 25 * 1024 * 1024;
-
-    /**
      * Download an image from URL and convert to base64.
      *
      * The URL originates from the provider response, so it is only fetched
@@ -128,46 +124,13 @@ class Images
      */
     protected function downloadImageAsBase64(string $url): ?string
     {
-        if (! $this->isDownloadableUrl($url)) {
-            return null;
-        }
-
         try {
-            /** @var \Illuminate\Http\Client\Response $response */
-            $response = Http::timeout(30)->get($url);
-
-            if ($response->successful() && strlen($response->body()) <= self::MAX_DOWNLOAD_BYTES) {
-                return base64_encode($response->body());
-            }
+            return base64_encode($this->downloadOutput($url));
         } catch (\Exception) {
             // If download fails, return null and rely on URL
         }
 
         return null;
-    }
-
-    protected function isDownloadableUrl(string $url): bool
-    {
-        $parts = parse_url($url);
-
-        if (($parts['scheme'] ?? '') !== 'https') {
-            return false;
-        }
-
-        $host = strtolower((string) ($parts['host'] ?? ''));
-
-        /** @var array<int, string> $allowedHosts */
-        $allowedHosts = config('prism.providers.replicate.download_hosts', ['replicate.delivery']);
-
-        foreach ($allowedHosts as $allowedHost) {
-            $allowedHost = strtolower($allowedHost);
-
-            if ($host === $allowedHost || str_ends_with($host, '.'.$allowedHost)) {
-                return true;
-            }
-        }
-
-        return false;
     }
 
     /**
