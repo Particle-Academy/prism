@@ -6,6 +6,18 @@ See the [provider support table](/getting-started/introduction.html#provider-sup
 
 Check that both the provider integration and selected model support the input type.
 
+## Provider input forms
+
+| Integration | Accepted document forms |
+|---|---|
+| Anthropic | Bytes, text, chunks, URL or an Anthropic file ID |
+| OpenAI Responses API | Bytes, URL or an OpenAI file ID; chunks are refused |
+| Mistral OCR | URL only; local bytes and chunks are refused |
+| Gemini | Bytes or a recognized Gemini File API URI; arbitrary document URLs need an explicit fetch |
+| OpenRouter / Requesty | Bytes or URL; file IDs and chunks are refused |
+
+File IDs belong to their originating provider and account. Authorize access before sending them. Anthropic maps a `text/*` document to a `text/plain` source and keeps its text unchanged; use `fromText()` or decodable text bytes. `fromChunks()` takes an array of strings and is an Anthropic document form, not a generic provider chunk format.
+
 ## Supported file types
 
 > [!TIP]
@@ -38,6 +50,8 @@ Prism converts between supported representations where possible. The following c
 
 To add a document to your prompt, use the `withPrompt` method with a `Document` value object:
 
+These examples assume your application has authorized the local/storage paths and supplies validated PDF bytes as `$rawContent`, their base64 encoding as `$baseFromDB`, and any provider file ID. Replace the example paths with files on your configured disks.
+
 ```php
 use Prism\Prism\Enums\Provider;
 use Prism\Prism\Facades\Prism;
@@ -45,7 +59,7 @@ use Prism\Prism\ValueObjects\Media\Document;
 
 // From a local path
 $response = Prism::text()
-    ->using('my-provider', 'my-model')
+    ->using('anthropic', 'claude-sonnet-5-5')
     ->withPrompt(
         'Analyze this document',
         [Document::fromLocalPath(
@@ -57,7 +71,7 @@ $response = Prism::text()
 
 // From a storage path
 $response = Prism::text()
-    ->using('my-provider', 'my-model')
+    ->using('anthropic', 'claude-sonnet-5-5')
     ->withPrompt(
         'Summarize this document',
         [Document::fromStoragePath(
@@ -70,12 +84,12 @@ $response = Prism::text()
 
 // From base64
 $response = Prism::text()
-    ->using('my-provider', 'my-model')
+    ->using('anthropic', 'claude-sonnet-5-5')
     ->withPrompt(
         'Extract key points from this document',
         [Document::fromBase64(
             document: $baseFromDB,
-            mimeType: 'optional/mimetype', // optional
+            mimeType: 'application/pdf',
             title: 'My document title' // optional
         )]
     )
@@ -83,12 +97,12 @@ $response = Prism::text()
 
 // From raw content
 $response = Prism::text()
-    ->using('my-provider', 'my-model')
+    ->using('anthropic', 'claude-sonnet-5-5')
     ->withPrompt(
         'Review this document',
         [Document::fromRawContent(
             rawContent: $rawContent,
-            mimeType: 'optional/mimetype', // optional
+            mimeType: 'application/pdf',
             title: 'My document title' // optional
         )]
     )
@@ -96,7 +110,7 @@ $response = Prism::text()
 
 // From a text string
 $response = Prism::text()
-    ->using('my-provider', 'my-model')
+    ->using('anthropic', 'claude-sonnet-5-5')
     ->withPrompt(
         'Process this text document',
         [Document::fromText(
@@ -108,7 +122,7 @@ $response = Prism::text()
 
 // From an URL
 $response = Prism::text()
-    ->using('my-provider', 'my-model')
+    ->using('anthropic', 'claude-sonnet-5-5')
     ->withPrompt(
         'Analyze this document from URL',
         [Document::fromUrl(
@@ -120,7 +134,7 @@ $response = Prism::text()
 
 // From chunks
 $response = Prism::text()
-    ->using('my-provider', 'my-model')
+    ->using('anthropic', 'claude-sonnet-5-5')
     ->withPrompt(
         'Process this chunked document',
         [Document::fromChunks(
@@ -133,13 +147,13 @@ $response = Prism::text()
     )
     ->asText();
 
-// From a provider file ID
+// From an application-authorized Anthropic file ID ($anthropicFileId)
 $response = Prism::text()
-    ->using('my-provider', 'my-model')
+    ->using('anthropic', 'claude-sonnet-5-5')
     ->withPrompt(
         'Analyze this document from provider file',
         [Document::fromFileId(
-            fileId: 'my-provider-file-id'
+            fileId: $anthropicFileId
         )]
     )
     ->asText();
@@ -162,7 +176,7 @@ $message = new UserMessage(
 );
 
 $response = Prism::text()
-    ->using('my-provider', 'my-model')
+    ->using('anthropic', 'claude-sonnet-5-5')
     ->withMessages([$message])
     ->asText();
 ```

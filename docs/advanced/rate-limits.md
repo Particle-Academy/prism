@@ -10,9 +10,12 @@ integration implements that mapping. DeepSeek currently uses the generic
 
 The exception's `rateLimits` array and response metadata contain
 `ProviderRateLimit` objects when the integration can extract quota details.
-OpenAI parses rate-limit headers; Gemini can extract quota details from an
-error payload. An array can be empty, so handle the exception even when no
+OpenAI, Anthropic, Groq and Mistral parse provider-specific rate-limit headers; Gemini can extract quota details from an error payload. An array can be empty, so handle the exception even when no
 quota buckets are available.
+
+`$error->retryAfter` is an optional delay in seconds, separate from its quota buckets. Not every integration populates it, and a value of zero is not a promise of available capacity. Use a bounded queue/backoff policy when the provider supplies no usable delay.
+
+Bucket names differ: Anthropic can report `input-tokens`/`output-tokens`, while Groq and Mistral use names such as `tokens`. Do not assume one bucket name works for every provider. Mistral's parser casts absent numeric headers to zero and supplies a reset time based on that value; missing headers are not authoritative quota evidence.
 
 ## The ProviderRateLimit value object
 
@@ -41,7 +44,7 @@ use Prism\Prism\Exceptions\PrismRateLimitedException;
 
 try {
     Prism::text()
-        ->using(Provider::Anthropic, 'claude-3-5-sonnet-20241022')
+        ->using(Provider::Anthropic, 'claude-sonnet-5-5')
         ->withPrompt('Hello world!')
         ->asText();
 }
@@ -115,7 +118,7 @@ use Prism\Prism\Enums\Provider;
 use Prism\Prism\ValueObjects\ProviderRateLimit;
 
 $response = Prism::text()
-    ->using(Provider::Anthropic, 'claude-3-5-sonnet-20241022')
+    ->using(Provider::Anthropic, 'claude-sonnet-5-5')
     ->withPrompt('Hello world!')
     ->asText();
     
@@ -132,6 +135,6 @@ Armed with that information, you'll probably want to [update your app's rate lim
 
 Apply rate limits in your application or queue to delay requests until capacity is available.
 
-You should take a look at the [rate limiting](https://laravel.com/docs/11.x/rate-limiting) docs, and if you are firing requests from your queue, check out the [job middleware](https://laravel.com/docs/11.x/queues#job-middleware) docs.
+You should take a look at the [rate limiting](https://laravel.com/docs/13.x/rate-limiting) docs, and if you are firing requests from your queue, check out the [job middleware](https://laravel.com/docs/13.x/queues#job-middleware) docs.
 
 You should implement a rate limiter / job middleware for each of the provider rate limits your application typically hits.

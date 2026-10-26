@@ -4,7 +4,17 @@ Prism supports including audio files in your messages for advanced analysis with
 
 See the [provider support table](/getting-started/introduction.html#provider-support) to check whether Prism supports your chosen provider.
 
-Check that both the provider integration and selected model support the input type.
+Check that both the provider integration and selected model support the input type. This page covers audio inside a text request; use [audio processing](/core-concepts/audio) for transcription and speech synthesis.
+
+## Provider input forms
+
+| Integration | Audio input |
+|---|---|
+| Gemini | Local/raw/base64 bytes, or a recognized Gemini File API URI; arbitrary URLs need an explicit fetch |
+| OpenRouter | Local/raw/base64 bytes mapped to `input_audio`; the routed model must support audio |
+| Requesty | Local/raw/base64 bytes mapped to `input_audio`; the routed model must support audio |
+
+OpenRouter and Requesty map WAV, MP3, OGG and WebM MIME types to format labels; unrecognized MIME types fall back to `wav`. Supply correctly encoded audio and an accurate MIME type. An unfetched URL is refused by their audio mapper.
 
 ::: tip
 For other input modalities like videos and images, see their respective documentation pages:

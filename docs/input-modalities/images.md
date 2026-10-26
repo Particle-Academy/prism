@@ -17,7 +17,7 @@ use Prism\Prism\ValueObjects\Media\Image;
 
 // From a local path
 $response = Prism::text()
-    ->using(Provider::Anthropic, 'claude-3-5-sonnet-20241022')
+    ->using(Provider::Anthropic, 'claude-sonnet-5-5')
     ->withPrompt(
         "What's in this image?",
         [Image::fromLocalPath(path: '/path/to/image.jpg')]
@@ -26,7 +26,7 @@ $response = Prism::text()
 
 // From a path on a storage disk
 $response = Prism::text()
-    ->using(Provider::Anthropic, 'claude-3-5-sonnet-20241022')
+    ->using(Provider::Anthropic, 'claude-sonnet-5-5')
     ->withPrompt(
         "What's in this image?",
         [Image::fromStoragePath(
@@ -38,7 +38,7 @@ $response = Prism::text()
 
 // From a URL
 $response = Prism::text()
-    ->using(Provider::Anthropic, 'claude-3-5-sonnet-20241022')
+    ->using(Provider::Anthropic, 'claude-sonnet-5-5')
     ->withPrompt(
         'Analyze this diagram:',
         [Image::fromUrl(url: 'https://example.com/diagram.png')]
@@ -47,7 +47,7 @@ $response = Prism::text()
 
 // From base64
 $response = Prism::text()
-    ->using(Provider::Anthropic, 'claude-3-5-sonnet-20241022')
+    ->using(Provider::Anthropic, 'claude-sonnet-5-5')
     ->withPrompt(
         'Analyze this diagram:',
         [Image::fromBase64(base64: base64_encode(file_get_contents('/path/to/image.jpg')))]
@@ -56,7 +56,7 @@ $response = Prism::text()
 
 // From raw content
 $response = Prism::text()
-    ->using(Provider::Anthropic, 'claude-3-5-sonnet-20241022')
+    ->using(Provider::Anthropic, 'claude-sonnet-5-5')
     ->withPrompt(
         'Analyze this diagram:',
         [Image::fromRawContent(rawContent: file_get_contents('/path/to/image.jpg'))]
@@ -65,6 +65,20 @@ $response = Prism::text()
 ```
 
 ## Alternative: Using withMessages
+
+For an image already uploaded to OpenAI, use its provider-scoped file ID with the Responses API. Your application must authorize the file reference:
+
+```php
+use Prism\Prism\Facades\Prism;
+use Prism\Prism\ValueObjects\Media\Image;
+
+// $openAiImageFileId belongs to the authenticated user's OpenAI integration.
+$response = Prism::text()
+    ->using('openai', 'gpt-4.1')
+    ->withPrompt('Describe this image.', [Image::fromFileId($openAiImageFileId)
+        ->withProviderOptions(['detail' => 'high'])])
+    ->asText();
+```
 
 You can also include images using the message-based approach:
 
@@ -78,7 +92,7 @@ $message = new UserMessage(
 );
 
 $response = Prism::text()
-    ->using(Provider::Anthropic, 'claude-3-5-sonnet-20241022')
+    ->using(Provider::Anthropic, 'claude-sonnet-5-5')
     ->withMessages([$message])
     ->asText();
 ```
@@ -91,7 +105,7 @@ When uploading images, you can provide a custom filename using the fluent `as()`
 use Prism\Prism\ValueObjects\Media\Image;
 
 $response = Prism::image()
-    ->using('openai', 'gpt-image-1')
+    ->using('openai', 'gpt-image-2.5-sunburst')
     ->withPrompt('Edit these images', [
         Image::fromLocalPath('path/to/photo1.png')->as('original-photo.png'),
         Image::fromLocalPath('path/to/photo2.png')->as('reference-image.png'),

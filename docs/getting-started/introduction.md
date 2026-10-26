@@ -15,8 +15,8 @@ use Prism\Prism\Facades\Prism;
 use Prism\Prism\Enums\Provider;
 
 $response = Prism::text()
-    ->using(Provider::Anthropic, 'claude-3-7-sonnet-latest')
-    ->withSystemPrompt(view('prompts.system'))
+    ->using(Provider::Anthropic, 'claude-sonnet-5-5')
+    ->withSystemPrompt('Explain concepts in plain language.')
     ->withPrompt('Explain quantum computing to a 5-year-old.')
     ->asText();
 
@@ -28,8 +28,8 @@ use Prism\Prism\Facades\Prism;
 use Prism\Prism\Enums\Provider;
 
 $response = Prism::text()
-    ->using(Provider::Mistral, 'mistral-medium')
-    ->withSystemPrompt(view('prompts.system'))
+    ->using(Provider::Mistral, 'mistral-medium-3-5')
+    ->withSystemPrompt('Explain concepts in plain language.')
     ->withPrompt('Explain quantum computing to a 5-year-old.')
     ->asText();
 
@@ -41,8 +41,8 @@ use Prism\Prism\Facades\Prism;
 use Prism\Prism\Enums\Provider;
 
 $response = Prism::text()
-    ->using(Provider::Ollama, 'llama2')
-    ->withSystemPrompt(view('prompts.system'))
+    ->using(Provider::Ollama, 'llama3.2')
+    ->withSystemPrompt('Explain concepts in plain language.')
     ->withPrompt('Explain quantum computing to a 5-year-old.')
     ->asText();
 
@@ -54,8 +54,8 @@ use Prism\Prism\Facades\Prism;
 use Prism\Prism\Enums\Provider;
 
 $response = Prism::text()
-    ->using(Provider::OpenAI, 'gpt-4')
-    ->withSystemPrompt(view('prompts.system'))
+    ->using(Provider::OpenAI, 'gpt-4.1')
+    ->withSystemPrompt('Explain concepts in plain language.')
     ->withPrompt('Explain quantum computing to a 5-year-old.')
     ->asText();
 
@@ -68,7 +68,7 @@ use Prism\Prism\Enums\Provider;
 
 $response = Prism::text()
     ->using(Provider::Replicate, 'meta/meta-llama-3.1-405b-instruct')
-    ->withSystemPrompt(view('prompts.system'))
+    ->withSystemPrompt('Explain concepts in plain language.')
     ->withPrompt('Explain quantum computing to a 5-year-old.')
     ->asText();
 
@@ -80,16 +80,21 @@ Prism's API is inspired by the [Vercel AI SDK](https://sdk.vercel.ai/docs/ai-sdk
 
 ## Key Features
 
-- **Unified Provider Interface**: Use a consistent request API across providers such as OpenAI, Anthropic and Ollama. Available features and options vary by provider.
-- **Tool System**: Extend AI capabilities by defining custom tools that can interact with your application's business logic.
-- **Image Support**: Work with multi-modal models that can process both text and images.
+- [Text and conversations](/core-concepts/text-generation), [structured output](/core-concepts/structured-output), and [streaming](/core-concepts/streaming-output).
+- [Custom and provider tools](/core-concepts/tools-function-calling), including [client execution and approvals](/core-concepts/human-in-the-loop) on supported integrations.
+- [Embeddings](/core-concepts/embeddings), [image generation/editing](/core-concepts/image-generation), [audio processing](/core-concepts/audio), and [moderation](/core-concepts/moderation).
+- [Images](/input-modalities/images), [documents](/input-modalities/documents), [audio](/input-modalities/audio) and [video](/input-modalities/video) as model inputs.
+- [Files](/core-concepts/files), [Batch](/core-concepts/batch), and [Mistral fill-in-the-middle](/providers/mistral#fill-in-the-middle).
+- [Response fakes](/core-concepts/testing), [telemetry events](/advanced/telemetry), and an optional [OpenAI-compatible server](/core-concepts/prism-server).
+
+Support varies by provider and model; a shared method does not imply that every integration supports it. The Ollama example requires that the named model is installed on your server.
 
 Prism also provides a fluent `prism()` helper function to resolve the `Prism` instance from the application container.
 
 ```php
 prism()
     ->text()
-    ->using(Provider::OpenAI, 'gpt-4')
+    ->using(Provider::OpenAI, 'gpt-4.1')
     ->withPrompt('Explain quantum computing to a 5-year-old.')
     ->asText();
 ``` 
@@ -99,7 +104,7 @@ prism()
 Prism includes integrations for the following providers:
 
 - [Anthropic](/providers/anthropic.md)
-- Azure OpenAI (`Provider::Azure`)
+- [Azure OpenAI](/providers/azure.md)
 - [DeepSeek](/providers/deepseek.md)
 - [ElevenLabs](/providers/elevenlabs.md)
 - [Gemini](/providers/gemini.md)
@@ -108,13 +113,13 @@ Prism includes integrations for the following providers:
 - [Ollama](/providers/ollama.md)
 - [OpenAI](/providers/openai.md)
 - [OpenRouter](/providers/openrouter.md)
-- [Requesty](/providers/requesty.md)
-- [Replicate](/providers/replicate.md)
-- [Qwen](/providers/qwen.md)
-- [xAI](/providers/xai.md)
 - [Perplexity](/providers/perplexity.md)
+- [Qwen](/providers/qwen.md)
+- [Replicate](/providers/replicate.md)
+- [Requesty](/providers/requesty.md)
 - [Vertex AI](/providers/vertex.md)
 - [VoyageAI](/providers/voyageai.md)
+- [xAI](/providers/xai.md)
 - [Z](/providers/z.md)
 
 ## Provider Support

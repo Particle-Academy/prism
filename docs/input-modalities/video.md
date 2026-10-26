@@ -6,6 +6,16 @@ See the [provider support table](/getting-started/introduction.html#provider-sup
 
 Check that both the provider integration and selected model support the input type.
 
+## Provider input forms
+
+| Integration | Video input |
+|---|---|
+| Gemini | Inline bytes or recognized YouTube/Gemini File API URL references; other URLs need an explicit fetch |
+| OpenRouter | URL reference or bytes encoded as a data URL in `video_url` |
+| Requesty | URL reference or bytes encoded as a data URL in `video_url` |
+
+Routed model support, MIME types and size limits vary. A mapper accepting the media does not establish that the selected model can analyze it. Use the provider guide and your model's input requirements.
+
 ::: tip
 For other input modalities like audio and images, see their respective documentation pages:
 - [Audio documentation](/input-modalities/audio.html)
@@ -133,6 +143,8 @@ Supported YouTube URL formats:
 
 - Standard: `https://www.youtube.com/watch?v=VIDEO_ID`
 - Shortened: `https://youtu.be/VIDEO_ID`
+
+The recognizer matches HTTP(S) prefixes for `youtube.com/watch` and `youtu.be/`, with optional `www.` and case-insensitive matching. It does not extract or validate the video ID. Mobile-host, `/shorts/`, `/embed/` and `youtube-nocookie.com` forms are not recognized as YouTube references. Normalize those URLs in your application or use a supported form; recognition is not a URL-safety check.
 
 Example:
 
