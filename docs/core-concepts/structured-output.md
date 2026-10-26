@@ -122,7 +122,7 @@ use Prism\Prism\Facades\Prism;
 use Prism\Prism\Enums\Provider;
 
 $response = Prism::structured()
-    ->using(Provider::Anthropic, 'claude-3-5-sonnet-latest')
+    ->using(Provider::Anthropic, 'claude-sonnet-5-5')
     ->withSchema($schema)
     ->withPrompt('天氣怎麼樣？應該穿什麼？') // Chinese text with potential quotes
     ->withProviderOptions(['use_tool_calling' => true])
@@ -188,6 +188,12 @@ if (!isset($response->structured['required_field'])) {
 }
 ```
 
+## Request requirements and failures
+
+Set `withSchema()` before calling `asStructured()`. A missing schema raises `PrismException` while building the request. Malformed response JSON can raise `PrismStructuredDecodingException`; valid JSON still needs application validation. A refusal can return an empty `structured` result without a decoding exception, so inspect `finishReason` too. Decoding exception messages contain the response text; apply your data-retention policy before logging them.
+
+`withThread()` supplies stored history and can be combined with a new prompt, as in [Text Generation](/core-concepts/text-generation#threads). `withToolChoice()` controls selection on structured providers that support tools. To make a tool raise on failure, call `withoutErrorHandling()` on that tool before passing it to the request. The structured builder's `withoutToolErrorHandling()` flag does not alter the tools passed to its provider.
+
 ## Common Settings
 
 Structured output supports several configuration options to fine-tune your generations:
@@ -242,7 +248,7 @@ $weatherTool = Tool::as('get_weather')
     );
 
 $response = Prism::structured()
-    ->using('anthropic', 'claude-3-5-sonnet-latest')
+    ->using('anthropic', 'claude-sonnet-5-5')
     ->withSchema($schema)
     ->withTools([$weatherTool])
     ->withMaxSteps(3)

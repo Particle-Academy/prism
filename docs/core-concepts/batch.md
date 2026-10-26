@@ -237,6 +237,12 @@ $job = Prism::batch()
     ->create(items: $items);
 ```
 
+## Job metadata and limits
+
+`BatchJob` exposes `id`, `status`, `requestCounts`, `createdAt`, `expiresAt`, `endedAt`, `resultsUrl`, `inputFileId`, `outputFileId`, `errorFileId` and `errors`. Dates, result URLs and file IDs can be null depending on the provider and job state. `requestCounts` contains `processing`, `succeeded`, `failed`, `canceled`, `expired` and `total` counts. Each `errors` entry has `code`, `message` and nullable `line`/`param` fields.
+
+The Anthropic integration refuses more than 100,000 items with `PrismBatchRequestLimitExceededException`, and by default refuses a JSON payload over 256 MiB with `PrismBatchPayloadSizeExceededException`. Both extend `PrismException`. Supply `items` for Anthropic; OpenAI accepts either `items` or an `inputFileId`, never both. Payload checks occur locally before submission; provider limits can impose further restrictions.
+
 ## Client Options
 
 ```php

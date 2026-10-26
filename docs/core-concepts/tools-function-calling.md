@@ -20,7 +20,7 @@ $weatherTool = Tool::as('weather')
     });
 
 $response = Prism::text()
-    ->using(Provider::Anthropic, 'claude-3-5-sonnet-latest')
+    ->using(Provider::Anthropic, 'claude-sonnet-5-5')
     ->withMaxSteps(2)
     ->withPrompt('What is the weather like in Paris?')
     ->withTools([$weatherTool])
@@ -36,7 +36,7 @@ use Prism\Prism\Facades\Prism;
 use Prism\Prism\Enums\Provider;
 
 Prism::text()
-    ->using(Provider::Anthropic, 'claude-3-5-sonnet-latest')
+    ->using(Provider::Anthropic, 'claude-sonnet-5-5')
     // Increase max steps to at least 2
     ->withMaxSteps(2)
     ->withPrompt('What is the weather like in Paris?')
@@ -66,7 +66,7 @@ Return a string for a text result, or a `ToolOutput` to include application arti
 
 ## Error Handling
 
-By default, tools handle invalid parameters gracefully by returning error messages instead of throwing exceptions. This helps AI assistants understand and potentially correct their mistakes.
+By default, a tool's `handle()` method catches failures and returns a `ToolError` with a `message`; it does not propagate the handler exception. Provider tool loops send this failure back to the model. Code that invokes `handle()` directly must distinguish `ToolError` from a successful string or `ToolOutput`.
 
 ```php
 $tool = Tool::as('calculate')
@@ -79,6 +79,21 @@ $tool = Tool::as('calculate')
 // "Parameter validation error: Type mismatch. Expected: [a (NumberSchema, required), b (NumberSchema, required)]. Received: {"a":"five","b":10}"
 ```
 
+Use `failed()` to replace the message sent to the model:
+
+```php
+use Prism\Prism\ValueObjects\ToolError;
+
+$tool->failed(fn (Throwable $error, array $arguments): string => 'The operation failed.');
+$result = $tool->handle(a: 2, b: 3);
+
+if ($result instanceof ToolError) {
+    // Handle the failure; do not treat it as a successful result.
+}
+```
+
+`withErrorHandling($callback)` also sets a failure callback; `withErrorHandling()` without a callback restores the default handler. Default failure messages can contain exception details and supplied arguments. Use a redacted callback when these can include secrets or personal data.
+
 ### Opting Out
 
 If you prefer exceptions for invalid parameters:
@@ -87,11 +102,10 @@ If you prefer exceptions for invalid parameters:
 // Per-tool
 $tool->withoutErrorHandling();
 
-// Per-request
-Prism::text()->withoutToolErrorHandling();
+// Then pass the configured tool to a text or structured request.
 ```
 
-**Best Practice**: Use default error handling for conversational AI. Disable it only when you need strict validation that stops execution.
+`withoutToolErrorHandling()` on a text request disables custom failure callbacks, but leaves tools using the default failure handler unchanged. Its structured-request flag does not alter the supplied tools. For consistent exception behavior, configure `withoutErrorHandling()` on each tool. Text request configuration can mutate a tool carrying a custom callback; use a separate tool instance when requests need different policies.
 
 ## Parameter Definition
 
@@ -181,6 +195,8 @@ $tool = Tool::as('set_status')
 ```
 
 ### Object Parameters
+
+Parameter helpers default to `required: true`. Set `required: false` to make a parameter optional, and give the corresponding handler argument a default value. `withObjectParameter()` accepts both inner `requiredFields` and the outer parameter's `required` flag, plus `allowAdditionalProperties` (default false). These describe the schema; validate and authorize values in your handler before acting on them.
 
 For complex objects without needing to create separate schema instances:
 
@@ -431,6 +447,8 @@ Errors in concurrent tools are handled the same way as sequential tools. If one 
 > Concurrent execution requires Laravel's Concurrency feature, available in Laravel 11+. Make sure you have the appropriate concurrency driver configured. See [Laravel's Concurrency documentation](https://laravel.com/docs/12.x/concurrency) for setup details.
 
 ## Using Laravel MCP Tools
+
+Install the optional dependency first with `composer require laravel/mcp`. It is not a production dependency of Prism core.
 You can use existing [Laravel MCP](https://github.com/laravel/mcp) Tools in Prism directly, without using the Laravel MCP Server:
 
 ```php
@@ -449,7 +467,7 @@ use Prism\Prism\Enums\Provider;
 use Prism\Prism\Enums\ToolChoice;
 
 $prism = Prism::text()
-    ->using(Provider::Anthropic, 'claude-3-5-sonnet-latest')
+    ->using(Provider::Anthropic, 'claude-sonnet-5-5')
     ->withMaxSteps(2)
     ->withPrompt('How is the weather in Paris?')
     ->withTools([$weatherTool])
@@ -464,6 +482,8 @@ $prism = Prism::text()
 > [!WARNING]
 > Tool choice support varies by provider. Check your provider's documentation for specific capabilities.
 
+`ToolChoice::None` requests no tool use on providers that support it. The other choices are `Auto`, `Any`, or a tool name/Tool instance. Each `withToolChoice()` call replaces the preceding selection; the chain above demonstrates alternatives. To request strict function schemas on a compatible provider, set `withProviderOptions(['strict' => true])` on the individual tool.
+
 ## Response Handling with Tools
 
 When your AI uses tools, you can inspect the results and see how it arrived at its answer:
@@ -473,7 +493,7 @@ use Prism\Prism\Facades\Prism;
 use Prism\Prism\Enums\Provider;
 
 $response = Prism::text()
-    ->using(Provider::Anthropic, 'claude-3-5-sonnet-latest')
+    ->using(Provider::Anthropic, 'claude-sonnet-5-5')
     ->withMaxSteps(2)
     ->withPrompt('What is the weather like in Paris?')
     ->withTools([$weatherTool])
@@ -503,6 +523,10 @@ foreach ($response->steps as $step) {
     }
 }
 ```
+
+For raw tool arguments, `arguments()` returns an associative PHP array. Use `argumentsAsObject()` when serializing an argument object, especially an empty object or numeric property names; `argumentsAsJson()` encodes that object as JSON. Invalid argument JSON raises `PrismException` when decoded.
+
+Provider-side calls are separate from your PHP tools: inspect `$step->providerToolCalls` on text steps when the provider populates them. To defer a custom call to your application, use `clientExecuted()`; to pause execution for an approval, use `requiresApproval()`. See [Human-in-the-Loop](/core-concepts/human-in-the-loop) for continuation and authorization requirements.
 
 ## Tool Artifacts
 
@@ -660,10 +684,10 @@ use Prism\Prism\Facades\Prism;
 use Prism\Prism\ValueObjects\ProviderTool;
 
 $response = Prism::text()
-    ->using('anthropic', 'claude-3-5-sonnet-latest')
+    ->using('anthropic', 'claude-sonnet-5-5')
     ->withPrompt('Calculate the fibonacci sequence up to 100')
     ->withProviderTools([
-        new ProviderTool(type: 'code_execution_20250522', name: 'code_execution')
+        new ProviderTool(type: 'code_execution_20250825', name: 'code_execution')
     ])
     ->asText();
 ```
@@ -678,7 +702,7 @@ The `ProviderTool` class accepts three parameters:
 
 ```php
 new ProviderTool(
-    type: 'code_execution_20250522',  // Required: The provider tool identifier
+    type: 'code_execution_20250825',  // Required: The provider tool identifier
     name: 'code_execution',           // Optional: Custom name for the tool
     options: []                       // Optional: Provider-specific options
 );
@@ -706,12 +730,12 @@ $customTool = Tool::as('database_lookup')
     });
 
 $response = Prism::text()
-    ->using('anthropic', 'claude-3-5-sonnet-latest')
+    ->using('anthropic', 'claude-sonnet-5-5')
     ->withMaxSteps(5)
     ->withPrompt('Look up user 123 and calculate their usage statistics')
     ->withTools([$customTool])
     ->withProviderTools([
-        new ProviderTool(type: 'code_execution_20250522', name: 'code_execution')
+        new ProviderTool(type: 'code_execution_20250825', name: 'code_execution')
     ])
     ->asText();
 ```
@@ -744,7 +768,7 @@ $weatherTool = Tool::as('get_weather')
     ->using(fn (string $location): string => "Weather in {$location}: 72°F, sunny");
 
 $response = Prism::structured()
-    ->using('anthropic', 'claude-3-5-sonnet-latest')
+    ->using('anthropic', 'claude-sonnet-5-5')
     ->withSchema($schema)
     ->withTools([$weatherTool])
     ->withMaxSteps(3)

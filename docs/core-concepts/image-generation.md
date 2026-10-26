@@ -10,7 +10,7 @@ Select a provider and model, then supply a prompt:
 use Prism\Prism\Facades\Prism;
 
 $response = Prism::image()
-    ->using('openai', 'gpt-image-1')
+    ->using('openai', 'gpt-image-2.5-sunburst')
     ->withPrompt('A cute baby sea otter floating on its back in calm blue water')
     ->generate();
 
@@ -22,9 +22,14 @@ file_put_contents('otter.png', base64_decode($image->base64));
 
 Currently, Prism supports image generation through:
 
-- **OpenAI**: GPT-Image-1, plus the deprecated DALL-E 3 and DALL-E 2 models
-- **Gemini**: Gemini 2.0 Flash Preview Image Generation, Imagen 4, Imagen 3
+- **OpenAI**: GPT Image models
+- **Gemini**: conversational image generation and Imagen models
 - **Qwen**: Qwen-Image (generation), Qwen-Image-Edit (editing & multi-image fusion)
+- [Azure](/providers/azure#embeddings-and-images): image generation on a compatible deployment
+- [Replicate](/providers/replicate#supported-features): prediction-based generation with model-specific inputs and image-download host settings
+- [xAI](/providers/xai#image-generation): image generation with model-specific format and size options
+
+Choose a model available to your account. Provider support for generation does not imply support for editing or every option. Check the [Gemini](/providers/gemini#image-generation) guide for its image model families and current catalog links.
 
 ## Basic Usage
 
@@ -34,7 +39,7 @@ The most straightforward way to generate an image:
 
 ```php
 $response = Prism::image()
-    ->using('openai', 'gpt-image-1')
+    ->using('openai', 'gpt-image-2.5-sunburst')
     ->withPrompt('A serene mountain landscape at sunset')
     ->generate();
 
@@ -54,7 +59,7 @@ The response object provides helpful methods for accessing generated content:
 
 ```php
 $response = Prism::image()
-    ->using('openai', 'gpt-image-1')
+    ->using('openai', 'gpt-image-2.5-sunburst')
     ->withPrompt('Abstract geometric patterns in vibrant colors')
     ->withProviderOptions(['n' => 2])
     ->generate();
@@ -98,20 +103,19 @@ While Prism provides a consistent API, you can access provider-specific features
 
 OpenAI offers various customization options depending on the model:
 
-#### GPT-Image-1 (Base64 Only)
+#### GPT Image (Base64 Only)
 
-The GPT-Image-1 model always returns base64-encoded images, regardless of the `response_format` setting:
+GPT Image models return base64 data. Do not send the older `response_format` parameter:
 
 ```php
 $response = Prism::image()
-    ->using('openai', 'gpt-image-1')
+    ->using('openai', 'gpt-image-2.5-sunburst')
     ->withPrompt('A cute baby sea otter floating on its back')
     ->withProviderOptions([
         'size' => '1024x1024',              // 1024x1024, 1536x1024, 1024x1536, auto
         'quality' => 'high',                // auto, high, medium, low
         'background' => 'transparent',      // transparent, opaque, auto
         'output_format' => 'png',           // png, jpeg, webp
-        'output_compression' => 90,         // 0-100 (for jpeg/webp)
     ])
     ->generate();
 
@@ -123,49 +127,13 @@ if ($image->hasBase64()) {
 }
 ```
 
-#### DALL-E 3 Options
+#### Response formats
 
-DALL-E 3 is deprecated by OpenAI.
-
-```php
-$response = Prism::image()
-    ->using('openai', 'dall-e-3')
-    ->withPrompt('A beautiful sunset over mountains')
-    ->withProviderOptions([
-        'size' => '1792x1024',          // 1024x1024, 1024x1792, 1792x1024
-        'quality' => 'hd',              // standard, hd
-        'style' => 'vivid',             // vivid, natural
-        'response_format' => 'url',     // url, b64_json
-    ])
-    ->generate();
-```
-
-#### Base64 vs URL Responses
-
-Different models return images in different formats:
-
-- **GPT-Image-1**: Always returns base64-encoded images in the `base64` property
-- **DALL-E 2 & 3**: Return URLs by default, but can return base64 when `response_format` is set to `'b64_json'`
-
-```php
-// Request base64 format from DALL-E 3
-$response = Prism::image()
-    ->using('openai', 'dall-e-3')
-    ->withPrompt('Abstract art')
-    ->withProviderOptions([
-        'response_format' => 'b64_json',
-    ])
-    ->generate();
-
-$image = $response->firstImage();
-if ($image->hasBase64()) {
-    echo "Received base64 image data";
-}
-```
+GPT Image returns base64 data. Use `output_format` to select PNG, JPEG or WebP; omit `response_format`. Other providers can return a URL instead, so inspect `hasBase64()` and `hasUrl()` before saving a result. Follow the [current OpenAI image guide](https://developers.openai.com/api/docs/guides/image-generation) for model options. DALL-E models and `gpt-image-1` have been removed from the API; see [OpenAI's deprecation schedule](https://developers.openai.com/api/docs/deprecations).
 
 #### Image Editing
 
-OpenAI's `gpt-image-1` model supports editing existing images. Pass your images as the second parameter to `withPrompt()`:
+OpenAI's `gpt-image-2.5-sunburst` model supports editing existing images. Pass your images as the second parameter to `withPrompt()`:
 
 ```php
 use Prism\Prism\ValueObjects\Media\Image;
@@ -173,7 +141,7 @@ use Prism\Prism\ValueObjects\Media\Image;
 $originalImage = Image::fromLocalPath('photos/landscape.png');
 
 $response = Prism::image()
-    ->using('openai', 'gpt-image-1')
+    ->using('openai', 'gpt-image-2.5-sunburst')
     ->withPrompt('Add a vaporwave sunset to the background', [$originalImage])
     ->withProviderOptions([
         'size' => '1024x1024',
@@ -191,7 +159,7 @@ You can edit multiple images at once:
 
 ```php
 $response = Prism::image()
-    ->using('openai', 'gpt-image-1')
+    ->using('openai', 'gpt-image-2.5-sunburst')
     ->withPrompt('Make the colors more vibrant', [
         Image::fromLocalPath('photo1.png'),
         Image::fromLocalPath('photo2.png')->as('custom-name.png'),
@@ -203,12 +171,12 @@ For precise edits, use a mask to specify which areas to modify:
 
 ```php
 $response = Prism::image()
-    ->using('openai', 'gpt-image-1')
+    ->using('openai', 'gpt-image-2.5-sunburst')
     ->withPrompt('Replace the sky with a starry night', [
         Image::fromLocalPath('landscape.png'),
     ])
     ->withProviderOptions([
-        'mask' => Image::fromLocalPath('sky-mask.png'), // White areas will be edited
+        'mask' => Image::fromLocalPath('sky-mask.png'), // Transparent areas identify the edit region
         'size' => '1024x1024',
         'output_format' => 'png',
     ])
@@ -216,13 +184,13 @@ $response = Prism::image()
 ```
 
 > [!NOTE]
-> The mask should be a PNG image where white pixels indicate areas to edit and transparent pixels indicate areas to preserve.
+> Use a PNG mask with an alpha channel: transparent pixels identify the area to edit. Keep the mask dimensions aligned with the input. The model uses the mask as guidance, so edits can extend beyond its exact outline.
 
 ### Gemini Options
 
 Gemini offers customizations, depending on what model is selected. All Gemini image generation models return base64-encoded images only. They also return `mimeType`.
 
-### Gemini Flash Preview Image Generation
+### Gemini image generation
 
 Gemini conversational image generation provides the option to edit images by passing them as the second parameter to `withPrompt()`:
 
@@ -325,6 +293,14 @@ $response = Prism::image()
     ->generate();
 ```
 
+## Input and configuration limits
+
+Pass editing inputs as `Image` objects in the second argument to `withPrompt()`. The image builder discards other media types from that additional-content array. It does not fetch URLs automatically; a provider that needs bytes requires an explicit fetch or local/raw image content.
+
+`withMaxTokens()`, `usingTemperature()` and system-prompt setters are available through shared builder configuration, but these values are not included in the image request sent to its provider. Use the documented provider image options for generation controls.
+
+Catch `PrismException` for unsupported provider actions or invalid provider responses. Wrong or unsupported input media can be refused by the provider-specific mapper. A generated result can contain a URL, base64 data, or both; check availability before saving it. Do not pass a returned URL to an unguarded HTTP fetch without your application's URL policy.
+
 ## Testing
 
 Use fakes to test image generation without external API calls:
@@ -337,7 +313,7 @@ test('can generate images', function () {
     Prism::fake([ImageResponseFake::make()]);
 
     $response = Prism::image()
-        ->using('openai', 'gpt-image-1')
+        ->using('openai', 'gpt-image-2.5-sunburst')
         ->withPrompt('Test image')
         ->generate();
 

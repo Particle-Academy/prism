@@ -28,7 +28,7 @@ $searchTool = Tool::as('search_crm')
     ->clientExecuted();
 
 $response = Prism::text()
-    ->using('anthropic', 'claude-sonnet-4-5')
+    ->using('anthropic', 'claude-sonnet-5-5')
     ->withTools([$searchTool])
     ->withMaxSteps(3)
     ->withPrompt('Find the customer named Acme Corp')
@@ -55,7 +55,7 @@ $results = new ToolResultMessage([
 ]);
 
 $final = Prism::text()
-    ->using('anthropic', 'claude-sonnet-4-5')
+    ->using('anthropic', 'claude-sonnet-5-5')
     ->withTools([$searchTool])
     ->withMessages([...$response->messages, $results])
     ->asText();
@@ -98,6 +98,8 @@ foreach ($step->toolApprovalRequests as $request) {
 Resume with the decisions — approved calls execute, denied calls produce a
 denial result the model sees:
 
+An unanswered approval produces `No approval response provided`. An explicit denial without a reason produces `User denied tool execution`; a supplied reason replaces that default. Approval decisions and the pending call's arguments must be stored and correlated by your application.
+
 ```php
 use Prism\Prism\ValueObjects\Messages\ToolResultMessage;
 use Prism\Prism\ValueObjects\ToolApprovalResponse;
@@ -108,7 +110,7 @@ $decisions = new ToolResultMessage([], [
 ]);
 
 $final = Prism::text()
-    ->using('anthropic', 'claude-sonnet-4-5')
+    ->using('anthropic', 'claude-sonnet-5-5')
     ->withTools([$deleteTool])
     ->withMessages([...$response->messages, $decisions])
     ->asText();
@@ -129,10 +131,80 @@ On a supported provider's stream, a pending approval emits a
 (`ToolApprovalRequestBroadcast`), so an approval prompt can be pushed to a UI
 over websockets in real time.
 
+In PHP, read the call through `$event->toolCall`, including `name` and `arguments()`. Its SSE payload uses `approval_id`, `tool_id`, `tool_name`, `arguments` and `message_id`, alongside the event ID and timestamp.
+
+The following Anthropic example pauses after one generation step and retains the approval correlation for a later request. It uses the `$deleteTool` defined above:
+
 ```php
-foreach ($stream as $event) {
-    if ($event->type() === StreamEventType::ToolApprovalRequest) {
-        // Surface the approval prompt; resume with a ToolApprovalResponse
-    }
+use Prism\Prism\Enums\FinishReason;
+use Prism\Prism\Streaming\Events\StreamEndEvent;
+use Prism\Prism\Streaming\Events\ToolApprovalRequestEvent;
+use Prism\Prism\Streaming\StreamedMessages;
+use Prism\Prism\ValueObjects\Messages\AssistantMessage;
+use Prism\Prism\ValueObjects\Messages\UserMessage;
+use Prism\Prism\ValueObjects\ToolApprovalRequest;
+
+$history = [new UserMessage('Delete reports/draft.txt.')];
+$events = iterator_to_array(Prism::text()
+    ->using('anthropic', 'claude-sonnet-5-5')
+    ->withTools([$deleteTool])
+    ->withMaxSteps(1)
+    ->withMessages($history)
+    ->asStream(), false);
+
+$approvalEvents = array_values(array_filter($events,
+    fn ($event): bool => $event instanceof ToolApprovalRequestEvent));
+$end = collect($events)->last(fn ($event): bool => $event instanceof StreamEndEvent);
+
+if ($approvalEvents === [] || $end?->finishReason !== FinishReason::ToolCalls) {
+    throw new RuntimeException('Handle the completed or failed turn separately.');
 }
+
+$generated = StreamedMessages::fromEvents($events)->map(function ($message) use ($approvalEvents) {
+    if (! $message instanceof AssistantMessage) {
+        return $message;
+    }
+
+    $requests = [];
+    foreach ($approvalEvents as $event) {
+        foreach ($message->toolCalls as $call) {
+            if ($call->id === $event->toolCall->id) {
+                $requests[] = new ToolApprovalRequest($event->approvalId, $call->id);
+            }
+        }
+    }
+
+    return new AssistantMessage(
+        content: $message->content,
+        toolCalls: $message->toolCalls,
+        additionalContent: $message->additionalContent,
+        toolApprovalRequests: $requests,
+    );
+});
+
+$history = [...$history, ...$generated];
+// Persist $history and $approvalEvents server-side, then show the pending calls.
 ```
+
+`StreamedMessages::fromEvents()` currently retains Anthropic's completed tool step and replay metadata but does not add approval requests to its messages. The example attaches those requests explicitly. Do not rebuild messages from text alone or discard the approval IDs.
+
+After authenticating the user and authorizing the decision, reload that history and resume:
+
+```php
+use Prism\Prism\ValueObjects\Messages\ToolResultMessage;
+use Prism\Prism\ValueObjects\ToolApprovalResponse;
+
+// $approvedByUser is the authorized application decision, not model output.
+$decisions = new ToolResultMessage([], [
+    new ToolApprovalResponse($approvalEvents[0]->approvalId, approved: $approvedByUser),
+]);
+
+$stream = Prism::text()
+    ->using('anthropic', 'claude-sonnet-5-5')
+    ->withTools([$deleteTool])
+    ->withMessages([...$history, $decisions])
+    ->withMaxSteps(2)
+    ->asStream();
+```
+
+Collect and present a decision for every pending approval your application intends to resolve. An omitted decision is denied by default.

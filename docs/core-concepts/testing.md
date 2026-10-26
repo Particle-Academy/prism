@@ -22,7 +22,7 @@ it('can generate text', function () {
 
     // Run your code
     $response = Prism::text()
-        ->using(Provider::Anthropic, 'claude-3-5-sonnet-latest')
+        ->using(Provider::Anthropic, 'claude-sonnet-5-5')
         ->withPrompt('Who are you?')
         ->asText();
 
@@ -181,7 +181,7 @@ it('can use weather tool', function () {
 
     // Run the actual test
     $response = Prism::text()
-        ->using(Provider::Anthropic, 'claude-3-5-sonnet-latest')
+        ->using(Provider::Anthropic, 'claude-sonnet-5-5')
         ->withPrompt('What\'s the weather in Paris?')
         ->withTools([$weatherTool])
         ->withMaxSteps(2)
@@ -224,7 +224,7 @@ Prism::fake([
 ]);
 
 $stream = Prism::text()
-    ->using('anthropic', 'claude-3-sonnet')
+    ->using('anthropic', 'claude-sonnet-5-5')
     ->withPrompt('What is the meaning of life?')
     ->asStream();
 
@@ -296,7 +296,7 @@ Prism::fake([
 ]);
 
 $stream = Prism::text()
-    ->using('anthropic', 'claude-3-sonnet')
+    ->using('anthropic', 'claude-sonnet-5-5')
     ->withPrompt('What is the meaning of life?')
     ->asStream();
 
@@ -368,7 +368,7 @@ it('can generate structured response', function () {
     $fake = Prism::fake([$fakeResponse]);
 
     $response = Prism::structured()
-        ->using('anthropic', 'claude-3-sonnet')
+        ->using('anthropic', 'claude-sonnet-5-5')
         ->withPrompt('Generate a user profile')
         ->withSchema($schema)
         ->asStructured();
@@ -410,6 +410,14 @@ it('can generate embeddings', function () {
 });
 ```
 
+## Fake scope and fixture consumption
+
+`Prism::fake()` replaces provider behavior for text, structured output, embeddings, images and synchronous audio. It returns supplied responses without running tool handlers or performing provider request mapping. A fixture containing tool calls or results describes the response; it does not prove that the handler ran or that a provider accepts the request.
+
+With a nonempty fixture list, each call consumes the next response. Exhausting it raises an exception; provide fixtures in operation order and with the correct response types. An empty `Prism::fake()` uses default responses instead. Streaming consumes its fixture when iterated, so consume the generator before checking recorded calls.
+
+Moderation, FIM, Files, Batch and asynchronous audio are not implemented by this fake. Use Laravel `Http::fake()` plus `Http::preventStrayRequests()` to exercise those provider handlers, and assert the outgoing payload. See [Azure's native v1 streaming limitation](/providers/azure#streaming) before assuming Laravel fakes intercept every path.
+
 ## Assertions
 
 `PrismFake` provides several helpful assertion methods:
@@ -435,7 +443,7 @@ $fake->assertCallCount(2);
 // Assert detailed request properties
 $fake->assertRequest(function ($requests) {
     expect($requests[0]->provider())->toBe('anthropic');
-    expect($requests[0]->model())->toBe('claude-3-sonnet');
+    expect($requests[0]->model())->toBe('claude-sonnet-5-5');
 });
 
 // Assert provider configuration

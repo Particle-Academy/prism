@@ -102,7 +102,7 @@ use Prism\Prism\Facades\Prism;
 use Prism\Prism\ValueObjects\Media\Image;
 
 $response = Prism::embeddings()
-    ->using('provider', 'model')
+    ->using('gemini', 'gemini-embedding-2')
     ->fromImage(Image::fromLocalPath('/path/to/product.jpg'))
     ->asEmbeddings();
 
@@ -118,7 +118,7 @@ use Prism\Prism\Facades\Prism;
 use Prism\Prism\ValueObjects\Media\Image;
 
 $response = Prism::embeddings()
-    ->using('provider', 'model')
+    ->using('gemini', 'gemini-embedding-2')
     ->fromImages([
         Image::fromLocalPath('/path/to/image1.jpg'),
         Image::fromUrl('https://example.com/image2.png'),
@@ -133,6 +133,8 @@ foreach ($response->embeddings as $embedding) {
 
 ### Audio, Video, and Documents
 
+The plural helpers `fromAudios(array $audios)`, `fromVideos(array $videos)` and `fromDocuments(array $documents)` append one content entry per item, just like repeated calls to the singular helper. They do not combine parts into one embedding. Use a multimodal embedding provider/model such as the Gemini integration described in its [embedding guide](/providers/gemini#embeddings); input support is not implied by the builder method's availability.
+
 ```php
 use Prism\Prism\Facades\Prism;
 use Prism\Prism\ValueObjects\Media\Audio;
@@ -140,7 +142,7 @@ use Prism\Prism\ValueObjects\Media\Document;
 use Prism\Prism\ValueObjects\Media\Video;
 
 $response = Prism::embeddings()
-    ->using('provider', 'model')
+    ->using('gemini', 'gemini-embedding-2')
     ->fromAudio(Audio::fromLocalPath('/path/to/sample.mp3'))
     ->fromVideo(Video::fromLocalPath('/path/to/sample.mp4'))
     ->fromDocument(Document::fromLocalPath('/path/to/report.pdf'))
@@ -156,7 +158,7 @@ use Prism\Prism\Facades\Prism;
 use Prism\Prism\ValueObjects\Media\Image;
 
 $response = Prism::embeddings()
-    ->using('provider', 'model')
+    ->using('gemini', 'gemini-embedding-2')
     ->fromContent([
         'Find similar products in red',
         Image::fromBase64($productImage, 'image/png'),
@@ -171,7 +173,7 @@ use Prism\Prism\Facades\Prism;
 use Prism\Prism\ValueObjects\Media\Image;
 
 $response = Prism::embeddings()
-    ->using('provider', 'model')
+    ->using('gemini', 'gemini-embedding-2')
     ->fromContents([
         ['The dog is cute'],
         [Image::fromLocalPath('/path/to/dog.png')],
@@ -202,6 +204,10 @@ $response = Prism::embeddings()
 
 ## Response Handling
 
+Provider options are model-specific: for example, OpenAI uses `dimensions`, Voyage AI text embeddings use `outputDimension`, and Gemini/Vertex use `outputDimensionality`. See the provider guide before setting one; unknown options are not handled consistently across integrations.
+
+The response exposes `meta` (ID, model and rate limits when reported) and optional `raw` payload data. `usage->tokens` can be null when unreported; Vertex maps a billable-character count into this field. Raw payloads may contain input content or identifiers, so apply your retention policy before storing them.
+
 Read results and metadata from the embeddings response:
 
 ```php
@@ -226,6 +232,8 @@ $tokenCount = $response->usage->tokens;
 ## Error Handling
 
 Handle request failures:
+
+`fromFile()` throws `PrismException` for a missing or unreadable local file. A provider without embeddings raises an unsupported-action `PrismException`. Invalid provider responses can also raise `PrismException`; media inputs refused by an explicit guarded fetch raise `PrismUrlRefused`. A builder accepting a media object does not guarantee that the selected embedding provider sends it.
 
 ```php
 use Prism\Prism\Facades\Prism;

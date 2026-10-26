@@ -183,20 +183,35 @@ $contentSchema = new AnyOfSchema(
 );
 ```
 
-**Key Features:**
-- Accepts an array of schema objects that define the possible types
-- Automatically validates nested schemas for OpenAI compatibility
-- Supports nullable values through the `nullable` parameter
-- Optional name and description parameters
-- Removes unsupported JSON schema properties automatically
+`AnyOfSchema` combines alternative schema branches. Its `toArray()` includes those alternatives; provider-specific mapping can adjust them. Support depends on the provider's schema dialect, selected structured mode and model. Check the [provider guides](/providers/openai#structured-output) and validate the result in your application.
 
-**Provider Support for AnyOfSchema:**
+## Raw JSON Schema and constraints
 
-| Provider   | anyOf Support | Available Since | Notes |
-|------------|---------------|-----------------|-------|
-| OpenAI     | ✅ Full       | GPT-4 onwards   | Works with structured outputs API |
-| Gemini     | ✅ Full       | Gemini 2.5+     | Enhanced JSON Schema support (Nov 2025) |
-| Anthropic  | ❌ Not supported | -            | Use alternative schema design patterns |
+Use `RawSchema` when you already have a schema document or need keywords outside the typed constructors:
+
+```php
+use Prism\Prism\Schema\RawSchema;
+
+$schema = new RawSchema('reference', [
+    'type' => 'object',
+    'properties' => ['code' => ['type' => 'string', 'pattern' => '^[A-Z]{3}$']],
+    'required' => ['code'],
+    'additionalProperties' => false,
+]);
+```
+
+`RawSchema` sends the supplied array unchanged. It does not validate that document or make unsupported keywords available on a provider. Validate returned data for your application's requirements.
+
+The typed constructors expose these options after their required name/description and child-schema arguments:
+
+| Schema | Optional constraints |
+|---|---|
+| `StringSchema` | `nullable`, `pattern`, `format` |
+| `NumberSchema` | `nullable`, `multipleOf`, `maximum`, `exclusiveMaximum`, `minimum`, `exclusiveMinimum` |
+| `ArraySchema` | `nullable`, `minItems`, `maxItems` |
+| `ObjectSchema` | `requiredFields`, `allowAdditionalProperties` (default false), `nullable` |
+
+Use named arguments for constraints. A provider may support only a subset of JSON Schema; supplying a constraint does not guarantee that every provider enforces it.
 
 ## Nullable Fields
 

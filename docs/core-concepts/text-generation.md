@@ -11,7 +11,7 @@ use Prism\Prism\Facades\Prism;
 use Prism\Prism\Enums\Provider;
 
 $response = Prism::text()
-    ->using(Provider::Anthropic, 'claude-3-5-sonnet-20241022')
+    ->using(Provider::Anthropic, 'claude-sonnet-5-5')
     ->withPrompt('Tell me a short story about a brave knight.')
     ->asText();
 
@@ -27,7 +27,7 @@ use Prism\Prism\Facades\Prism;
 use Prism\Prism\Enums\Provider;
 
 $response = Prism::text()
-    ->using(Provider::Anthropic, 'claude-3-5-sonnet-20241022')
+    ->using(Provider::Anthropic, 'claude-sonnet-5-5')
     ->withSystemPrompt('You are an expert mathematician who explains concepts simply.')
     ->withPrompt('Explain the Pythagorean theorem.')
     ->asText();
@@ -40,7 +40,7 @@ use Prism\Prism\Facades\Prism;
 use Prism\Prism\Enums\Provider;
 
 $response = Prism::text()
-    ->using(Provider::Anthropic, 'claude-3-5-sonnet-20241022')
+    ->using(Provider::Anthropic, 'claude-sonnet-5-5')
     ->withSystemPrompt(view('prompts.math-tutor'))
     ->withPrompt('What is calculus?')
     ->asText();
@@ -62,7 +62,7 @@ use Prism\Prism\ValueObjects\Media\Video;
 
 // Analyze an image
 $response = Prism::text()
-    ->using(Provider::Anthropic, 'claude-3-5-sonnet-20241022')
+    ->using(Provider::Anthropic, 'claude-sonnet-5-5')
     ->withPrompt(
         'What objects do you see in this image?',
         [Image::fromLocalPath('/path/to/image.jpg')]
@@ -71,7 +71,7 @@ $response = Prism::text()
 
 // Process a document
 $response = Prism::text()
-    ->using(Provider::Anthropic, 'claude-3-5-sonnet-20241022')
+    ->using(Provider::Anthropic, 'claude-sonnet-5-5')
     ->withPrompt(
         'Summarize the key points from this document',
         [Document::fromLocalPath('/path/to/document.pdf')]
@@ -133,7 +133,7 @@ use Prism\Prism\ValueObjects\Messages\UserMessage;
 use Prism\Prism\ValueObjects\Messages\AssistantMessage;
 
 $response = Prism::text()
-    ->using(Provider::Anthropic, 'claude-3-5-sonnet-20241022')
+    ->using(Provider::Anthropic, 'claude-sonnet-5-5')
     ->withMessages([
         new UserMessage('What is JSON?'),
         new AssistantMessage('JSON is a lightweight data format...'),
@@ -177,8 +177,7 @@ $followUp = Prism::text()
 - `AssistantMessage`
 - `ToolResultMessage`
 
-> [!NOTE]
-> Some providers, like Anthropic, do not support the `SystemMessage` type. In those cases we convert `SystemMessage` to `UserMessage`.
+Supply instructions through `withSystemPrompt()` or `withSystemPrompts()`. How a provider maps system messages placed inside the conversation differs; see its provider guide before using that form.
 
 ### Threads
 
@@ -202,7 +201,7 @@ Pass the thread with `withThread()` and the new user message with `withPrompt()`
 
 ```php
 $response = Prism::text()
-    ->using(Provider::Anthropic, 'claude-3-5-sonnet-20241022')
+    ->using(Provider::Anthropic, 'claude-sonnet-5-5')
     ->withThread($conversation)
     ->withPrompt('Can you show me an example?')
     ->asText();
@@ -269,6 +268,51 @@ Under the hood we use Laravel's [HTTP client](https://laravel.com/docs/11.x/http
 
 This allows for complete or partial override of the providers configuration. This is great for multi-tenant applications where users supply their own API keys. These values are merged with the original configuration allowing for partial or complete config override.
 
+## Request configuration
+
+`using($provider, $model, $providerConfig)` accepts a third argument that overrides provider configuration for that request. Use it for application-controlled credentials or endpoints; keep these values out of model-generated options and browser payloads.
+
+| Method | Behavior |
+|---|---|
+| `withSystemPrompt($message)` | Appends one string, view or `SystemMessage` |
+| `withSystemPrompts($messages)` | Replaces the complete system-prompt list with `SystemMessage` objects |
+| `withProviderOptions($options)` | Replaces the request option array; keys and support depend on the provider |
+| `withReasoning(false)` | Requests the provider-specific reasoning behavior described in its guide |
+| `whenProvider($provider, $callback)` | Calls the callback only when the selected provider key matches; return the builder |
+| `withProviderTools($tools)` | Supplies `ProviderTool` objects for provider-side tools |
+| `withToolChoice($choice)` | Selects a `ToolChoice` value, a tool name or a Tool object, when supported |
+| `withTelemetryMetadata($userId, $sessionId)` | Adds optional opaque identifiers to telemetry; it does not enable content capture |
+
+For example, with an application-supplied tenant credential:
+
+```php
+use Illuminate\Http\Client\ConnectionException;
+use Prism\Prism\Facades\Prism;
+use Prism\Prism\ValueObjects\Messages\SystemMessage;
+
+// $tenantApiKey comes from your authenticated application's configuration.
+$response = Prism::text()
+    ->using('anthropic', 'claude-sonnet-5-5', ['api_key' => $tenantApiKey])
+    ->withSystemPrompts([new SystemMessage('Explain concepts concisely.')])
+    ->whenProvider('anthropic', fn ($request) => $request
+        ->withProviderOptions(['effort' => 'medium']))
+    ->withClientOptions(['timeout' => 30])
+    ->withClientRetry(
+        times: [200, 500, 1000],
+        when: fn ($exception): bool => $exception instanceof ConnectionException,
+        throw: true,
+    )
+    ->withTelemetryMetadata(userId: 'customer-123', sessionId: 'chat-456')
+    ->withPrompt('What is a database index?')
+    ->asText();
+```
+
+`withClientRetry(array|int $times, Closure|int $sleepMilliseconds = 0, ?callable $when = null, bool $throw = true)` forwards these arguments to Laravel's HTTP client. An array specifies delays between attempts; an integer specifies the attempt count with the separate delay. Retries can repeat a billable provider request. Check provider-specific exceptions such as [Azure's native v1 streaming path](/providers/azure#streaming) before relying on HTTP-client options or fakes.
+
+Mark reusable messages with `withCacheHint()` when using supported caching integrations. A hint describes stability; creating a billable Gemini or Vertex cached-content resource also requires explicit `cacheStablePrefix` opt-in. See the [provider caching guide](/providers/gemini#caching).
+
+Do not combine a nonempty `withPrompt()` with explicit `withMessages()`; request creation throws `PrismException::promptOrMessages()`. Use `withThread()` for stored history plus a new prompt, or append the user turn to the explicit message list.
+
 ## Response Handling
 
 Read text, usage and metadata from the response:
@@ -278,7 +322,7 @@ use Prism\Prism\Facades\Prism;
 use Prism\Prism\Enums\Provider;
 
 $response = Prism::text()
-    ->using(Provider::Anthropic, 'claude-3-5-sonnet-20241022')
+    ->using(Provider::Anthropic, 'claude-sonnet-5-5')
     ->withPrompt('Explain quantum computing.')
     ->asText();
 
@@ -312,6 +356,8 @@ foreach ($response->messages as $message) {
 ```
 
 ### Why Generation Stopped
+
+`$response->meta` contains the provider response ID, model, reported rate-limit buckets and optional service tier. `$response->toolResults` contains executed tool results; `$response->additionalContent` contains provider-specific state such as reasoning, citations or billing evidence. Preserve provider state with message history when continuing a conversation. Raw payloads can be `null` when a provider does not populate them; treat them as sensitive when storing or logging.
 
 `$response->finishReason` tells you how the model ended its turn. Check it before you trust `$response->text`:
 
@@ -365,6 +411,8 @@ The optional fields (`cacheReadInputTokens`, `cacheWriteInputTokens` and `though
 > [!NOTE]
 > `Usage` is normalized token accounting, not a full bill. Charges outside these counters aren't in it: per-request and search fees, Perplexity's reasoning and citation tokens, and Anthropic fallback attempts on other models (see `usage_iterations` on the [Anthropic page](/providers/anthropic#fallbacks)). Ollama only splits out cached input on servers that report it (0.33.3 and later). Check the provider's page for these details.
 
+`$response->usage->cost` is an optional provider-reported cost in USD. `null` means no cost was reported; `0.0` is a reported zero. Read the provider guide for which charges the figure includes. Cache and thought fields are token breakdowns and should not be added to counters that already include them.
+
 ## Handling Completions with Callbacks
 
 Pass a callback to `asText()` to process the completed response before it is returned, for example to persist messages or record usage.
@@ -378,7 +426,7 @@ use Prism\Prism\Text\PendingRequest;
 use Prism\Prism\Text\Response;
 
 $response = Prism::text()
-    ->using(Provider::Anthropic, 'claude-3-5-sonnet-20241022')
+    ->using(Provider::Anthropic, 'claude-sonnet-5-5')
     ->withPrompt('Explain Laravel middleware')
     ->asText(function (PendingRequest $request, Response $response) {
         // Save the conversation after generation completes
@@ -407,16 +455,17 @@ Remember to handle potential errors in your generations:
 use Prism\Prism\Facades\Prism;
 use Prism\Prism\Enums\Provider;
 use Prism\Prism\Exceptions\PrismException;
+use Illuminate\Support\Facades\Log;
 use Throwable;
 
 try {
     $response = Prism::text()
-        ->using(Provider::Anthropic, 'claude-3-5-sonnet-20241022')
+        ->using(Provider::Anthropic, 'claude-sonnet-5-5')
         ->withPrompt('Generate text...')
         ->asText();
 } catch (PrismException $e) {
-    Log::error('Text generation failed:', ['error' => $e->getMessage()]);
+    Log::error('Text generation failed', ['exception_type' => $e::class]);
 } catch (Throwable $e) {
-    Log::error('Generic error:', ['error' => $e->getMessage()]);
+    Log::error('Generation failed', ['exception_type' => $e::class]);
 }
 ```

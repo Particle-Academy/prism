@@ -161,6 +161,30 @@ echo $result->id;      // "file-abc123"
 echo $result->deleted; // true
 ```
 
+## Using an uploaded file in a prompt
+
+Use the file ID with the provider that owns it:
+
+```php
+use Prism\Prism\Facades\Prism;
+use Prism\Prism\ValueObjects\Media\Document;
+
+// $pdfBytes is validated PDF content supplied by your application.
+$file = Prism::files()->using('openai')
+    ->withProviderOptions(['purpose' => 'user_data'])
+    ->upload($pdfBytes, 'report.pdf', 'application/pdf');
+
+$response = Prism::text()->using('openai', 'gpt-4.1')
+    ->withPrompt('Summarize this report.', [Document::fromFileId($file->id)])
+    ->asText();
+```
+
+File IDs are provider-scoped references. They do not make a file uploaded to OpenAI available to Anthropic or another provider. Your application must authorize access to the file before including it in a prompt.
+
+## Errors
+
+Providers without a Files implementation raise an unsupported-action `PrismException`. Provider error responses also raise `PrismException`; inspect the selected provider's requirements for purpose, file type and download permission. Catch Laravel `ConnectionException` separately for transport failures. Do not assume a failed deletion or upload succeeded.
+
 ## The FileData Object
 
 Every operation that returns a single file gives back a `FileData` value object:
@@ -195,6 +219,5 @@ Use `whenProvider()` to set options that only apply to a specific provider, whic
 $file = Prism::files()
     ->using($providerName)
     ->whenProvider('openai', fn ($r) => $r->withProviderOptions(['purpose' => 'batch']))
-    ->whenProvider('anthropic', fn ($r) => $r->withProviderOptions(['some_key' => 'value']))
     ->upload(content: $content, filename: 'data.jsonl');
 ```
