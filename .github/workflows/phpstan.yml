@@ -23,18 +23,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Setup PHP
-        uses: shivammathur/setup-php@v2
-        with:
-          php-version: ${{ env.phpv }}
-          coverage: none
-      - name: Set up the verifier runtime
-        id: pin-checks-node
-        uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-
-
       # BEFORE the install. `ramsey/composer-install` resolves and installs the
       # whole dependency tree, which is an install performed by an ACTION — a thing
       # neither this estate's audit nor the org's could see, because both asked
@@ -60,10 +48,6 @@ jobs:
           NODE_PATH: ""
           BASH_ENV: ""
           ENV: ""
-          PIN_NODE_CACHE: ${{ runner.tool_cache }}
-          PIN_NODE_VERSION: ${{ steps.pin-checks-node.outputs.node-version }}
-          PIN_NODE_ARCH: ${{ runner.arch }}
-          PIN_RUNNER_OS: ${{ runner.os }}
           PIN_ROOT: .third-party-allowlist
           PIN_DIR: .third-party-allowlist/third-party
           PIN_SHA: b3b5e499c78467bd1e98d80af23a6b4861489ac5
@@ -72,19 +56,7 @@ jobs:
             1547306d567749d7410040cae2bfb9a648902de95c3378f6c5af54245c896e11  gate-graph.mjs
             b9423fcbc59c06b38862841f7111817cf586a3f5e7bcaf34349f26f7515b782d  allowlist.json
         run: |
-          version="${PIN_NODE_VERSION#v}"
-          arch="${PIN_NODE_ARCH,,}"
-          [[ "$version" =~ ^[0-9]+[.][0-9]+[.][0-9]+$ ]] || { echo "Invalid setup-node version"; exit 1; }
-          [[ "$arch" =~ ^(x64|arm64|x86|armv7l)$ ]] || { echo "Invalid setup-node architecture"; exit 1; }
-          cache="${PIN_NODE_CACHE//\\//}"
-          [[ "$cache" == /* || "$cache" =~ ^[A-Za-z]:/ ]] || { echo "Tool cache is not absolute"; exit 1; }
-          case "$PIN_RUNNER_OS" in
-            Windows) node_bin="$cache/node/$version/$arch/node.exe" ;;
-            Linux|macOS) node_bin="$cache/node/$version/$arch/bin/node" ;;
-            *) echo "Unsupported verifier platform"; exit 1 ;;
-          esac
-          [[ -x "$node_bin" ]] || { echo "setup-node executable missing"; exit 1; }
-          "$node_bin" -e '
+          node -e '
           const fs = require("node:fs");
           const crypto = require("node:crypto");
           const { execFileSync } = require("node:child_process");
@@ -117,6 +89,12 @@ jobs:
         run: |
           node .third-party-allowlist/third-party/check.mjs --repo .
           node -e "require('node:fs').rmSync('.third-party-allowlist',{recursive:true,force:true})"
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ env.phpv }}
+          coverage: none
 
       - name: Install composer dependencies
         uses: ramsey/composer-install@v3
