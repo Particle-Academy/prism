@@ -58,7 +58,8 @@ $arrayTransport = null;
 if ($scenario === 'array-contract') {
     $call = $calls[0] = new ToolCall('call', 'probe', []);
     try {
-        Concurrency::run([$call->arguments(...)]);
+        // Capture job data as CallsTools does; a bound-method callable serializes differently.
+        Concurrency::run([static fn (): array => ['id' => $call->id, 'arguments' => $call->arguments()]]);
         $arrayTransport = ['supported' => true, 'error' => null];
     } catch (Throwable $transportFailure) {
         $arrayTransport = ['supported' => false, 'error' => ['class' => $transportFailure::class, 'message' => $transportFailure->getMessage()]];
