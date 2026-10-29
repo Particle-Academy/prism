@@ -22,13 +22,8 @@ it('handles tool failure flags in actual child processes without transporting th
         $process->run();
         expect($process->getExitCode())->toBe(0, $process->getOutput().$process->getErrorOutput());
         $report = json_decode($process->getOutput(), true, flags: JSON_THROW_ON_ERROR);
-        if ($scenario === 'array-contract' && ! $report['arrayTransport']['supported']) {
-            expect($report['error'])->toBe($report['arrayTransport']['error'])
-                ->and($report['error'])->toBe(['class' => Error::class, 'message' => 'Cannot modify readonly property Prism\\Prism\\ValueObjects\\ToolCall::$arguments'])
-                ->and($report['events'])->toBe([])->and($report['classifier'])->toBe([])
-                ->and($report['results'])->toBe([])->and($report['flags'])->toBe([]);
-
-            return;
+        if ($scenario === 'array-contract') {
+            expect($report['arrayTransport'])->toBe(['supported' => true, 'error' => null]);
         }
         $batch = in_array($scenario, ['two-failures', 'two-listener', 'mixed', 'provider'], true);
         expect($report['events'])->toHaveCount($batch ? 2 : 1, json_encode($report));
