@@ -43,7 +43,7 @@ listeners.
 |---|---|---|
 | `GenerationStarted` | a generation begins | `$request`, `$tools` |
 | `StepCompleted` | each step finishes | `$finishReason`, `$usage`, `$rateLimits`, `$step` |
-| `ToolInvoked` | a tool call resolves | `$toolName`, `$toolCallId`, `$durationMs`, `$toolCall`, `$toolResult` |
+| `ToolInvoked` | a tool call resolves | `$toolName`, `$toolCallId`, `$durationMs`, `$failed`, `$failure`, `$toolCall`, `$toolResult` |
 | `GenerationCompleted` | the generation finishes | `$durationMs`, `$finishReason`, `$usage`, `$rateLimits`, `$response` |
 | `GenerationFailed` | the generation throws | `$durationMs`, `$exception` |
 
@@ -74,6 +74,50 @@ Event::listen(function (GenerationCompleted $event): void {
 
 For anything more involved, register a listener class in your application's event
 service provider.
+
+## Tool failures
+
+`ToolInvoked.failed` and `ToolInvoked.failure` are always available, including
+when content capture is off. A successful call has `false` and `null`. A native
+tool failure has `true` and a short kind: `tool_error` for a returned `ToolError`,
+or `exception:<ShortClass>` for an exception. Exception messages stay out of the
+kind; an invalid or oversized class name becomes `exception:unknown`.
+
+For tools that return a failure inside their result, register a classifier at
+application boot:
+
+```php
+use Prism\Prism\Facades\Prism;
+use Prism\Prism\ValueObjects\ToolCall;
+
+Prism::classifyToolResultsUsing(function (ToolCall $call, mixed $result): ?string {
+    if ($call->name !== 'research' || ! is_string($result)) {
+        return null;
+    }
+
+    $data = json_decode($result, true);
+
+    return is_array($data) && ($data['success'] ?? null) === false
+        ? 'research.failed' : null;
+});
+```
+
+The classifier receives the post-tool result value that the model receives,
+with the same type on sequential and concurrent paths. It runs in the
+registering process once per completed call; the host Closure is never sent to
+concurrent workers. Native failures bypass it. The registration is process-wide;
+set it at boot, and pass `null` to clear it.
+
+Return `null` for success or a fixed failure kind of 1–64 characters from
+`A-Z`, `a-z`, `0-9`, `_`, `.`, `:` and `-`. Other returned values become
+`classified_failure`. If the classifier throws, the kind is `classifier_error`.
+Return coarse labels rather than customer data or result bodies.
+
+A classified failure sets `ToolInvoked.failed` to `true` and the stream
+`ToolResultEvent.success` flag to `false`. It preserves the model-facing result,
+artifacts, conversation, provider request bytes and step count. Classifier
+exceptions do not interrupt the tool call. With content capture off,
+`ToolInvoked.toolCall` and `ToolInvoked.toolResult` remain null.
 
 ## The telemetry context
 

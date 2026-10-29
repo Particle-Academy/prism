@@ -157,7 +157,7 @@ class Telemetry
         self::stack()->advanceStepFor($context->traceId);
     }
 
-    public static function toolInvoked(?TelemetryContext $context, ToolCall $toolCall, ToolResult $toolResult, float $durationMs, ?int $toolIndex = null): void
+    public static function toolInvoked(?TelemetryContext $context, ToolCall $toolCall, ?ToolResult $toolResult, float $durationMs, ?int $toolIndex = null, bool $failed = false, ?string $failure = null): void
     {
         if (! $context instanceof TelemetryContext) {
             return;
@@ -180,6 +180,8 @@ class Telemetry
             $durationMs,
             $capturesContent ? $toolCall : null,
             $capturesContent ? $toolResult : null,
+            $failed,
+            $failure,
         ));
     }
 
