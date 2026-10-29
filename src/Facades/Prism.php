@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Prism\Prism\Facades;
 
+use Closure;
 use Illuminate\Support\Facades\Facade;
 use Prism\Prism\Audio\AudioResponse;
 use Prism\Prism\Audio\PendingRequest as PendingAudioRequest;
@@ -25,6 +26,7 @@ use Prism\Prism\Text\Response as TextResponse;
 
 /**
  * @method static PendingTextRequest text()
+ * @method static void classifyToolResultsUsing(?Closure $classifier)
  * @method static PendingStructuredRequest structured()
  * @method static PendingEmbeddingRequest embeddings()
  * @method static PendingImageRequest image()

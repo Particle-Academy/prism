@@ -27,5 +27,7 @@ readonly class ToolInvoked
         public float $durationMs,
         public ?ToolCall $toolCall = null,
         public ?ToolResult $toolResult = null,
+        public bool $failed = false,
+        public ?string $failure = null,
     ) {}
 }

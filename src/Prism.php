@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Prism\Prism;
 
+use Closure;
 use Illuminate\Support\Traits\Macroable;
 use Prism\Prism\Audio\PendingRequest as PendingAudioRequest;
 use Prism\Prism\Batch\PendingRequest as PendingBatchRequest;
@@ -13,11 +14,19 @@ use Prism\Prism\Fim\PendingRequest as PendingFimRequest;
 use Prism\Prism\Images\PendingRequest as PendingImageRequest;
 use Prism\Prism\Moderation\PendingRequest as PendingModerationRequest;
 use Prism\Prism\Structured\PendingRequest as PendingStructuredRequest;
+use Prism\Prism\Support\ToolResultClassifier;
 use Prism\Prism\Text\PendingRequest as PendingTextRequest;
+use Prism\Prism\ValueObjects\ToolCall;
 
 class Prism
 {
     use Macroable;
+
+    /** @param Closure(ToolCall, mixed): ?string|null $classifier Host boot policy. */
+    public static function classifyToolResultsUsing(?Closure $classifier): void
+    {
+        ToolResultClassifier::register($classifier);
+    }
 
     public function text(): PendingTextRequest
     {

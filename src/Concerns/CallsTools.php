@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Prism\Prism\Concerns;
 
 use Generator;
+use Illuminate\Concurrency\ProcessDriver;
 use Illuminate\Support\Facades\Concurrency;
 use Illuminate\Support\ItemNotFoundException;
 use Illuminate\Support\MultipleItemsFoundException;
@@ -18,6 +19,8 @@ use Prism\Prism\Streaming\Events\ToolApprovalRequestEvent;
 use Prism\Prism\Streaming\Events\ToolResultEvent;
 use Prism\Prism\Streaming\StreamState;
 use Prism\Prism\Structured\Request as StructuredRequest;
+use Prism\Prism\Support\ConcurrentToolFailure;
+use Prism\Prism\Support\ToolResultClassifier;
 use Prism\Prism\Telemetry\Telemetry;
 use Prism\Prism\Telemetry\TelemetryContext;
 use Prism\Prism\Text\Request as TextRequest;
@@ -30,6 +33,8 @@ use Prism\Prism\ValueObjects\ToolCall;
 use Prism\Prism\ValueObjects\ToolError;
 use Prism\Prism\ValueObjects\ToolOutput;
 use Prism\Prism\ValueObjects\ToolResult;
+use RuntimeException;
+use Throwable;
 
 trait CallsTools
 {
@@ -338,7 +343,7 @@ trait CallsTools
                 $telemetryContext = Telemetry::current();
 
                 if ($telemetryContext instanceof TelemetryContext) {
-                    Telemetry::toolInvoked($telemetryContext, $toolCall, $result['toolResult'], $result['durationMs']);
+                    Telemetry::toolInvoked($telemetryContext, $toolCall, $result['toolResult'], $result['durationMs'], failed: $result['failed'], failure: $result['failure']);
                 }
 
                 $approvalResolvedToolResults[] = $result['toolResult'];
@@ -423,7 +428,7 @@ trait CallsTools
     /**
      * @param  Tool[]  $tools
      * @param  array{concurrent: array<int, ToolCall>, sequential: array<int, ToolCall>}  $groupedToolCalls
-     * @return array<int, array{toolResult: ToolResult, events: array<int, ToolResultEvent|ArtifactEvent>, durationMs: float}>
+     * @return array<int, array{toolResult: ToolResult, events: array<int, ToolResultEvent|ArtifactEvent>, durationMs: float, failed: bool, failure: ?string}>
      */
     protected function executeToolsWithConcurrency(array $tools, array $groupedToolCalls, string $messageId): array
     {
@@ -433,16 +438,46 @@ trait CallsTools
 
         $telemetryContext = Telemetry::current();
 
+        $transportsNativeFailures = $groupedToolCalls['concurrent'] !== [] && Concurrency::driver() instanceof ProcessDriver;
         foreach ($groupedToolCalls['concurrent'] as $index => $toolCall) {
-            $concurrentClosures[$index] = fn () => $this->executeToolCall($tools, $toolCall, $messageId);
+            $concurrentClosures[$index] = fn (): array|\Prism\Prism\Support\ConcurrentToolFailure => self::executeConcurrentToolCall($tools, $toolCall, $messageId, $transportsNativeFailures);
         }
 
         if ($concurrentClosures !== []) {
-            foreach (Concurrency::run($concurrentClosures) as $index => $result) {
-                $results[$index] = $result;
-
-                if ($telemetryContext instanceof TelemetryContext) {
-                    $this->recordToolTelemetry($telemetryContext, $groupedToolCalls['concurrent'][$index], $result, $index);
+            $concurrentResults = Concurrency::run($concurrentClosures);
+            if (count($concurrentResults) !== count($concurrentClosures) || array_diff_key($concurrentClosures, $concurrentResults) !== []) {
+                throw new RuntimeException('Invalid concurrent tool result envelope.');
+            }
+            $firstFailure = null;
+            foreach ($concurrentResults as $result) {
+                self::validateConcurrentToolResult($result);
+                if ($result instanceof ConcurrentToolFailure) {
+                    $firstFailure ??= $result;
+                }
+            }
+            try {
+                foreach ($concurrentResults as $index => $result) {
+                    try {
+                        if ($result instanceof ConcurrentToolFailure) {
+                            Telemetry::toolInvoked($telemetryContext, $groupedToolCalls['concurrent'][$index], null, $result->durationMs(), $index,
+                                failed: true, failure: $result->failure());
+                        } else {
+                            $result = self::classifyToolExecution($groupedToolCalls['concurrent'][$index], $result);
+                            $results[$index] = $result;
+                            if ($telemetryContext instanceof TelemetryContext) {
+                                $this->recordToolTelemetry($telemetryContext, $groupedToolCalls['concurrent'][$index], $result, $index);
+                            }
+                        }
+                    } catch (Throwable $listenerFailure) {
+                        if (! $firstFailure instanceof ConcurrentToolFailure) {
+                            throw $listenerFailure;
+                        }
+                        // The native abort wins; still attempt each sibling's telemetry once.
+                    }
+                }
+            } finally {
+                if ($firstFailure instanceof ConcurrentToolFailure) {
+                    $firstFailure->rethrow();
                 }
             }
         }
@@ -480,14 +515,116 @@ trait CallsTools
 
         $durationMs = $result['durationMs'] ?? 0.0;
 
-        Telemetry::toolInvoked($context, $toolCall, $toolResult, is_float($durationMs) ? $durationMs : 0.0, $index);
+        Telemetry::toolInvoked($context, $toolCall, $toolResult, is_float($durationMs) ? $durationMs : 0.0, $index,
+            failed: ($result['failed'] ?? false) === true,
+            failure: is_string($result['failure'] ?? null) ? $result['failure'] : null);
     }
 
     /**
      * @param  Tool[]  $tools
-     * @return array{toolResult: ToolResult, events: array<int, ToolResultEvent|ArtifactEvent>, durationMs: float}
+     * @return array{toolResult: ToolResult, events: array<int, ToolResultEvent|ArtifactEvent>, durationMs: float, failed: bool, failure: ?string}
      */
-    protected static function executeToolCall(array $tools, ToolCall $toolCall, string $messageId): array
+    protected static function executeToolCall(array $tools, ToolCall $toolCall, string $messageId, bool $deferClassification = false): array
+    {
+        $startedAt = microtime(true);
+        try {
+            $result = self::invokeToolCall($tools, $toolCall, $messageId);
+        } catch (Throwable $failure) {
+            try {
+                Telemetry::toolInvoked(Telemetry::current(), $toolCall, null, (microtime(true) - $startedAt) * 1000,
+                    failed: true, failure: self::toolExceptionKind($failure));
+            } finally {
+                // A listener failure must not replace the tool's original throwable.
+                throw $failure;
+            }
+        }
+
+        return $deferClassification ? $result : self::classifyToolExecution($toolCall, $result);
+    }
+
+    /**
+     * @param  Tool[]  $tools
+     * @return array{toolResult: ToolResult, events: array<int, ToolResultEvent|ArtifactEvent>, durationMs: float, failed: bool, failure: ?string}|ConcurrentToolFailure
+     */
+    private static function executeConcurrentToolCall(array $tools, ToolCall $call, string $messageId, bool $transportFailure): array|ConcurrentToolFailure
+    {
+        if (! $transportFailure) {
+            return self::executeToolCall($tools, $call, $messageId, deferClassification: true);
+        }
+        $startedAt = microtime(true);
+        try {
+            return self::invokeToolCall($tools, $call, $messageId);
+        } catch (Throwable $failure) {
+            $durationMs = (microtime(true) - $startedAt) * 1000;
+            // Preserve the reporting performed by Laravel's worker before returning its native payload.
+            report($failure);
+
+            return ConcurrentToolFailure::capture($failure, $durationMs);
+        }
+    }
+
+    /** @phpstan-assert array{toolResult: ToolResult, events: array<int, ToolResultEvent|ArtifactEvent>, durationMs: float, failed: bool, failure: ?string}|ConcurrentToolFailure $result */
+    private static function validateConcurrentToolResult(mixed $result): void
+    {
+        if ($result instanceof ConcurrentToolFailure) {
+            $result->validate();
+
+            return;
+        }
+        if (! is_array($result) || array_keys($result) !== ['toolResult', 'events', 'durationMs', 'failed', 'failure']
+            || ! $result['toolResult'] instanceof ToolResult || ! is_array($result['events'])
+            || ! is_float($result['durationMs']) || ! is_finite($result['durationMs'])
+            || ! is_bool($result['failed'])
+            || ($result['failed']
+                ? (! is_string($result['failure']) || preg_match('/\A(?:tool_error|exception:[A-Za-z0-9_]{1,64})\z/D', $result['failure']) !== 1)
+                : $result['failure'] !== null)) {
+            throw new RuntimeException('Invalid concurrent tool result envelope.');
+        }
+        foreach ($result['events'] as $event) {
+            if (! $event instanceof ToolResultEvent && ! $event instanceof ArtifactEvent) {
+                throw new RuntimeException('Invalid concurrent tool result envelope.');
+            }
+        }
+    }
+
+    /**
+     * Same post-tool value and parent ToolCall for every execution surface.
+     *
+     * @param  array{toolResult: ToolResult, events: array<int, ToolResultEvent|ArtifactEvent>, durationMs: float, failed: bool, failure: ?string}  $result
+     * @return array{toolResult: ToolResult, events: array<int, ToolResultEvent|ArtifactEvent>, durationMs: float, failed: bool, failure: ?string}
+     */
+    private static function classifyToolExecution(ToolCall $call, array $result): array
+    {
+        if ($result['failed']) {
+            return $result;
+        }
+        $failure = ToolResultClassifier::failure($call, $result['toolResult']->result);
+        if ($failure === null) {
+            return $result;
+        }
+        $result['failed'] = true;
+        $result['failure'] = $failure;
+        foreach ($result['events'] as $index => $event) {
+            if ($event instanceof ToolResultEvent) {
+                $result['events'][$index] = new ToolResultEvent($event->id, $event->timestamp, $event->toolResult, $event->messageId, false, $event->error);
+            }
+        }
+
+        return $result;
+    }
+
+    private static function toolExceptionKind(Throwable $failure): string
+    {
+        $short = class_basename($failure);
+
+        return 'exception:'.(preg_match('/\A[A-Za-z0-9_]{1,64}\z/D', $short) === 1 ? $short : 'unknown');
+    }
+
+    /**
+     * @param  Tool[]  $tools
+     * @return array{toolResult: ToolResult, events: array<int, ToolResultEvent|ArtifactEvent>, durationMs: float, failed: bool, failure: ?string}
+     */
+    private static function invokeToolCall(array $tools, ToolCall $toolCall, string $messageId): array
     {
         $events = [];
 
@@ -522,6 +659,8 @@ trait CallsTools
                     'toolResult' => $toolResult,
                     'events' => $events,
                     'durationMs' => (microtime(true) - $startedAt) * 1000,
+                    'failed' => true,
+                    'failure' => 'tool_error',
                 ];
             }
 
@@ -561,6 +700,8 @@ trait CallsTools
                 'toolResult' => $toolResult,
                 'events' => $events,
                 'durationMs' => (microtime(true) - $startedAt) * 1000,
+                'failed' => false,
+                'failure' => null,
             ];
         } catch (PrismException $e) {
             try {
@@ -592,6 +733,8 @@ trait CallsTools
                 'toolResult' => $toolResult,
                 'events' => $events,
                 'durationMs' => (microtime(true) - $startedAt) * 1000,
+                'failed' => true,
+                'failure' => self::toolExceptionKind($e),
             ];
         }
     }
