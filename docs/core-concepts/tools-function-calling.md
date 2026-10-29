@@ -441,10 +441,10 @@ Prism handles the grouping automatically. Concurrent tools run in parallel, then
 
 ### Error Handling
 
-Errors in concurrent tools are handled the same way as sequential tools. If one concurrent tool fails, other concurrent tools still complete, and all results (including errors) are returned in the original order.
+Handled tool errors are returned as tool results in the original call order. An unhandled native exception aborts the turn: partial results are discarded and no step is recorded. Completed siblings may still emit telemetry before the exception is rethrown. See [tool failure telemetry](/advanced/telemetry) for failure flags and content capture settings.
 
 > [!NOTE]
-> Concurrent execution requires Laravel's Concurrency feature, available in Laravel 11+. Make sure you have the appropriate concurrency driver configured. See [Laravel's Concurrency documentation](https://laravel.com/docs/12.x/concurrency) for setup details.
+> Configure the appropriate [Laravel concurrency driver](https://laravel.com/docs/12.x/concurrency). Prism requires `laravel/serializable-closure` `^1.3.4|^2.0` so process workers can receive readonly tool-call array arguments and reasoning summaries. If your application locks an older version, update it together with Prism using `composer update particle-academy/prism laravel/serializable-closure --with-all-dependencies`.
 
 ## Using Laravel MCP Tools
 
