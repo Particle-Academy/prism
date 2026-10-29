@@ -16,14 +16,22 @@ it('handles tool failure flags in actual child processes without transporting th
     $autoload = var_export($root.'/vendor/autoload.php', true);
     file_put_contents($directory.'/bootstrap/providers.php', '<?php return [];');
     file_put_contents($directory.'/bootstrap/app.php', '<?php require '.$autoload.'; return Illuminate\\Foundation\\Application::configure(basePath:dirname(__DIR__))->withExceptions()->withProviders([Prism\\Prism\\PrismServiceProvider::class])->create();');
-    file_put_contents($directory.'/artisan', '<?php $app=require __DIR__."/bootstrap/app.php"; exit($app->handleCommand(new Symfony\\Component\\Console\\Input\\ArgvInput));');
+    file_put_contents($directory.'/artisan', '<?php ini_set("display_errors", "stderr"); $app=require __DIR__."/bootstrap/app.php"; exit($app->handleCommand(new Symfony\\Component\\Console\\Input\\ArgvInput));');
     try {
         $process = new Process([PHP_BINARY, $root.'/tests/Fixtures/ToolFailure/probe.php', $directory, $scenario], $directory, timeout: 60);
         $process->run();
         expect($process->getExitCode())->toBe(0, $process->getOutput().$process->getErrorOutput());
         $report = json_decode($process->getOutput(), true, flags: JSON_THROW_ON_ERROR);
+        if ($scenario === 'array-contract' && ! $report['arrayTransport']['supported']) {
+            expect($report['error'])->toBe($report['arrayTransport']['error'])
+                ->and($report['error'])->toBe(['class' => Error::class, 'message' => 'Cannot modify readonly property Prism\\Prism\\ValueObjects\\ToolCall::$arguments'])
+                ->and($report['events'])->toBe([])->and($report['classifier'])->toBe([])
+                ->and($report['results'])->toBe([])->and($report['flags'])->toBe([]);
+
+            return;
+        }
         $batch = in_array($scenario, ['two-failures', 'two-listener', 'mixed', 'provider'], true);
-        expect($report['events'])->toHaveCount($batch ? 2 : 1);
+        expect($report['events'])->toHaveCount($batch ? 2 : 1, json_encode($report));
         foreach ($report['events'] as $index => $event) {
             expect($event['call'])->toBeNull()->and($event['result'])->toBeNull()->and($event['failed'])->toBeTrue()
                 ->and($event['pid'])->toBe($report['pid'])->and($event['index'])->toBe($index);
@@ -41,7 +49,7 @@ it('handles tool failure flags in actual child processes without transporting th
                 'raw-error' => [Error::class, 'synthetic-native-secret'],
                 'promoted' => [PromotedFailure::class, 'synthetic-native-secret:0'],
                 'object-parameter' => [ObjectParameterFailure::class, '{"nested":[]}'],
-                'invalid-utf8' => [ErrorException::class, 'Trying to access array offset on null'],
+                'invalid-utf8' => [ErrorException::class, $report['nativeEncodingError']['message']],
                 'unstored-parameters' => [ArgumentCountError::class, $report['error']['message']],
                 'two-failures', 'two-listener' => [RuntimeException::class, 'first-native-secret'],
                 'mixed', 'provider' => [RuntimeException::class, 'second-native-secret'],
@@ -63,6 +71,9 @@ it('handles tool failure flags in actual child processes without transporting th
             if ($scenario === 'unstored-parameters') {
                 expect($report['error']['message'])->toMatch('/\AToo few arguments to function Tests\\\\Fixtures\\\\ToolFailure\\\\UnstoredConstructorFailure::__construct\(\), 1 passed in .+ConcurrentToolFailure\.php on line [0-9]+ and exactly 2 expected\z/D');
             }
+            if ($scenario === 'invalid-utf8') {
+                expect($report['error'])->toBe($report['nativeEncodingError']);
+            }
         }
     } finally {
         $target = str_replace('\\', '/', realpath($directory));
@@ -72,4 +83,4 @@ it('handles tool failure flags in actual child processes without transporting th
         }
         (new Filesystem)->deleteDirectory($target);
     }
-})->with(['completed', 'caught', 'native', 'raw-error', 'promoted', 'object-parameter', 'unstored-parameters', 'invalid-utf8', 'two-failures', 'two-listener', 'mixed', 'provider']);
+})->with(['completed', 'caught', 'native', 'raw-error', 'promoted', 'object-parameter', 'unstored-parameters', 'invalid-utf8', 'two-failures', 'two-listener', 'mixed', 'provider', 'array-contract']);

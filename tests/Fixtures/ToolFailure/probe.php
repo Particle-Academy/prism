@@ -16,6 +16,8 @@ use Prism\Prism\ValueObjects\ToolCall;
 use Tests\Fixtures\ToolFailure\Caller;
 use Tests\Fixtures\ToolFailure\Provider;
 
+// Keep PHP diagnostics on stderr; stdout contains only the fixture's JSON report.
+ini_set('display_errors', 'stderr');
 $app = require $argv[1].'/bootstrap/app.php';
 $app->make(Kernel::class)->bootstrap();
 set_exception_handler(static function (Throwable $exception): never {
@@ -44,6 +46,25 @@ $context = Telemetry::start(TelemetryOperation::Text, 'openai', 'fixture');
     default => $scenario,
 });
 $call = $calls[0];
+$nativeEncodingError = null;
+if ($scenario === 'invalid-utf8') {
+    try {
+        Concurrency::run([static fn () => throw new RuntimeException("synthetic-\xff")]);
+    } catch (Throwable $encodingFailure) {
+        $nativeEncodingError = ['class' => $encodingFailure::class, 'message' => $encodingFailure->getMessage()];
+    }
+}
+$arrayTransport = null;
+if ($scenario === 'array-contract') {
+    $call = $calls[0] = new ToolCall('call', 'probe', []);
+    try {
+        Concurrency::run([$call->arguments(...)]);
+        $arrayTransport = ['supported' => true, 'error' => null];
+    } catch (Throwable $transportFailure) {
+        $arrayTransport = ['supported' => false, 'error' => ['class' => $transportFailure::class, 'message' => $transportFailure->getMessage()]];
+    }
+    $tools = [Caller::tool('native')];
+}
 $classifier = [];
 $resource = fopen('php://temp', 'w+');
 if (method_exists(Prism::class, 'classifyToolResultsUsing')) {
@@ -84,4 +105,5 @@ if ($scenario === 'provider') {
         'requests' => $handler->requests, 'aborted' => $error !== null];
 }
 echo json_encode(['error' => $error, 'events' => $events, 'results' => array_map(fn ($result) => $result->toArray(), $results),
-    'flags' => $flags, 'classifier' => $classifier, 'pid' => getmypid(), 'caughtAs' => $caughtAs, 'provider' => $provider], JSON_THROW_ON_ERROR).PHP_EOL;
+    'flags' => $flags, 'classifier' => $classifier, 'pid' => getmypid(), 'caughtAs' => $caughtAs, 'provider' => $provider, 'arrayTransport' => $arrayTransport,
+    'nativeEncodingError' => $nativeEncodingError], JSON_THROW_ON_ERROR).PHP_EOL;

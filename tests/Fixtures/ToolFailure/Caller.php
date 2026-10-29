@@ -40,7 +40,7 @@ class Caller
     public static function batch(string $scenario): array
     {
         if (! in_array($scenario, ['two-failures', 'mixed'], true)) {
-            return [[self::tool($scenario)], [new ToolCall('call', 'probe', [])]];
+            return [[self::tool($scenario)], [new ToolCall('call', 'probe', '{}')]];
         }
         $first = (new Tool)->as('weather')->for('First')->withStringParameter('city', 'City')->withoutErrorHandling()->concurrent();
         if ($scenario === 'mixed') {
@@ -54,6 +54,6 @@ class Caller
         $second = (new Tool)->as('search')->for('Second')->withStringParameter('query', 'Query')->withoutErrorHandling()->concurrent()
             ->using(static fn (string $query) => throw new RuntimeException('second-native-secret'));
 
-        return [[$first, $second], [new ToolCall('first', 'weather', ['city' => 'fixture']), new ToolCall('second', 'search', ['query' => 'fixture'])]];
+        return [[$first, $second], [new ToolCall('first', 'weather', '{"city":"fixture"}'), new ToolCall('second', 'search', '{"query":"fixture"}')]];
     }
 }
