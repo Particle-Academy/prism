@@ -129,8 +129,9 @@ describe('preset translation', function (): void {
         Http::assertSent(function ($request): bool {
             // Both fields together is not an error the API reports — it
             // silently prefers `model`, so the preset would be ignored.
-            expect($request->data())->toHaveKey('preset')
-                ->and($request->data()['preset'])->toBe('low')
+            expect($request->data())->toHaveKey('effort')
+                ->and($request->data()['effort'])->toBe('low')
+                ->and($request->data())->not->toHaveKey('preset')
                 ->and($request->data())->not->toHaveKey('model');
 
             return true;
@@ -147,7 +148,7 @@ describe('preset translation', function (): void {
         // medium. `high` is the tier above — a costlier upgrade, not an
         // equivalent, and one that bills more while returning a plausible
         // answer.
-        Http::assertSent(fn ($request): bool => $request->data()['preset'] === 'medium');
+        Http::assertSent(fn ($request): bool => $request->data()['effort'] === 'medium');
     });
 
     it('passes a real model id through as model, not a guessed preset', function (): void {
@@ -156,8 +157,8 @@ describe('preset translation', function (): void {
         Prism::text()->using(Provider::Perplexity, 'openai/gpt-5.6-sol')->withPrompt('Hi')->asText();
 
         Http::assertSent(function ($request): bool {
-            expect($request->data())->toHaveKey('model')
-                ->and($request->data()['model'])->toBe('openai/gpt-5.6-sol')
+            expect($request->data())->toHaveKey('models')
+                ->and($request->data()['models'])->toBe(['openai/gpt-5.6-sol'])
                 ->and($request->data())->not->toHaveKey('preset');
 
             return true;
@@ -173,7 +174,7 @@ describe('preset translation', function (): void {
             ->withPrompt('Hi')
             ->asText();
 
-        Http::assertSent(fn ($request): bool => $request->data()['preset'] === 'high');
+        Http::assertSent(fn ($request): bool => $request->data()['effort'] === 'high');
     });
 
     it('accepts a preset name given directly as the model', function (): void {
@@ -295,8 +296,7 @@ it('passes current Agent API controls without flattening them', function (): voi
         'store' => true,
         'reasoning' => ['effort' => 'high'],
         'skills' => [['type' => 'browser']],
-        'metadata' => ['run_id' => 'run_1'],
-    ])->withPrompt('Hi')->asText();
+    ])->withMaxTokens(256)->withPrompt('Hi')->asText();
 
     Http::assertSent(function ($request): bool {
         expect($request->data())->toMatchArray([
@@ -306,7 +306,6 @@ it('passes current Agent API controls without flattening them', function (): voi
             'store' => true,
             'reasoning' => ['effort' => 'high'],
             'skills' => [['type' => 'browser']],
-            'metadata' => ['run_id' => 'run_1'],
         ]);
 
         return true;

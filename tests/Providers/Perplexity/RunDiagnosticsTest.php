@@ -55,7 +55,7 @@ it('retains typed unsuccessful run diagnostics without exposing partial text in 
             ->and($exception->usage()->completionTokens)->toBe(2048)
             ->and($exception->usage()->cost)->toBe(0.01)
             ->and($exception->usageDetails())->toBe($body['usage'])
-            ->and($exception->getMessage())->toBe('Perplexity Error [200]: run_'.$status.' - no error detail was returned')
+            ->and($exception->getMessage())->toBe('Perplexity Error [200]: run_'.$status.' - incomplete reason: max_output_tokens; request_id=not provided by provider; response_id=resp_incomplete')
             ->and((string) $exception)->not->toContain('Private partial finding')
             ->and(json_encode($exception))->not->toContain('Private partial finding')
             ->and($exception->getMessage())->not->toContain('Private source excerpt')
@@ -95,7 +95,7 @@ it('preserves failed and cancelled fixture diagnostics and existing messages', f
             ->and($exception->usage()->promptTokens)->toBe(8)
             ->and($exception->usage()->completionTokens)->toBe(0)
             ->and($exception->usageDetails())->toBe($body['usage'])
-            ->and($exception->getMessage())->toBe('Perplexity Error [200]: run_'.$status.' - '.$body['error']['message']);
+            ->and($exception->getMessage())->toBe('Perplexity Error [200]: run_'.$status.' - '.$body['error']['type'].'; '.$body['error']['message'].'; request_id=not provided by provider; response_id='.$body['id']);
     }
 })->with(['failed', 'cancelled']);
 

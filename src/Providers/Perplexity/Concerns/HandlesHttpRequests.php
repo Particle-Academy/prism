@@ -33,16 +33,15 @@ trait HandlesHttpRequests
     {
         $this->assertToolsAreReachable($request);
         $this->assertSonarOnlyOptionsAreNotSet($request);
+        $this->assertRequestConstraints($request);
 
         $payload = [
             'input' => InputMapper::map($request->messages()),
             'stream' => $stream,
         ];
 
-        // `preset` and `model` are mutually exclusive, and NOT because the API
-        // rejects the pair — it accepts both and lets the explicit model win,
-        // so leaving `model` populated silently ignores the preset. Sending
-        // exactly one is what makes the translation actually take effect.
+        // The current schema calls the old preset control `effort`.
+        // Resolve one selector before merging options; never send models: [].
         $payload += $this->modelOrPreset($request);
 
         return array_merge($payload, Arr::whereNotNull([
@@ -54,12 +53,10 @@ trait HandlesHttpRequests
             'tools' => $this->tools($request),
             'background' => $request->providerOptions('background'),
             'max_steps' => $request->providerOptions('max_steps'),
-            'models' => $request->providerOptions('models'),
             'previous_response_id' => $request->providerOptions('previous_response_id'),
             'store' => $request->providerOptions('store'),
             'reasoning' => $this->reasoning($request),
             'skills' => $request->providerOptions('skills'),
-            'metadata' => $request->providerOptions('metadata'),
             'language_preference' => $request->providerOptions('language_preference'),
         ]));
     }
@@ -255,30 +252,79 @@ trait HandlesHttpRequests
     }
 
     /**
-     * Exactly one of `preset` or `model`, never both.
+     * Explicit fallback chains win. Public preset remains a compatibility alias
+     * for effort, with the existing tier mapping and no billing-tier upgrade.
      *
-     * An explicit `preset` provider option always wins — that is the escape
-     * hatch for anyone who disagrees with the slug translation and wants to pay
-     * for a different tier.
+     * @link https://docs.perplexity.ai/api-reference/agent-post
      *
-     * @return array<string, string>
+     * @return array<string, mixed>
      */
     protected function modelOrPreset(TextRequest|StructuredRequest $request): array
     {
-        $explicit = $request->providerOptions('preset');
+        $models = $request->providerOptions('models');
+        if ($models !== null) {
+            if (! is_array($models) || ! array_is_list($models) || count($models) < 1 || count($models) > 5) {
+                throw new PrismException('Perplexity provider option [models] must be a list of 1..5 provider/model ids.');
+            }
+            foreach ($models as $model) {
+                $this->assertModelId($model);
+            }
 
-        if (is_string($explicit) && $explicit !== '') {
-            return ['preset' => $explicit];
+            return ['models' => $models];
+        }
+
+        $explicit = $request->providerOptions('effort') ?? $request->providerOptions('preset');
+
+        if ($explicit !== null) {
+            if (! is_string($explicit) || trim($explicit) === '') {
+                throw new PrismException('Perplexity provider option [effort]/[preset] must be a nonempty string.');
+            }
+
+            return ['effort' => $explicit];
         }
 
         $model = $request->model();
         $preset = PresetMap::presetFor($model);
 
-        // An unrecognised string is a real model id (`openai/gpt-5.6-sol`), not
-        // a preset we should guess at.
-        return $preset === null
-            ? ['model' => $model]
-            : ['preset' => $preset];
+        if ($preset !== null) {
+            return ['effort' => $preset];
+        }
+        $this->assertModelId($model);
+
+        return ['models' => [$model]];
+    }
+
+    protected function assertModelId(mixed $model): void
+    {
+        if (! is_string($model) || preg_match('~^[A-Za-z0-9][A-Za-z0-9._-]*/[^\s]+$~D', $model) !== 1) {
+            throw new PrismException('Perplexity [models] requires nonempty provider/model ids; retired Sonar slugs belong in using(), not a fallback chain.');
+        }
+    }
+
+    /** Current published constraints, not inferred model-specific restrictions. */
+    protected function assertRequestConstraints(TextRequest|StructuredRequest $request): void
+    {
+        $steps = $request->providerOptions('max_steps');
+        if ($steps !== null && (! is_int($steps) || $steps < 1 || $steps > 500)) {
+            throw new PrismException('Perplexity [max_steps] must be an integer between 1 and 500.');
+        }
+        if ($request->maxTokens() !== null && $request->maxTokens() < 1) {
+            throw new PrismException('Perplexity [max_output_tokens] must be a positive integer.');
+        }
+        foreach (['temperature' => [$request->temperature(), 2], 'top_p' => [$request->topP(), 1]] as $name => [$value, $max]) {
+            if ($value !== null && (! is_finite($value) || $value < 0 || $value > $max)) {
+                throw new PrismException('Perplexity ['.$name.'] is outside the documented range 0..'.$max.'.');
+            }
+        }
+        if ($request->providerOptions('metadata') !== null) {
+            throw new PrismException('Perplexity [metadata] is not in the current Agent API request schema; keep application metadata locally.');
+        }
+        $models = $this->modelOrPreset($request)['models'] ?? [];
+        foreach ($models as $model) {
+            if (str_starts_with((string) $model, 'anthropic/') && $request->maxTokens() === null) {
+                throw new PrismException('Perplexity [max_output_tokens] is required when using Anthropic models.');
+            }
+        }
     }
 
     /**

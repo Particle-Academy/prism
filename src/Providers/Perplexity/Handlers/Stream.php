@@ -120,10 +120,10 @@ class Stream
                 throw new PrismRateLimitedException([]);
             }
 
-            if ($terminal && in_array($run['status'] ?? null, ['incomplete', 'failed', 'cancelled'], true)) {
+            if ($terminal && in_array($run['status'] ?? null, ['incomplete', 'failed', 'cancelled', 'run_incomplete', 'run_failed'], true)) {
                 // Earlier deltas are provisional. Throw with the full snapshot
                 // before emitting completion events or handling generic errors.
-                $this->assertRunSucceeded($run);
+                $this->assertRunSucceeded($run, $response->header('X-Request-ID') ?: null);
             }
 
             // Unknown non-progress statuses retain the historical Unknown

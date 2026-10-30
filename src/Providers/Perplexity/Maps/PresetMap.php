@@ -5,57 +5,27 @@ declare(strict_types=1);
 namespace Prism\Prism\Providers\Perplexity\Maps;
 
 /**
- * Translates the retired Sonar model slugs onto Agent API presets.
+ * Prism's compatibility mapping for retired Sonar model slugs.
  *
- * Perplexity retires the Sonar `/chat/completions` endpoints on 2026-09-27 and
- * replaces model slugs with presets. Translating here rather than asking every
- * caller to rewrite their config is the point: `using('perplexity', 'sonar-pro')`
- * keeps working across the cut.
+ * The Agent API now calls this control `effort`; HandlesHttpRequests translates
+ * the public preset alias. Keep the pre-0.141 tier choices here rather than
+ * silently increasing a consumer's spend. These are compatibility choices,
+ * not a claim of equivalence with Perplexity's current migration table.
+ * Explicit `effort` (or legacy `preset`) overrides the mapping.
  *
- * ---
- *
- * A NOTE ON THE MAPPING, because it decides what you are billed.
- *
- * Perplexity publishes two mappings that disagree, and only on the expensive
- * rows.
- *
- * Their migration overview offers "starting points" — `sonar-reasoning-pro` to
- * `medium`, `sonar-deep-research` to `high`. That ladder tracks product-name
- * seniority: bigger name, bigger tier.
- *
- * Their preset documentation shows the presets were RENAMED:
- *
- *     fast-search → fast
- *     pro-search  → low
- *     deep-research → medium
- *     advanced-deep-research → high
- *     ultra → xhigh
- *
- * The preset that was literally called *deep-research* is now called *medium*.
- * So the behavioural equivalent of `sonar-deep-research` is `medium`, and
- * `high` is the tier above it — a costlier upgrade rather than a like-for-like
- * replacement.
- *
- * This class defaults to the equivalence reading. Guessing low is recoverable:
- * a caller who wants more depth sets a preset and gets it. Guessing high is not
- * visible at all — it returns a perfectly plausible answer and bills more,
- * every call, until somebody reads an invoice.
- *
- * Override per request if you disagree:
- *
- *     ->withProviderOptions(['preset' => 'high'])
+ * @link https://docs.perplexity.ai/docs/agent-api/migrate-from-sonar/overview
  */
 class PresetMap
 {
     /**
-     * The presets the Agent API accepts.
+     * Historical public preset names retained for compatibility.
      *
      * @var array<int, string>
      */
     public const PRESETS = ['fast', 'low', 'medium', 'high', 'xhigh', 'wide-research'];
 
     /**
-     * Retired Sonar slug to its behavioural equivalent.
+     * Retired Sonar slug to Prism's existing tier choice.
      *
      * @var array<string, string>
      */
