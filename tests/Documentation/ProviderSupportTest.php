@@ -85,7 +85,7 @@ it('documents request dispatch or explicit refusal for :dataset', function (Prov
         'access_token' => 'documentation-fixture', 'credentials_path' => null,
         'project_id' => 'fixture', 'region' => 'us-central1',
     ];
-    $model = 'gpt-4o';
+    $model = $name === ProviderName::Perplexity ? 'perplexity/sonar' : 'gpt-4o';
     $schema = new ObjectSchema('answer', 'Fixture', [new StringSchema('value', 'Fixture')], ['value']);
     $invoke = match ($method) {
         'text' => fn () => Prism::text()->using($name, $model, $config)->withPrompt('Fixture')->asText(),

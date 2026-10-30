@@ -6,6 +6,7 @@ namespace Prism\Prism\Providers\Perplexity\Concerns;
 
 use Prism\Prism\Exceptions\PrismException;
 use Prism\Prism\Exceptions\PrismRunException;
+use Prism\Prism\Providers\Perplexity\ResponseDiagnostics;
 
 /**
  * Reads the Agent API's typed output array.
@@ -32,7 +33,7 @@ trait ExtractsAgentResponse
      *
      * @param  array<string, mixed>  $data
      */
-    protected function assertRunSucceeded(#[\SensitiveParameter] array $data): void
+    protected function assertRunSucceeded(#[\SensitiveParameter] array $data, ?string $requestId = null): void
     {
         $status = data_get($data, 'status');
 
@@ -40,18 +41,17 @@ trait ExtractsAgentResponse
             return;
         }
 
-        $message = data_get($data, 'error.message')
-            ?? data_get($data, 'error.type')
-            ?? 'no error detail was returned';
+        $requestId = ResponseDiagnostics::requestId($data, $requestId);
+        $message = ResponseDiagnostics::message($data, $requestId);
 
         // The 200 in this message is not a mistake — it is the finding. The
         // run failed and the transport said everything was fine.
-        $errorCode = 'run_'.(is_string($status) ? $status : 'unknown');
+        $errorCode = is_string($status) ? (str_starts_with($status, 'run_') ? $status : 'run_'.$status) : 'run_unknown';
         $exception = PrismException::providerRequestErrorWithDetails(
             provider: 'Perplexity',
             statusCode: 200,
             errorType: $errorCode,
-            errorMessage: is_string($message) ? $message : 'no error detail was returned',
+            errorMessage: $message,
         );
 
         throw new PrismRunException(
@@ -59,6 +59,7 @@ trait ExtractsAgentResponse
             message: $exception->getMessage(),
             runData: $data,
             runUsage: is_array($data['usage'] ?? null) ? $this->extractUsage($data) : null,
+            requestId: $requestId,
         );
     }
 

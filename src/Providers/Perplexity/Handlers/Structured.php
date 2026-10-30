@@ -35,7 +35,7 @@ class Structured
 
         // A failed or cancelled run arrives as HTTP 200, so check the run
         // status before trying to parse an answer out of it.
-        $this->assertRunSucceeded($data);
+        $this->assertRunSucceeded($data, $response->header('X-Request-ID') ?: null);
 
         $rawContent = $this->extractsText($data);
 
@@ -46,7 +46,7 @@ class Structured
             finishReason: $this->extractsFinishReason($data),
             usage: $this->extractUsage($data),
             meta: $this->extractsMeta($data),
-            additionalContent: $this->extractsAdditionalContent($data),
+            additionalContent: array_filter(['provider_request_id' => $response->header('X-Request-ID') ?: null], fn ($v): bool => $v !== null) + $this->extractsAdditionalContent($data),
         );
     }
 }

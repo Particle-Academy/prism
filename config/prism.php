@@ -114,6 +114,9 @@ return [
         'perplexity' => [
             'api_key' => env('PERPLEXITY_API_KEY', ''),
             'url' => env('PERPLEXITY_URL', 'https://api.perplexity.ai'),
+            // Deep research can take several minutes. Per-request client
+            // options still take precedence. No automatic retries are added.
+            'deep_research_timeout' => (int) env('PERPLEXITY_DEEP_RESEARCH_TIMEOUT', 600),
         ],
         'vertex' => [
             'project_id' => env('VERTEX_PROJECT_ID', ''),

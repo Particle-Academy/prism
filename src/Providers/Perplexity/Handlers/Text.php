@@ -32,7 +32,7 @@ class Text
 
         // Before anything is read: a failed or cancelled run arrives as HTTP
         // 200, so the transport status proves nothing on its own.
-        $this->assertRunSucceeded($data);
+        $this->assertRunSucceeded($data, $response->header('X-Request-ID') ?: null);
 
         return new TextResponse(
             steps: collect(),
@@ -43,7 +43,7 @@ class Text
             usage: $this->extractUsage($data),
             meta: $this->extractsMeta($data),
             messages: collect($request->messages()),
-            additionalContent: $this->extractsAdditionalContent($data),
+            additionalContent: array_filter(['provider_request_id' => $response->header('X-Request-ID') ?: null], fn ($v): bool => $v !== null) + $this->extractsAdditionalContent($data),
         );
     }
 }

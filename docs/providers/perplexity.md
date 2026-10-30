@@ -7,19 +7,27 @@
 ## Migrating from Sonar
 
 **Your model strings keep working.** Perplexity replaced model slugs with presets, and Prism
-translates the retired slugs for you:
+translates the retired slugs for you. Since 0.141.0 the outgoing field is
+`effort`, as required by the [current Agent API schema](https://docs.perplexity.ai/api-reference/agent-post).
+The existing tier mapping is preserved for billing compatibility:
 
 | You pass | Prism sends |
 |---|---|
-| `sonar` | `preset: fast` |
-| `sonar-pro` | `preset: low` |
-| `sonar-reasoning` | `preset: low` (slug retired upstream) |
-| `sonar-reasoning-pro` | `preset: low` |
-| `sonar-deep-research` | `preset: medium` |
+| `sonar` | `effort: fast` |
+| `sonar-pro` | `effort: low` |
+| `sonar-reasoning` | `effort: low` (slug retired upstream) |
+| `sonar-reasoning-pro` | `effort: low` |
+| `sonar-deep-research` | `effort: medium` |
 
 A preset name given directly (`fast`, `low`, `medium`, `high`, `xhigh`, `wide-research`) is
 passed through, and anything else is treated as a real model id — `openai/gpt-5.6-sol` is sent
-as `model`, not guessed at as a preset.
+as a one-element `models` list. Model ids must use `provider/model` format.
+An explicitly supplied `models` chain wins and must contain 1..5 valid ids.
+An empty chain fails locally. Retired Sonar slugs cannot be fallback ids.
+
+Perplexity's current migration guide suggests different tiers for some Sonar
+names. Prism preserves its existing choices; select `effort` explicitly to change
+tiers. The public `preset` option remains a compatibility alias for `effort`.
 
 ### Overriding a preset
 
@@ -64,6 +72,9 @@ without parsing the exception message. The exception provides:
 |---|---|
 | `status()` | Provider run status, or `null` if unavailable |
 | `runId()` | Provider run ID, or `null` if absent |
+| `providerRequestId()` | Transport request id if supplied; distinct from the run id |
+| `providerCode()` / `providerError()` | Provider's own error code and error object |
+| `partialText()` | Partial answer text, accessed explicitly |
 | `incompleteReason()` | `incomplete_details.reason`, or `null` if absent |
 | `incompleteDetails()` | Full provider incomplete-details array |
 | `output()` | Partial output items, including citation annotations and search-result sources |
@@ -79,6 +90,14 @@ Partial content is available only through explicit accessors, not appended to
 the message or copied into the public `responseBody` field. Treat returned
 diagnostics as sensitive data and apply your retention and access policies;
 do not log or serialize the complete exception indiscriminately.
+
+Messages include the incomplete reason, provider code/message, and available
+request and response ids. If no provider message exists, that absence is explicit.
+Provider messages are bounded at 8192 bytes with an explicit truncation marker.
+HTTP failures raise `PrismPerplexityRequestException` (a `PrismException`), with
+request-id/code accessors and an explicit `providerResponseBody()` accessor for
+the bounded raw error body. Laravel's shortened exception summary is not used.
+Keep this raw body private; a provider may echo sensitive input.
 
 ### What comes back
 
@@ -117,10 +136,24 @@ The full provider usage ledger, including its cost breakdown, is available in `$
 'perplexity' => [
     'api_key' => env('PERPLEXITY_API_KEY', ''),
     'url' => env('PERPLEXITY_URL', 'https://api.perplexity.ai'),
+    'deep_research_timeout' => (int) env('PERPLEXITY_DEEP_RESEARCH_TIMEOUT', 600),
 ]
 ```
 
 ## Server tools and request options
+
+Perplexity documents that deep research can take
+[several minutes](https://docs.perplexity.ai/docs/agent-api/background-mode).
+Prism chooses 600 seconds for `sonar-deep-research` and the `medium`, `high`,
+`xhigh` and `wide-research` tiers. This is a Prism default, not a provider SLA.
+`withClientOptions(['timeout' => 180])` overrides it per request. Connection
+timeouts retain the ordinary setting. No retry is added: a timed-out POST may
+already have started a billable run. Background orchestration stays in the
+separate Perplexity satellite; this change keeps the core API synchronous.
+
+`max_steps` must be an integer in 1..500, `max_output_tokens` must be positive,
+and explicit Anthropic models require an output-token bound. The current schema
+does not accept `metadata`; Prism refuses it and asks you to keep it locally.
 
 Passing custom tools with `withTools()` raises `PrismException`. Perplexity executes its own server tools; request those through the `tools` provider option:
 
@@ -140,7 +173,7 @@ $response = Prism::text()
 
 The search-filter keys `search_domain_filter`, `search_recency_filter`, `search_after_date_filter`, `search_before_date_filter`, `last_updated_after_filter` and `last_updated_before_filter` are moved into the `web_search` tool's `filters`. Prism adds that tool when needed. Filters explicitly set on a tool take precedence over translated request filters. A tool's `filters` value must be an array.
 
-Supported request options also include `background`, `max_steps`, `models`, `previous_response_id`, `store`, `skills`, `metadata` and `language_preference`. `reasoning_effort` maps to `reasoning.effort`; an explicit `reasoning` object takes precedence. These are Agent API options, separate from Prism's local `withMaxSteps()` tool-loop limit. For background-job retrieval, cancellation and polling, see [Prism Perplexity](https://github.com/Particle-Academy/prism-perplexity).
+Supported request options also include `effort`, `background`, `max_steps`, `models`, `previous_response_id`, `store`, `skills` and `language_preference`. `reasoning_effort` maps to `reasoning.effort`; an explicit `reasoning` object takes precedence. These are Agent API options, separate from Prism's local `withMaxSteps()` tool-loop limit. For background-job retrieval, cancellation and polling, see [Prism Perplexity](https://github.com/Particle-Academy/prism-perplexity).
 
 `search_mode` is refused when supplied. `return_images` and `return_related_questions` are refused unless their value is exactly `false`; those two no-op values are accepted and omitted. Remove unsupported Sonar options or express the request through a preset, server tool or structured prompt.
 

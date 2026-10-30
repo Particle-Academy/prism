@@ -27,6 +27,7 @@ class PrismRunException extends PrismException
         string $message,
         #[\SensitiveParameter] private readonly array $runData,
         private readonly ?Usage $runUsage,
+        private readonly ?string $requestId = null,
     ) {
         parent::__construct($message, 200);
         $this->httpStatus = 200;
@@ -50,6 +51,43 @@ class PrismRunException extends PrismException
         $id = $this->runData['id'] ?? null;
 
         return is_string($id) ? $id : null;
+    }
+
+    /** Transport request identity is distinct from the response/run id. */
+    public function providerRequestId(): ?string
+    {
+        return $this->requestId;
+    }
+
+    public function providerCode(): string|int|null
+    {
+        $code = $this->providerError()['code'] ?? null;
+
+        return is_string($code) || is_int($code) ? $code : null;
+    }
+
+    /** @return array<string, mixed> */
+    public function providerError(): array
+    {
+        return is_array($this->runData['error'] ?? null) ? $this->runData['error'] : [];
+    }
+
+    /** Partial text is sensitive; access explicitly, never log it by default. */
+    public function partialText(): string
+    {
+        $text = '';
+        foreach ($this->output() as $item) {
+            if (data_get($item, 'type') !== 'message') {
+                continue;
+            }
+            foreach ((array) data_get($item, 'content', []) as $content) {
+                if (data_get($content, 'type') === 'output_text' && is_string(data_get($content, 'text'))) {
+                    $text .= data_get($content, 'text');
+                }
+            }
+        }
+
+        return $text;
     }
 
     public function incompleteReason(): ?string
