@@ -18,10 +18,8 @@ use Prism\Prism\Providers\OpenAI\Concerns\MapsFinishReason;
 use Prism\Prism\Providers\OpenAI\Concerns\MapsUsage;
 use Prism\Prism\Providers\OpenAI\Concerns\ProcessRateLimits;
 use Prism\Prism\Providers\OpenAI\Concerns\ValidatesResponse;
-use Prism\Prism\Providers\OpenAI\Maps\MessageMap;
+use Prism\Prism\Providers\OpenAI\Maps\RequestPayloadMap;
 use Prism\Prism\Providers\OpenAI\Maps\ToolCallMap;
-use Prism\Prism\Providers\OpenAI\Maps\ToolChoiceMap;
-use Prism\Prism\Providers\OpenAI\Maps\ToolMap;
 use Prism\Prism\Providers\OpenAI\Support\OutputItems;
 use Prism\Prism\Providers\OpenAI\Support\StructuredModeResolver;
 use Prism\Prism\Structured\Request;
@@ -29,10 +27,8 @@ use Prism\Prism\Structured\Response as StructuredResponse;
 use Prism\Prism\Structured\ResponseBuilder;
 use Prism\Prism\Structured\Step;
 use Prism\Prism\ValueObjects\Messages\AssistantMessage;
-use Prism\Prism\ValueObjects\Messages\SystemMessage;
 use Prism\Prism\ValueObjects\Messages\ToolResultMessage;
 use Prism\Prism\ValueObjects\Meta;
-use Prism\Prism\ValueObjects\ProviderTool;
 use Prism\Prism\ValueObjects\ToolApprovalRequest;
 use Prism\Prism\ValueObjects\ToolResult;
 
@@ -221,29 +217,7 @@ class Structured
         /** @var ClientResponse $response */
         $response = $this->client->post(
             'responses',
-            array_merge([
-                'model' => $request->model(),
-                'input' => (new MessageMap($request->messages(), $request->systemPrompts()))(),
-            ], Arr::whereNotNull([
-                'max_output_tokens' => $request->maxTokens(),
-                'temperature' => $request->temperature(),
-                'top_p' => $request->topP(),
-                'metadata' => $request->providerOptions('metadata'),
-                'tools' => $this->buildTools($request),
-                'tool_choice' => ToolChoiceMap::map($request->toolChoice()),
-                'parallel_tool_calls' => $request->providerOptions('parallel_tool_calls') ?? false,
-                'previous_response_id' => $request->providerOptions('previous_response_id'),
-                'service_tier' => $request->providerOptions('service_tier'),
-                'truncation' => $request->providerOptions('truncation'),
-                'reasoning' => $request->providerOptions('reasoning') ?? (
-                    $request->reasoningEnabled() === false ? ['effort' => 'minimal'] : null
-                ),
-                'store' => $request->providerOptions('store'),
-                'text' => Arr::whereNotNull([
-                    'format' => $responseFormat,
-                    'verbosity' => $request->providerOptions('text_verbosity'),
-                ]),
-            ]))
+            RequestPayloadMap::structured($request, $responseFormat, $this->buildTools($request))
         );
 
         return $response;
@@ -262,17 +236,7 @@ class Structured
 
     protected function handleStructuredMode(Request $request): ClientResponse
     {
-        /** @var array{type: 'json_schema', name: string, schema: array<mixed>, strict?: bool} $responseFormat */
-        $responseFormat = Arr::whereNotNull([
-            'type' => 'json_schema',
-            'name' => $request->schema()->name(),
-            'schema' => $request->schema()->toArray(),
-            'strict' => is_null($request->providerOptions('schema.strict'))
-                ? null
-                : $request->providerOptions('schema.strict'),
-        ]);
-
-        return $this->sendRequest($request, $responseFormat);
+        return $this->sendRequest($request, RequestPayloadMap::responseFormat($request));
     }
 
     protected function handleJsonMode(Request $request): ClientResponse
@@ -286,10 +250,7 @@ class Structured
 
     protected function appendMessageForJsonMode(Request $request): Request
     {
-        return $request->addMessage(new SystemMessage(sprintf(
-            "Respond with JSON that matches the following schema: \n %s",
-            json_encode($request->schema()->toArray(), JSON_PRETTY_PRINT)
-        )));
+        return RequestPayloadMap::appendJsonInstruction($request);
     }
 
     /**
@@ -297,20 +258,6 @@ class Structured
      */
     protected function buildTools(Request $request): array
     {
-        $tools = ToolMap::map($request->tools());
-
-        if ($request->providerTools() === []) {
-            return $tools;
-        }
-
-        $providerTools = array_map(
-            fn (ProviderTool $tool): array => [
-                'type' => $tool->type,
-                ...$tool->options,
-            ],
-            $request->providerTools()
-        );
-
-        return array_merge($providerTools, $tools);
+        return RequestPayloadMap::buildTools($request);
     }
 }

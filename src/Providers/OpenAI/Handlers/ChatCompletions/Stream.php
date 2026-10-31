@@ -8,7 +8,6 @@ use Generator;
 use Illuminate\Http\Client\PendingRequest;
 use Illuminate\Http\Client\RequestException;
 use Illuminate\Http\Client\Response;
-use Illuminate\Support\Arr;
 use Prism\Prism\Concerns\CallsTools;
 use Prism\Prism\Enums\FinishReason;
 use Prism\Prism\Exceptions\PrismException;
@@ -18,9 +17,7 @@ use Prism\Prism\Exceptions\PrismStreamDecodeException;
 use Prism\Prism\Providers\OpenAI\Concerns\ProcessRateLimits;
 use Prism\Prism\Providers\OpenAI\Maps\ChatCompletionsCitationsMapper;
 use Prism\Prism\Providers\OpenAI\Maps\ChatCompletionsFinishReasonMap;
-use Prism\Prism\Providers\OpenAI\Maps\ChatCompletionsMessageMap;
-use Prism\Prism\Providers\OpenAI\Maps\ChatCompletionsToolChoiceMap;
-use Prism\Prism\Providers\OpenAI\Maps\ChatCompletionsToolMap;
+use Prism\Prism\Providers\OpenAI\Maps\RequestPayloadMap;
 use Prism\Prism\Streaming\EventID;
 use Prism\Prism\Streaming\Events\ErrorEvent;
 use Prism\Prism\Streaming\Events\StepFinishEvent;
@@ -435,17 +432,7 @@ class Stream
                 ->withOptions(['stream' => true])
                 ->throw()
                 ->post('chat/completions',
-                    array_merge([
-                        'stream' => true,
-                        'model' => $request->model(),
-                        'messages' => (new ChatCompletionsMessageMap($request->messages(), $request->systemPrompts()))(),
-                        'max_tokens' => $request->maxTokens(),
-                    ], Arr::whereNotNull([
-                        'temperature' => $request->temperature(),
-                        'top_p' => $request->topP(),
-                        'tools' => ChatCompletionsToolMap::map($request->tools()),
-                        'tool_choice' => ChatCompletionsToolChoiceMap::map($request->toolChoice()),
-                    ]))
+                    RequestPayloadMap::chatStream($request)
                 );
 
             return $response;

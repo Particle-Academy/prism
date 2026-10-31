@@ -6,7 +6,6 @@ namespace Prism\Prism\Providers\OpenAI\Handlers\ChatCompletions;
 
 use Illuminate\Http\Client\PendingRequest;
 use Illuminate\Http\Client\Response as ClientResponse;
-use Illuminate\Support\Arr;
 use Prism\Prism\Concerns\CallsTools;
 use Prism\Prism\Enums\FinishReason;
 use Prism\Prism\Exceptions\PrismException;
@@ -14,9 +13,7 @@ use Prism\Prism\Exceptions\PrismRefusalException;
 use Prism\Prism\Providers\OpenAI\Concerns\ProcessRateLimits;
 use Prism\Prism\Providers\OpenAI\Concerns\ValidatesResponse;
 use Prism\Prism\Providers\OpenAI\Maps\ChatCompletionsFinishReasonMap;
-use Prism\Prism\Providers\OpenAI\Maps\ChatCompletionsMessageMap;
-use Prism\Prism\Providers\OpenAI\Maps\ChatCompletionsToolChoiceMap;
-use Prism\Prism\Providers\OpenAI\Maps\ChatCompletionsToolMap;
+use Prism\Prism\Providers\OpenAI\Maps\RequestPayloadMap;
 use Prism\Prism\Text\Request;
 use Prism\Prism\Text\Response as TextResponse;
 use Prism\Prism\Text\ResponseBuilder;
@@ -68,16 +65,7 @@ class Text
         /** @var ClientResponse $response */
         $response = $this->client->post(
             'chat/completions',
-            Arr::whereNotNull([
-                'model' => $request->model(),
-                'messages' => (new ChatCompletionsMessageMap($request->messages(), $request->systemPrompts()))(),
-                'max_tokens' => $request->maxTokens(),
-                'temperature' => $request->temperature(),
-                'top_p' => $request->topP(),
-                'tools' => ChatCompletionsToolMap::map($request->tools()),
-                'tool_choice' => ChatCompletionsToolChoiceMap::map($request->toolChoice()),
-                'verbosity' => $request->providerOptions('text_verbosity'),
-            ])
+            RequestPayloadMap::chatText($request)
         );
 
         return $response;

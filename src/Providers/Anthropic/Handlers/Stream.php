@@ -14,6 +14,7 @@ use Prism\Prism\Exceptions\PrismStreamDecodeException;
 use Prism\Prism\Providers\Anthropic\Concerns\ExtractsAdditionalContent;
 use Prism\Prism\Providers\Anthropic\Maps\CitationsMapper;
 use Prism\Prism\Providers\Anthropic\Maps\FinishReasonMap;
+use Prism\Prism\Providers\Anthropic\Maps\RequestPayloadMap;
 use Prism\Prism\Providers\Anthropic\Support\ContentBlocks;
 use Prism\Prism\Providers\Anthropic\ValueObjects\AnthropicStreamState;
 use Prism\Prism\Streaming\EventID;
@@ -974,10 +975,7 @@ class Stream
         /** @var Response $response */
         $response = $this->client
             ->withOptions(['stream' => true])
-            ->post('messages', Arr::whereNotNull([
-                'stream' => true,
-                ...Text::buildHttpRequestPayload($request),
-            ]));
+            ->post('messages', RequestPayloadMap::stream($request));
 
         return $response;
     }
