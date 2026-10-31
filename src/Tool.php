@@ -21,6 +21,7 @@ use Prism\Prism\Schema\NumberSchema;
 use Prism\Prism\Schema\ObjectSchema;
 use Prism\Prism\Schema\StringSchema;
 use Prism\Prism\Support\JsonMap;
+use Prism\Prism\Support\ToolErrorHandler;
 use Prism\Prism\Tools\LaravelMcpTool;
 use Prism\Prism\ValueObjects\ToolError;
 use Prism\Prism\ValueObjects\ToolOutput;
@@ -672,7 +673,8 @@ class Tool
         if ($this->shouldUseDefaultErrorHandling()) {
             $providedParams = $this->extractProvidedParams($args);
 
-            return new ToolError($this->getDefaultFailedMessage($e, $providedParams));
+            return new ToolError(ToolErrorHandler::message($e, $this, $providedParams)
+                ?? $this->getDefaultFailedMessage($e, $providedParams));
         }
 
         throw $e;

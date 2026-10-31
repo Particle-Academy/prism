@@ -27,6 +27,7 @@ use Prism\Prism\Text\Response as TextResponse;
 /**
  * @method static PendingTextRequest text()
  * @method static void classifyToolResultsUsing(?Closure $classifier)
+ * @method static void handleToolErrorsUsing(?Closure $handler) Register in a service provider's boot(); runtime-only registration is not inherited by process-concurrency children, which use the next handler in precedence order.
  * @method static PendingStructuredRequest structured()
  * @method static PendingEmbeddingRequest embeddings()
  * @method static PendingImageRequest image()
