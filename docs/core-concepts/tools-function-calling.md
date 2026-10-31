@@ -92,7 +92,31 @@ if ($result instanceof ToolError) {
 }
 ```
 
-`withErrorHandling($callback)` also sets a failure callback; `withErrorHandling()` without a callback restores the default handler. Default failure messages can contain exception details and supplied arguments. Use a redacted callback when these can include secrets or personal data.
+`withErrorHandling($callback)` also sets a failure callback; `withErrorHandling()` without a callback restores the application default, or the built-in handler when no application handler is registered. Built-in failure messages can contain exception details and supplied arguments. Use a redacted callback when these can include secrets or personal data.
+
+### Application-wide failure handler
+
+Register a default for thrown tool errors in your application's service provider `boot()`:
+
+```php
+use Prism\Prism\Facades\Prism;
+use Prism\Prism\Tool;
+
+public function boot(): void
+{
+    Prism::handleToolErrorsUsing(function (\Throwable $error, Tool $tool, array $params): string {
+        report($error);
+
+        return 'The operation is temporarily unavailable. Please try again later.';
+    });
+}
+```
+
+The callback receives the original exception, tool and supplied parameters. Return only text suitable for the model and the person using your application. A tool's `failed()` callback takes precedence, followed by the application handler, then the built-in handler. Tools configured with `withoutErrorHandling()` continue to propagate exceptions instead.
+
+If the application callback throws or returns anything other than a string, Prism returns `The tool failed.` without falling back to exception details. Returned tool results are unchanged; use [result classification](/advanced/telemetry#tool-failures) for tools that return their own failure values. `ToolInvoked.failed` and `failure` retain their existing meanings; handled exceptions remain `tool_error`.
+
+The registration belongs to the current PHP process and lasts until replaced or cleared with `Prism::handleToolErrorsUsing(null)`. Register it in a service provider's `boot()` so every HTTP, queue and Laravel process-concurrency worker installs the policy. A handler registered only at runtime in one process does not exist in process-concurrency children; tools there use the next handler in precedence order, which can include the built-in message with exception details. Request-specific handlers must be cleared after use in long-lived workers. Prism does not serialize this application callback with tools.
 
 ### Opting Out
 
