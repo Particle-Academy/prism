@@ -27,6 +27,38 @@ Other providers return `null`. A custom provider can override `projectPayload()`
 to expose its own mapping; it must keep that projection consistent with its
 sender.
 
+## Payload format
+
+Anthropic and OpenAI implement the optional
+`Prism\Prism\Contracts\DescribesProjectedPayload` interface. Its
+`projectedPayloadFormat(): ?string` method identifies the projected wire format
+without projecting or sending a request.
+
+| Provider configuration | Identifier |
+| --- | --- |
+| Anthropic | `anthropic-messages` |
+| OpenAI Responses | `openai-responses` |
+| OpenAI Chat Completions | `openai-chat-completions` |
+
+```php
+use Prism\Prism\Contracts\DescribesProjectedPayload;
+
+$provider = $generation->provider();
+$format = $provider instanceof DescribesProjectedPayload
+    ? $provider->projectedPayloadFormat()
+    : null;
+```
+
+The interface is separate from `ProjectsRequestPayload`; existing projection
+implementers do not need to add a method. A format declaration alone does not
+provide a projection. Treat `null` or an unrecognised identifier as an unknown
+format, and inspect only formats your consumer explicitly supports.
+
+A decorator that preserves the projected format should implement both
+interfaces and forward `projectedPayloadFormat()` alongside `projectPayload()`.
+If it changes the format, it must declare the format it actually returns or
+return `null`.
+
 ## Approval resolution
 
 If the sender must resolve outstanding tool approvals before dispatch, projection
