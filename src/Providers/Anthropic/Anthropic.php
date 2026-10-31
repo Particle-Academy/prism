@@ -16,6 +16,7 @@ use Prism\Prism\Batch\GetBatchResultsRequest;
 use Prism\Prism\Batch\ListBatchesRequest;
 use Prism\Prism\Batch\RetrieveBatchRequest;
 use Prism\Prism\Concerns\InitializesClient;
+use Prism\Prism\Contracts\DescribesProjectedPayload;
 use Prism\Prism\Enums\Provider as ProviderName;
 use Prism\Prism\Exceptions\PrismException;
 use Prism\Prism\Exceptions\PrismProviderOverloadedException;
@@ -51,7 +52,7 @@ use Prism\Prism\Structured\Response as StructuredResponse;
 use Prism\Prism\Text\Request as TextRequest;
 use Prism\Prism\Text\Response as TextResponse;
 
-class Anthropic extends Provider
+class Anthropic extends Provider implements DescribesProjectedPayload
 {
     use InitializesClient, ProcessesRateLimits;
 
@@ -67,6 +68,12 @@ class Anthropic extends Provider
         public readonly string $url,
         public readonly ?string $betaFeatures = null,
     ) {}
+
+    #[\Override]
+    public function projectedPayloadFormat(): ?string
+    {
+        return 'anthropic-messages';
+    }
 
     /** @return array<string, mixed> */
     #[\Override]

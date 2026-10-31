@@ -20,6 +20,7 @@ use Prism\Prism\Batch\GetBatchResultsRequest;
 use Prism\Prism\Batch\ListBatchesRequest;
 use Prism\Prism\Batch\RetrieveBatchRequest;
 use Prism\Prism\Concerns\InitializesClient;
+use Prism\Prism\Contracts\DescribesProjectedPayload;
 use Prism\Prism\Embeddings\Request as EmbeddingsRequest;
 use Prism\Prism\Embeddings\Response as EmbeddingsResponse;
 use Prism\Prism\Enums\Provider as ProviderName;
@@ -67,7 +68,7 @@ use Prism\Prism\Structured\Response as StructuredResponse;
 use Prism\Prism\Text\Request as TextRequest;
 use Prism\Prism\Text\Response as TextResponse;
 
-class OpenAI extends Provider
+class OpenAI extends Provider implements DescribesProjectedPayload
 {
     use InitializesClient;
     use ProcessRateLimits;
@@ -79,6 +80,12 @@ class OpenAI extends Provider
         public readonly ?string $project,
         public readonly string $apiFormat = 'responses',
     ) {}
+
+    #[\Override]
+    public function projectedPayloadFormat(): ?string
+    {
+        return $this->apiFormat === 'chat_completions' ? 'openai-chat-completions' : 'openai-responses';
+    }
 
     /** @return array<string, mixed> */
     #[\Override]
