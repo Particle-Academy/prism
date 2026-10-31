@@ -18,9 +18,7 @@ use Prism\Prism\Providers\Anthropic\Concerns\HandlesHttpRequests;
 use Prism\Prism\Providers\Anthropic\Concerns\ProcessesRateLimits;
 use Prism\Prism\Providers\Anthropic\Concerns\ResolvesThinking;
 use Prism\Prism\Providers\Anthropic\Maps\FinishReasonMap;
-use Prism\Prism\Providers\Anthropic\Maps\MessageMap;
-use Prism\Prism\Providers\Anthropic\Maps\ToolChoiceMap;
-use Prism\Prism\Providers\Anthropic\Maps\ToolMap;
+use Prism\Prism\Providers\Anthropic\Maps\RequestPayloadMap;
 use Prism\Prism\Text\Request as TextRequest;
 use Prism\Prism\Text\Response;
 use Prism\Prism\Text\ResponseBuilder;
@@ -28,7 +26,6 @@ use Prism\Prism\Text\Step;
 use Prism\Prism\ValueObjects\Messages\AssistantMessage;
 use Prism\Prism\ValueObjects\Messages\ToolResultMessage;
 use Prism\Prism\ValueObjects\Meta;
-use Prism\Prism\ValueObjects\ProviderTool;
 use Prism\Prism\ValueObjects\ToolApprovalRequest;
 use Prism\Prism\ValueObjects\ToolResult;
 use Prism\Prism\ValueObjects\Usage;
@@ -76,39 +73,7 @@ class Text
             throw new InvalidArgumentException('Request must be an instance of '.TextRequest::class);
         }
 
-        return Arr::whereNotNull([
-            'model' => $request->model(),
-            'system' => MessageMap::mapSystemMessages($request->systemPrompts()) ?: null,
-            'messages' => MessageMap::map($request->messages(), $request->providerOptions()),
-            'thinking' => static::resolveThinking($request),
-            'max_tokens' => $request->maxTokens() ?? 64000,
-            'temperature' => $request->temperature(),
-            'top_p' => $request->topP(),
-            'tools' => static::buildTools($request) ?: null,
-            'tool_choice' => ToolChoiceMap::map($request->toolChoice()),
-            'mcp_servers' => $request->providerOptions('mcp_servers'),
-            'cache_control' => $request->providerOptions('cache_control'),
-            // A RAW PASSTHROUGH, deliberately not a typed builder.
-            //
-            // The edits are DATED identifiers -- `clear_tool_uses_20250919`,
-            // `clear_thinking_20251015`, `compact_20260112` -- and the beta
-            // header is dated too (`context-management-2025-06-27`). A typed
-            // surface would freeze a shape that is going to move, then need
-            // deprecating; a passthrough carries all three edits and whatever
-            // replaces them, for one line.
-            //
-            // Reported as #35 with the gap measured rather than described: the
-            // beta HEADER was already reachable through
-            // providerOptions('anthropic_beta'), and this body is an allowlist,
-            // so the request silently never carried the field. A caller could
-            // switch the beta on and have nothing happen, with nothing anywhere
-            // reporting a problem.
-            'context_management' => $request->providerOptions('context_management'),
-            'output_config' => $request->providerOptions('effort') !== null
-                ? ['effort' => $request->providerOptions('effort')]
-                : null,
-            'fallbacks' => $request->providerOptions('fallbacks'),
-        ]);
+        return RequestPayloadMap::text($request, static::buildTools($request), static::resolveThinking($request));
     }
 
     /**
@@ -231,21 +196,6 @@ class Text
      */
     protected static function buildTools(TextRequest $request): array
     {
-        $tools = ToolMap::map($request->tools());
-
-        if ($request->providerTools() === []) {
-            return $tools;
-        }
-
-        $providerTools = array_map(
-            fn (ProviderTool $tool): array => [
-                'type' => $tool->type,
-                'name' => $tool->name,
-                ...$tool->options,
-            ],
-            $request->providerTools()
-        );
-
-        return array_merge($providerTools, $tools);
+        return RequestPayloadMap::buildTools($request);
     }
 }

@@ -4,18 +4,16 @@ namespace Prism\Prism\Providers\OpenAI\Handlers\ChatCompletions;
 
 use Illuminate\Http\Client\PendingRequest;
 use Illuminate\Http\Client\Response as ClientResponse;
-use Illuminate\Support\Arr;
 use Prism\Prism\Exceptions\PrismRefusalException;
 use Prism\Prism\Providers\OpenAI\Concerns\ProcessRateLimits;
 use Prism\Prism\Providers\OpenAI\Concerns\ValidatesResponse;
 use Prism\Prism\Providers\OpenAI\Maps\ChatCompletionsFinishReasonMap;
-use Prism\Prism\Providers\OpenAI\Maps\ChatCompletionsMessageMap;
+use Prism\Prism\Providers\OpenAI\Maps\RequestPayloadMap;
 use Prism\Prism\Structured\Request;
 use Prism\Prism\Structured\Response as StructuredResponse;
 use Prism\Prism\Structured\ResponseBuilder;
 use Prism\Prism\Structured\Step;
 use Prism\Prism\ValueObjects\Messages\AssistantMessage;
-use Prism\Prism\ValueObjects\Messages\SystemMessage;
 use Prism\Prism\ValueObjects\Meta;
 use Prism\Prism\ValueObjects\Usage;
 
@@ -53,16 +51,7 @@ class Structured
         /** @var ClientResponse $response */
         $response = $this->client->post(
             'chat/completions',
-            array_merge([
-                'model' => $request->model(),
-                'messages' => (new ChatCompletionsMessageMap($request->messages(), $request->systemPrompts()))(),
-                'max_tokens' => $request->maxTokens(),
-            ], Arr::whereNotNull([
-                'temperature' => $request->temperature(),
-                'top_p' => $request->topP(),
-                'response_format' => ['type' => 'json_object'],
-                'verbosity' => $request->providerOptions('text_verbosity'),
-            ]))
+            RequestPayloadMap::chatStructured($request)
         );
 
         return $response;
@@ -104,9 +93,6 @@ class Structured
 
     protected function appendMessageForJsonMode(Request $request): Request
     {
-        return $request->addMessage(new SystemMessage(sprintf(
-            "Respond with JSON that matches the following schema: \n %s",
-            json_encode($request->schema()->toArray(), JSON_PRETTY_PRINT)
-        )));
+        return RequestPayloadMap::appendJsonInstruction($request);
     }
 }

@@ -43,6 +43,7 @@ use Prism\Prism\Providers\Anthropic\Handlers\Files\Upload as FileUpload;
 use Prism\Prism\Providers\Anthropic\Handlers\Stream;
 use Prism\Prism\Providers\Anthropic\Handlers\Structured;
 use Prism\Prism\Providers\Anthropic\Handlers\Text;
+use Prism\Prism\Providers\Anthropic\Maps\RequestPayloadMap;
 use Prism\Prism\Providers\Provider;
 use Prism\Prism\Streaming\Events\StreamEvent;
 use Prism\Prism\Structured\Request as StructuredRequest;
@@ -66,6 +67,13 @@ class Anthropic extends Provider
         public readonly string $url,
         public readonly ?string $betaFeatures = null,
     ) {}
+
+    /** @return array<string, mixed> */
+    #[\Override]
+    public function projectPayload(TextRequest|StructuredRequest $request, string $mode): ?array
+    {
+        return RequestPayloadMap::project($request, $mode);
+    }
 
     #[\Override]
     public function text(TextRequest $request): TextResponse

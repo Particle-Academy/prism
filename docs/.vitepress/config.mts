@@ -273,6 +273,10 @@ export default defineConfig({
                 link: "/advanced/custom-providers",
               },
               {
+                text: "Request Payload Projection",
+                link: "/advanced/payload-projection",
+              },
+              {
                 text: "Handling Rate Limits",
                 link: "/advanced/rate-limits",
               },

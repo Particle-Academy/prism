@@ -109,6 +109,13 @@ The base class exposes these 21 capability methods. Use its parameter and return
 
 For example, `stream(TextRequest $request): Generator` yields `StreamEvent` objects, and `downloadFile(DownloadFileRequest $request): string` returns bytes. A method being declared does not mean it is implemented by an existing built-in provider.
 
+## Request payload projection
+
+The base provider returns `null` from `projectPayload()`. You can override it
+with a side-effect-free mapping consistent with your sender. See
+[Request payload projection](./payload-projection) for the supported modes,
+approval-resolution behavior, and data handling requirements.
+
 ## Custom error handling
 
 The separate `handleRequestException(string $model, RequestException $e): never` hook maps HTTP failures. Its default implementation maps 413 to `PrismRequestTooLargeException`, 429 to `PrismRateLimitedException`, 529 to `PrismProviderOverloadedException`, and other statuses to `PrismException`.

@@ -60,6 +60,7 @@ use Prism\Prism\Providers\OpenAI\Handlers\Moderation;
 use Prism\Prism\Providers\OpenAI\Handlers\Stream;
 use Prism\Prism\Providers\OpenAI\Handlers\Structured;
 use Prism\Prism\Providers\OpenAI\Handlers\Text;
+use Prism\Prism\Providers\OpenAI\Maps\RequestPayloadMap;
 use Prism\Prism\Providers\Provider;
 use Prism\Prism\Structured\Request as StructuredRequest;
 use Prism\Prism\Structured\Response as StructuredResponse;
@@ -78,6 +79,13 @@ class OpenAI extends Provider
         public readonly ?string $project,
         public readonly string $apiFormat = 'responses',
     ) {}
+
+    /** @return array<string, mixed> */
+    #[\Override]
+    public function projectPayload(TextRequest|StructuredRequest $request, string $mode): ?array
+    {
+        return RequestPayloadMap::project($request, $mode, $this->apiFormat === 'chat_completions');
+    }
 
     #[\Override]
     public function text(TextRequest $request): TextResponse

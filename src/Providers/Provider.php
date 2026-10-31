@@ -20,6 +20,7 @@ use Prism\Prism\Batch\CancelBatchRequest;
 use Prism\Prism\Batch\GetBatchResultsRequest;
 use Prism\Prism\Batch\ListBatchesRequest;
 use Prism\Prism\Batch\RetrieveBatchRequest;
+use Prism\Prism\Contracts\ProjectsRequestPayload;
 use Prism\Prism\Embeddings\Request as EmbeddingsRequest;
 use Prism\Prism\Embeddings\Response as EmbeddingsResponse;
 use Prism\Prism\Exceptions\PrismException;
@@ -46,8 +47,17 @@ use Prism\Prism\Structured\Response as StructuredResponse;
 use Prism\Prism\Text\Request as TextRequest;
 use Prism\Prism\Text\Response as TextResponse;
 
-abstract class Provider
+abstract class Provider implements ProjectsRequestPayload
 {
+    /**
+     * @param  'text'|'structured'|'stream'  $mode
+     * @return array<string, mixed>|null
+     */
+    public function projectPayload(TextRequest|StructuredRequest $request, string $mode): ?array
+    {
+        return null;
+    }
+
     public function text(TextRequest $request): TextResponse
     {
         throw PrismException::unsupportedProviderAction('text', class_basename($this));
