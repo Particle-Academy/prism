@@ -38,7 +38,7 @@ trait TracksStreamFailureUsage
         } catch (Throwable $exception) {
             if ($exception instanceof PrismException) {
                 $exception->withStreamFailureUsage($this->streamFailureUsage());
-            } else {
+            } elseif ($this->streamFailureUsage() !== null) {
                 yield new ErrorEvent(
                     id: EventID::generate(),
                     timestamp: time(),

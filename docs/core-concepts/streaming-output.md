@@ -882,7 +882,7 @@ try {
 }
 ```
 
-SDK exceptions expose the optional payload through `streamFailureUsage()`. For a foreign transport exception, the stream yields one final `ErrorEvent` immediately before rethrowing the original exception unchanged. The foreign exception itself has no usage accessor: retain that event or read [failure telemetry](/advanced/telemetry). Iteration can therefore fail after yielding an event; `iterator_to_array()` does not return its partial result when an exception is thrown.
+SDK exceptions expose the optional payload through `streamFailureUsage()`. When usage was reported, a foreign transport exception causes one final `ErrorEvent` before the read exception propagates. Without reported usage, no extra event is emitted. Existing provider HTTP exception mappings remain in effect: their mapped SDK exception receives the snapshot. Other foreign exceptions propagate unchanged and have no usage accessor: retain the final event or read [failure telemetry](/advanced/telemetry). Iteration can therefore fail after yielding an event; `iterator_to_array()` does not return its partial result when an exception is thrown.
 
 Record each attempt once. An error event, an exception and an Error terminal can describe the same attempt; do not add their copies of usage together. Use `reportedFields` to distinguish a reported zero from an unavailable field. Successful `Usage` and completed-step accounting retain their existing shape.
 

@@ -9,7 +9,7 @@ OpenTelemetry backend such as Arize Phoenix with the companion bridge.
 
 ## Stream failures
 
-Event-signalled stream failures emit `Prism\Prism\Events\Telemetry\GenerationErrored`. Its `status` is `error`; its optional `failureUsage` contains provider-reported, provisional usage for the failed attempt. It carries no prompt, generated content, provider diagnostics or raw body. A foreign read exception also produces this event after its final stream error event, then propagates unchanged through `GenerationFailed`. SDK exceptions supply their optional failure usage on `GenerationFailed` directly.
+Event-signalled stream failures emit `Prism\Prism\Events\Telemetry\GenerationErrored`. Its `status` is `error`; its optional `failureUsage` contains provider-reported, provisional usage for the failed attempt. It carries no prompt, generated content, provider diagnostics or raw body. A foreign read exception with reported usage also produces this event after its final stream error event, then reaches the existing `GenerationFailed` path. Without reported usage, no synthetic error event is added. Existing provider HTTP exception mapping is preserved, and mapped SDK exceptions retain the snapshot. SDK exceptions thrown by a provider handler supply their optional failure usage on `GenerationFailed` directly.
 
 Failed streams no longer emit `GenerationCompleted`, including streams that end normally at the iterator level with an Error finish reason. Consumers counting successful completions must use this distinction. `StepCompleted` includes the step's actual finish reason; do not treat a failed step as successful simply because it has usage. A recoverable failed attempt followed by a successful terminal can still complete the generation.
 

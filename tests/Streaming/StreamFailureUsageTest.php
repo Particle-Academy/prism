@@ -41,6 +41,45 @@ it('treats an XAI total without attributable input or output as unreported', fun
     expect($tracker->snapshot())->toBeNull();
 });
 
+it('does not add an error event when a foreign read fails without reported usage', function (): void {
+    $sentinel = new RuntimeException('owned unreported failure');
+    $body = new class(Utils::streamFor(failedUsageStart('Anthropic', false)), $sentinel) implements StreamInterface
+    {
+        use StreamDecoratorTrait;
+
+        public function __construct(StreamInterface $stream, private readonly Throwable $failure)
+        {
+            $this->stream = $stream;
+        }
+
+        public function eof(): bool
+        {
+            return false;
+        }
+
+        public function read($length): string
+        {
+            if ($this->stream->eof()) {
+                throw $this->failure;
+            }
+
+            return $this->stream->read($length);
+        }
+    };
+    $handler = failedUsageHandler('Anthropic');
+    $events = [];
+    $caught = null;
+    try {
+        foreach ((new ReflectionMethod($handler, 'processStream'))->invoke($handler, new Response(new PsrResponse(200, [], $body)), new Request(model: 'owned')) as $event) {
+            $events[] = $event;
+        }
+    } catch (Throwable $failure) {
+        $caught = $failure;
+    }
+    expect($caught)->toBe($sentinel)
+        ->and(array_filter($events, fn (StreamEvent $event): bool => $event instanceof ErrorEvent))->toBeEmpty();
+});
+
 function failedUsageStart(string $provider, bool $reported = true): string
 {
     $usage = ['prompt_tokens' => 11, 'completion_tokens' => 3];
@@ -326,12 +365,12 @@ it('normalizes provider cache reasoning and cost reports without changing succes
     ['openrouter', ['usage' => ['prompt_tokens' => 11, 'completion_tokens' => 3, 'cost' => 0.1, 'is_byok' => true, 'cost_details' => ['upstream_inference_cost' => 0.2]]], ['prompt_tokens' => 11, 'cost' => 0.30000000000000004]],
 ]);
 
-it('preserves a public foreign RequestException even when failure listeners throw', function (): void {
+it('preserves the native public RequestException mapping even when failure listeners throw', function (bool $reported): void {
     Http::preventStrayRequests();
     config()->set('prism.providers.anthropic.api_key', 'owned-fake');
     config()->set('prism.telemetry.enabled', true);
     $sentinel = new RequestException(new Response(new PsrResponse(503, [], 'private transport response')));
-    $stream = new class(Utils::streamFor(failedUsageStart('Anthropic')), $sentinel) implements StreamInterface
+    $stream = new class(Utils::streamFor(failedUsageStart('Anthropic', $reported)), $sentinel) implements StreamInterface
     {
         use StreamDecoratorTrait;
 
@@ -373,9 +412,42 @@ it('preserves a public foreign RequestException even when failure listeners thro
         $caught = $exception;
     }
     $errors = array_values(array_filter($events, fn (StreamEvent $e): bool => $e instanceof ErrorEvent));
-    expect($caught)->toBe($sentinel, 'Actual failure: '.($caught instanceof Throwable ? $caught::class.' '.$caught->getMessage() : 'none'))->and($errors)->toHaveCount(1)
+    expect($caught)->toBeInstanceOf(PrismException::class)
+        ->and($caught::class)->toBe(PrismException::class)
+        ->and($caught->getCode())->toBe(503)
+        ->and($caught->httpStatus)->toBeNull()
+        ->and($caught->getPrevious())->toBe($sentinel);
+    if (! $reported) {
+        expect($errors)->toBeEmpty()->and($telemetry)->toBeEmpty()
+            ->and($caught->streamFailureUsage())->toBeNull();
+
+        return;
+    }
+    expect($errors)->toHaveCount(1)
+        ->and($caught->streamFailureUsage())->toBe($errors[0]->failureUsage)
         ->and($errors[0]->failureUsage->usage->promptTokens)->toBe(11)
         ->and($telemetry)->toHaveCount(1)
         ->and($telemetry[0]->failureUsage->usage->promptTokens)->toBe(11)
         ->and(json_encode($errors[0]))->not->toContain('private transport response');
+})->with([true, false]);
+
+it('keeps pre-byte HTTP exception class code and status unchanged with no failure usage', function (): void {
+    config()->set('prism.providers.anthropic.api_key', 'owned-fake');
+    Http::preventStrayRequests();
+    Http::fake(['*' => Http::response(['error' => ['message' => 'owned']], 503)]);
+    $events = [];
+    $caught = null;
+    try {
+        foreach (Prism::text()->using('anthropic', 'owned')->withPrompt('owned')->asStream() as $event) {
+            $events[] = $event;
+        }
+    } catch (Throwable $failure) {
+        $caught = $failure;
+    }
+    expect($caught::class)->toBe(PrismException::class)
+        ->and($caught->getCode())->toBe(503)
+        ->and($caught->httpStatus)->toBeNull()
+        ->and($caught->getPrevious())->toBeInstanceOf(RequestException::class)
+        ->and($caught->streamFailureUsage())->toBeNull()
+        ->and($events)->toBeEmpty();
 });

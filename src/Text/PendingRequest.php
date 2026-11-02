@@ -93,7 +93,7 @@ class PendingRequest
      */
     public function asStream(): Generator
     {
-        $foreignReadFailed = false;
+        $failureUsage = null;
         $request = $this->toRequest();
 
         $context = Telemetry::start(TelemetryOperation::Stream, $this->providerKey(), $request->model(), $request, $this->telemetryUserId, $this->telemetrySessionId);
@@ -106,22 +106,20 @@ class PendingRequest
                 : $stream;
             foreach ($events as $event) {
                 if ($event instanceof ErrorEvent && $event->errorType === 'stream_read_failed') {
-                    $foreignReadFailed = true;
+                    $failureUsage = $event->failureUsage;
                 }
                 yield $event;
             }
         } catch (RequestException $e) {
-            if ($foreignReadFailed) {
+            try {
+                Telemetry::failed($context, $e);
+            } finally {
                 try {
-                    Telemetry::failed($context, $e);
-                } finally {
-                    throw $e;
+                    $this->provider->handleRequestException($request->model(), $e);
+                } catch (PrismException $mapped) {
+                    throw $mapped->withStreamFailureUsage($failureUsage);
                 }
             }
-
-            Telemetry::failed($context, $e);
-
-            $this->provider->handleRequestException($request->model(), $e);
         } catch (Throwable $e) {
             try {
                 Telemetry::failed($context, $e);
