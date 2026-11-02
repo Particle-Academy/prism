@@ -18,11 +18,14 @@ use Prism\Prism\Exceptions\PrismRunException;
 use Prism\Prism\Exceptions\PrismStreamDecodeException;
 use Prism\Prism\Facades\Prism;
 use Prism\Prism\Providers\Azure\Azure;
+use Prism\Prism\Providers\Provider;
 use Prism\Prism\Providers\Replicate\Handlers\Stream;
 use Prism\Prism\Streaming\Adapters\DataProtocolAdapter;
 use Prism\Prism\Streaming\Events\ErrorEvent;
 use Prism\Prism\Streaming\Events\StreamEndEvent;
 use Prism\Prism\Streaming\Events\StreamEvent;
+use Prism\Prism\Streaming\Events\StreamStartEvent;
+use Prism\Prism\Streaming\Events\TextDeltaEvent;
 use Prism\Prism\Streaming\StreamFailureUsageTracker;
 use Prism\Prism\Text\Request;
 use Prism\Prism\ValueObjects\Messages\UserMessage;
@@ -459,4 +462,50 @@ it('keeps pre-byte HTTP exception class code and status unchanged with no failur
         ->and($caught->getPrevious())->toBeInstanceOf(RequestException::class)
         ->and($caught->streamFailureUsage())->toBeNull()
         ->and($events)->toBeEmpty();
+});
+
+it('preserves nonsequential custom provider keys through the public multi-event stream', function (bool $telemetry): void {
+    config()->set('prism.telemetry.enabled', $telemetry);
+    $provider = new class extends Provider
+    {
+        public function stream(Request $request): Generator
+        {
+            yield 'begin' => new StreamStartEvent('start', 0, 'owned', 'owned');
+            yield 7 => new TextDeltaEvent('one', 0, 'a', 'owned');
+            yield 'tail' => new TextDeltaEvent('two', 0, 'b', 'owned');
+            yield 41 => new StreamEndEvent('end', 0, FinishReason::Stop);
+        }
+    };
+    resolve('prism-manager')->extend('owned-keys', fn (): Provider => $provider);
+    $events = iterator_to_array(Prism::text()->using('owned-keys', 'owned')->withPrompt('owned')->asStream());
+    // These are the independently measured 0.145.1 public API keys. Native
+    // telemetry itself already numbers its wrapper; the outer request must
+    // preserve whichever keys that selected stream supplies.
+    expect(array_keys($events))->toBe($telemetry ? [0, 1, 2, 3] : ['begin', 7, 'tail', 41])
+        ->and(array_map(fn (StreamEvent $event): string => $event->id, array_values($events)))->toBe(['start', 'one', 'two', 'end']);
+})->with([false, true]);
+
+it('preserves public custom provider send and throw forwarding with telemetry disabled', function (): void {
+    config()->set('prism.telemetry.enabled', false);
+    $provider = new class extends Provider
+    {
+        public function stream(Request $request): Generator
+        {
+            $received = yield 'first' => new TextDeltaEvent('first', 0, 'ready', 'owned');
+            yield 'received' => new TextDeltaEvent('received', 0, (string) $received, 'owned');
+            try {
+                yield 'throwpoint' => new TextDeltaEvent('throwpoint', 0, 'ready', 'owned');
+            } catch (LogicException $failure) {
+                yield 'caught' => new TextDeltaEvent('caught', 0, $failure->getMessage(), 'owned');
+            }
+        }
+    };
+    resolve('prism-manager')->extend('owned-input', fn (): Provider => $provider);
+    $stream = Prism::text()->using('owned-input', 'owned')->withPrompt('owned')->asStream();
+    $stream->rewind();
+    $stream->send('owned-send');
+    expect($stream->key())->toBe('received')->and($stream->current()->delta)->toBe('owned-send');
+    $stream->next();
+    $stream->throw(new LogicException('owned-throw'));
+    expect($stream->key())->toBe('caught')->and($stream->current()->delta)->toBe('owned-throw');
 });

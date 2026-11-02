@@ -104,11 +104,20 @@ class PendingRequest
             $events = $context instanceof TelemetryContext
                 ? Telemetry::instrumentStream($context, $stream, $request)
                 : $stream;
-            foreach ($events as $event) {
+            while ($events->valid()) {
+                $key = $events->key();
+                $event = $events->current();
                 if ($event instanceof ErrorEvent && $event->errorType === 'stream_read_failed') {
                     $failureUsage = $event->failureUsage;
                 }
-                yield $event;
+                try {
+                    $sent = yield $key => $event;
+                } catch (Throwable $consumerException) { // @phpstan-ignore catch.neverThrown (Generator::throw() injects at yield; covered by published compatibility tests.)
+                    $events->throw($consumerException);
+
+                    continue;
+                }
+                $events->send($sent);
             }
         } catch (RequestException $e) {
             Telemetry::failed($context, $e);
