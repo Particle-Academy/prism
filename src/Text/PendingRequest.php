@@ -25,6 +25,7 @@ use Prism\Prism\Exceptions\PrismException;
 use Prism\Prism\Streaming\Adapters\BroadcastAdapter;
 use Prism\Prism\Streaming\Adapters\DataProtocolAdapter;
 use Prism\Prism\Streaming\Adapters\SSEAdapter;
+use Prism\Prism\Streaming\Events\ErrorEvent;
 use Prism\Prism\Streaming\Events\StreamEvent;
 use Prism\Prism\Support\CacheHints;
 use Prism\Prism\Telemetry\Telemetry;
@@ -92,6 +93,7 @@ class PendingRequest
      */
     public function asStream(): Generator
     {
+        $foreignReadFailed = false;
         $request = $this->toRequest();
 
         $context = Telemetry::start(TelemetryOperation::Stream, $this->providerKey(), $request->model(), $request, $this->telemetryUserId, $this->telemetrySessionId);
@@ -99,17 +101,33 @@ class PendingRequest
         try {
             $stream = $this->provider->stream($request);
 
-            yield from $context instanceof TelemetryContext
+            $events = $context instanceof TelemetryContext
                 ? Telemetry::instrumentStream($context, $stream, $request)
                 : $stream;
+            foreach ($events as $event) {
+                if ($event instanceof ErrorEvent && $event->errorType === 'stream_read_failed') {
+                    $foreignReadFailed = true;
+                }
+                yield $event;
+            }
         } catch (RequestException $e) {
+            if ($foreignReadFailed) {
+                try {
+                    Telemetry::failed($context, $e);
+                } finally {
+                    throw $e;
+                }
+            }
+
             Telemetry::failed($context, $e);
 
             $this->provider->handleRequestException($request->model(), $e);
         } catch (Throwable $e) {
-            Telemetry::failed($context, $e);
-
-            throw $e;
+            try {
+                Telemetry::failed($context, $e);
+            } finally {
+                throw $e;
+            }
         } finally {
             Telemetry::end($context);
         }
