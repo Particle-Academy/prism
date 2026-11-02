@@ -111,21 +111,17 @@ class PendingRequest
                 yield $event;
             }
         } catch (RequestException $e) {
+            Telemetry::failed($context, $e);
+
             try {
-                Telemetry::failed($context, $e);
-            } finally {
-                try {
-                    $this->provider->handleRequestException($request->model(), $e);
-                } catch (PrismException $mapped) {
-                    throw $mapped->withStreamFailureUsage($failureUsage);
-                }
+                $this->provider->handleRequestException($request->model(), $e);
+            } catch (PrismException $mapped) {
+                throw $mapped->withStreamFailureUsage($failureUsage);
             }
         } catch (Throwable $e) {
-            try {
-                Telemetry::failed($context, $e);
-            } finally {
-                throw $e;
-            }
+            Telemetry::failed($context, $e);
+
+            throw $e;
         } finally {
             Telemetry::end($context);
         }

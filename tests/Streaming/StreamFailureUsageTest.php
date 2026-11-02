@@ -365,7 +365,7 @@ it('normalizes provider cache reasoning and cost reports without changing succes
     ['openrouter', ['usage' => ['prompt_tokens' => 11, 'completion_tokens' => 3, 'cost' => 0.1, 'is_byok' => true, 'cost_details' => ['upstream_inference_cost' => 0.2]]], ['prompt_tokens' => 11, 'cost' => 0.30000000000000004]],
 ]);
 
-it('preserves the native public RequestException mapping even when failure listeners throw', function (bool $reported): void {
+it('preserves native public RequestException mapping and listener exception precedence', function (bool $reported, bool $listenerThrows): void {
     Http::preventStrayRequests();
     config()->set('prism.providers.anthropic.api_key', 'owned-fake');
     config()->set('prism.telemetry.enabled', true);
@@ -397,11 +397,13 @@ it('preserves the native public RequestException mapping even when failure liste
     $telemetry = [];
     app('events')->listen(GenerationErrored::class, function ($event) use (&$telemetry): void {
         $telemetry[] = $event;
-        throw new LogicException('owned errored listener failure');
     });
-    app('events')->listen(GenerationFailed::class, function (): void {
-        throw new LogicException('owned failed listener failure');
-    });
+    $listenerFailure = new LogicException('owned failed listener failure');
+    if ($listenerThrows) {
+        app('events')->listen(GenerationFailed::class, function () use ($listenerFailure): void {
+            throw $listenerFailure;
+        });
+    }
     $events = [];
     $caught = null;
     try {
@@ -412,6 +414,13 @@ it('preserves the native public RequestException mapping even when failure liste
         $caught = $exception;
     }
     $errors = array_values(array_filter($events, fn (StreamEvent $e): bool => $e instanceof ErrorEvent));
+    if ($listenerThrows) {
+        expect($caught)->toBe($listenerFailure)
+            ->and($errors)->toHaveCount($reported ? 1 : 0)
+            ->and($telemetry)->toHaveCount($reported ? 1 : 0);
+
+        return;
+    }
     expect($caught)->toBeInstanceOf(PrismException::class)
         ->and($caught::class)->toBe(PrismException::class)
         ->and($caught->getCode())->toBe(503)
@@ -429,7 +438,7 @@ it('preserves the native public RequestException mapping even when failure liste
         ->and($telemetry)->toHaveCount(1)
         ->and($telemetry[0]->failureUsage->usage->promptTokens)->toBe(11)
         ->and(json_encode($errors[0]))->not->toContain('private transport response');
-})->with([true, false]);
+})->with([[true, false], [false, false], [true, true], [false, true]]);
 
 it('keeps pre-byte HTTP exception class code and status unchanged with no failure usage', function (): void {
     config()->set('prism.providers.anthropic.api_key', 'owned-fake');
