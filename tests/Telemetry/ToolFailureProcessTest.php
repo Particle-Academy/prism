@@ -73,8 +73,10 @@ it('handles tool failure flags in actual child processes without transporting th
                     ->and($report['events'])->toHaveCount(1)
                     ->and($report['events'][0]['failure'])->toBe('exception:RuntimeException');
                 $publicFailure = json_encode([$report['error'], $report['events']], JSON_THROW_ON_ERROR);
-                expect($publicFailure)->not->toContain('synthetic-', 'LARAVEL-CONCURRENCY', 'HMAC')
-                    ->and($publicFailure)->not->toMatch('/[0-9a-f]{64}/');
+                expect($publicFailure)->not->toContain('synthetic-');
+                expect($publicFailure)->not->toContain('LARAVEL-CONCURRENCY');
+                expect($publicFailure)->not->toContain('HMAC');
+                expect($publicFailure)->not->toMatch('/[0-9a-f]{64}/');
             }
         }
     } finally {
