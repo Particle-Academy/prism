@@ -9,6 +9,7 @@ use Illuminate\Http\Client\PendingRequest;
 use Illuminate\Http\Client\Response;
 use Illuminate\Support\Arr;
 use Prism\Prism\Concerns\CallsTools;
+use Prism\Prism\Concerns\TracksStreamFailureUsage;
 use Prism\Prism\Enums\FinishReason;
 use Prism\Prism\Exceptions\PrismStreamDecodeException;
 use Prism\Prism\Providers\Anthropic\Concerns\ExtractsAdditionalContent;
@@ -34,6 +35,7 @@ use Prism\Prism\Streaming\Events\ThinkingEvent;
 use Prism\Prism\Streaming\Events\ThinkingStartEvent;
 use Prism\Prism\Streaming\Events\ToolCallDeltaEvent;
 use Prism\Prism\Streaming\Events\ToolCallEvent;
+use Prism\Prism\Streaming\StreamFailureUsageTracker;
 use Prism\Prism\Text\Request;
 use Prism\Prism\ValueObjects\Citation;
 use Prism\Prism\ValueObjects\MessagePartWithCitations;
@@ -47,6 +49,7 @@ use Throwable;
 class Stream
 {
     use CallsTools, ExtractsAdditionalContent;
+    use TracksStreamFailureUsage;
 
     protected AnthropicStreamState $state;
 
@@ -60,6 +63,8 @@ class Stream
      */
     public function handle(Request $request): Generator
     {
+        $this->streamFailureTracker = null;
+
         yield from $this->resolveToolApprovalsAndYieldEvents($request, EventID::generate());
 
         $this->state->reset();
@@ -73,8 +78,10 @@ class Stream
      */
     protected function processStream(Response $response, Request $request, int $depth = 0): Generator
     {
-        while (! $response->getBody()->eof()) {
-            $event = $this->parseNextSSEEvent($response->getBody());
+        $this->streamFailureTracker = new StreamFailureUsageTracker('anthropic', $depth);
+
+        while (! (yield from $this->readStreamValue(fn (): bool => $response->getBody()->eof()))) {
+            $event = yield from $this->readStreamValue(fn (): ?array => $this->parseNextSSEEvent($response->getBody()));
 
             if ($event === null) {
                 continue;
@@ -156,6 +163,7 @@ class Stream
             errorType: 'incomplete_stream',
             message: 'The stream ended before Anthropic finished the message.',
             recoverable: false,
+            failureUsage: $this->streamFailureUsage(),
         );
     }
 
@@ -300,6 +308,8 @@ class Stream
                 cacheWriteInputTokens: $usageData['cache_creation_input_tokens'] ?? null,
                 cacheReadInputTokens: $usageData['cache_read_input_tokens'] ?? null,
                 thoughtTokens: data_get($usageData, 'output_tokens_details.thinking_tokens'),
+                cacheWrite5mInputTokens: data_get($usageData, 'cache_creation.ephemeral_5m_input_tokens'),
+                cacheWrite1hInputTokens: data_get($usageData, 'cache_creation.ephemeral_1h_input_tokens'),
             ));
         }
 
@@ -457,13 +467,18 @@ class Stream
         }
 
         $current = $this->state->stepUsage() ?? new Usage(0, 0);
+        $cacheWriteTotal = $usageData['cache_creation_input_tokens'] ?? $current->cacheWriteInputTokens;
+        // A changed total cannot reuse an unreported split from an earlier report.
+        $carryCacheWrites = $cacheWriteTotal === $current->cacheWriteInputTokens;
 
         $this->state->withStepUsage(new Usage(
             promptTokens: $usageData['input_tokens'] ?? $current->promptTokens,
             completionTokens: $usageData['output_tokens'] ?? $current->completionTokens,
-            cacheWriteInputTokens: $usageData['cache_creation_input_tokens'] ?? $current->cacheWriteInputTokens,
+            cacheWriteInputTokens: $cacheWriteTotal,
             cacheReadInputTokens: $usageData['cache_read_input_tokens'] ?? $current->cacheReadInputTokens,
             thoughtTokens: data_get($usageData, 'output_tokens_details.thinking_tokens') ?? $current->thoughtTokens,
+            cacheWrite5mInputTokens: data_get($usageData, 'cache_creation.ephemeral_5m_input_tokens') ?? ($carryCacheWrites ? $current->cacheWrite5mInputTokens : null),
+            cacheWrite1hInputTokens: data_get($usageData, 'cache_creation.ephemeral_1h_input_tokens') ?? ($carryCacheWrites ? $current->cacheWrite1hInputTokens : null),
         ));
     }
 
@@ -520,7 +535,8 @@ class Stream
             timestamp: time(),
             errorType: $event['error']['type'] ?? 'unknown_error',
             message: $event['error']['message'] ?? 'Unknown error occurred',
-            recoverable: false
+            recoverable: false,
+            failureUsage: $this->streamFailureUsage(),
         );
     }
 
@@ -945,7 +961,7 @@ class Stream
 
             return $data;
         } catch (Throwable $e) {
-            throw new PrismStreamDecodeException('Anthropic', $e);
+            throw (new PrismStreamDecodeException('Anthropic', $e))->withStreamFailureUsage($this->streamFailureUsage());
         }
     }
 
@@ -972,6 +988,8 @@ class Stream
 
     protected function sendRequest(Request $request): Response
     {
+        $this->streamFailureTracker = null;
+
         /** @var Response $response */
         $response = $this->client
             ->withOptions(['stream' => true])
