@@ -2,6 +2,7 @@
 
 namespace Tests\Http;
 
+use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Exceptions;
 use Illuminate\Support\Str;
 use Illuminate\Testing\TestResponse;
@@ -15,6 +16,7 @@ use Prism\Prism\Text\Response;
 use Prism\Prism\ValueObjects\Messages\UserMessage;
 use Prism\Prism\ValueObjects\Meta;
 use Prism\Prism\ValueObjects\Usage;
+use Throwable;
 
 it('handles chat requests successfully', function (): void {
     $this->freezeTime();
@@ -485,4 +487,53 @@ it('handles mixed simple and multimodal messages', function (): void {
 
     $response->assertOk();
     expect($response->json('choices.0.message.content'))->toBe('Hello! I can see the image you shared.');
+});
+
+it('lets the app render Prism Server errors (#150)', function (): void {
+    PrismServer::register('nyx', function (): PendingRequest {
+        throw new \RuntimeException('internal detail');
+    });
+    PrismServer::renderErrorsUsing(fn (Throwable $e): JsonResponse => response()->json(['error' => ['message' => 'Try again later.', 'type' => 'app_error']], 503));
+
+    $response = $this->postJson('prism/openai/v1/chat/completions', [
+        'model' => 'nyx',
+        'messages' => [['role' => 'user', 'content' => 'Who are you?']],
+    ]);
+
+    $response->assertStatus(503);
+    expect($response->json('error'))->toBe(['message' => 'Try again later.', 'type' => 'app_error']);
+});
+
+it('keeps the safe default when the renderer returns null (#150)', function (): void {
+    PrismServer::renderErrorsUsing(fn (Throwable $e): null => null);
+
+    $response = $this->postJson('prism/openai/v1/chat/completions', [
+        'model' => 'nyx',
+        'messages' => [['role' => 'user', 'content' => 'Who are you?']],
+    ]);
+
+    $response->assertNotFound();
+    expect($response->json('error.code'))->toBe('model_not_found');
+});
+
+it('falls back to the safe default when the renderer throws, without leaking either message (#150)', function (): void {
+    Exceptions::fake();
+    PrismServer::register('nyx', function (): PendingRequest {
+        throw new \RuntimeException('provider body password=hunter2');
+    });
+    PrismServer::renderErrorsUsing(function (Throwable $e): never {
+        throw new \LogicException('renderer bug at /var/www/app.php');
+    });
+
+    $response = $this->postJson('prism/openai/v1/chat/completions', [
+        'model' => 'nyx',
+        'messages' => [['role' => 'user', 'content' => 'Who are you?']],
+    ]);
+
+    $response->assertServerError();
+    expect($response->json('error.message'))->toBe('The server could not complete the request.');
+    expect($response->getContent())->not->toContain('hunter2');
+    expect($response->getContent())->not->toContain('/var/www');
+    Exceptions::assertReported(fn (\LogicException $e): bool => str_contains($e->getMessage(), 'renderer bug'));
+    Exceptions::assertReported(fn (\RuntimeException $e): bool => str_contains($e->getMessage(), 'hunter2'));
 });

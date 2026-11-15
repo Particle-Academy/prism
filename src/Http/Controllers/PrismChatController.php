@@ -96,6 +96,19 @@ class PrismChatController
      */
     protected function error(Throwable $e): Response
     {
+        $renderer = PrismServer::errorRenderer();
+        if ($renderer !== null) {
+            try {
+                $rendered = $renderer($e);
+                if ($rendered instanceof Response) {
+                    return $rendered;
+                }
+            } catch (Throwable $failure) {
+                // A broken renderer must not turn into a leak: fall back to the safe default below.
+                report($failure);
+            }
+        }
+
         if ($e instanceof PrismServerException && $e->status < 500) {
             return response()->json([
                 'error' => [
