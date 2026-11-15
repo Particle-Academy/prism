@@ -2,6 +2,7 @@
 
 namespace Tests\Http;
 
+use Illuminate\Support\Facades\Exceptions;
 use Illuminate\Support\Str;
 use Illuminate\Testing\TestResponse;
 use Mockery;
@@ -205,18 +206,7 @@ it('handles streaming requests', function (): void {
     expect((string) Str::of($lastPart)->substr(6))->toBe('[DONE]');
 });
 
-it('handles invalid model requests', function (): void {
-    /** @var TestResponse */
-    $response = $this->postJson('prism/openai/v1/chat/completions', [
-        'model' => 'nyx',
-    ]);
-
-    $response->assertServerError();
-
-    expect($response->json('error.message'))->toContain('nyx');
-});
-
-it('handles missing prism', function (): void {
+it('answers an unknown model with 404 and a fixed message (#150)', function (): void {
     /** @var TestResponse */
     $response = $this->postJson('prism/openai/v1/chat/completions', [
         'model' => 'nyx',
@@ -226,9 +216,63 @@ it('handles missing prism', function (): void {
         ]],
     ]);
 
+    $response->assertNotFound();
+    expect($response->json('error'))->toBe([
+        'message' => 'The requested model does not exist.',
+        'type' => 'invalid_request_error',
+        'code' => 'model_not_found',
+    ]);
+    expect($response->getContent())->not->toContain('PrismServer');
+});
+
+it('answers messages it cannot read with 422 and a fixed message (#150)', function (): void {
+    PrismServer::register('nyx', fn (): PendingRequest => Mockery::mock(PendingRequest::class));
+
+    /** @var TestResponse */
+    $response = $this->postJson('prism/openai/v1/chat/completions', [
+        'model' => 'nyx',
+        'messages' => [['role' => 'not-a-role', 'content' => 'x']],
+    ]);
+
+    $response->assertUnprocessable();
+    expect($response->json('error'))->toBe([
+        'message' => 'The messages could not be read.',
+        'type' => 'invalid_request_error',
+        'code' => 'invalid_messages',
+    ]);
+});
+
+it('never returns an exception message to the caller, and reports it instead (#150)', function (): void {
+    Exceptions::fake();
+    PrismServer::register('nyx', function (): PendingRequest {
+        throw new \RuntimeException('SQLSTATE[28000] password=hunter2 at https://internal.example/v1 /var/www/.env');
+    });
+
+    /** @var TestResponse */
+    $response = $this->postJson('prism/openai/v1/chat/completions', [
+        'model' => 'nyx',
+        'messages' => [['role' => 'user', 'content' => 'Who are you?']],
+    ]);
+
     $response->assertServerError();
-    expect($response->json('error.message'))
-        ->toBe('Prism "nyx" is not registered with PrismServer');
+    expect($response->json('error'))->toBe([
+        'message' => 'The server could not complete the request.',
+        'type' => 'server_error',
+        'code' => null,
+    ]);
+    foreach (['SQLSTATE', 'hunter2', 'internal.example', '.env'] as $secret) {
+        expect($response->getContent())->not->toContain($secret);
+    }
+    Exceptions::assertReported(
+        fn (\RuntimeException $e): bool => str_contains($e->getMessage(), 'hunter2')
+    );
+});
+
+it('still answers a malformed request with 422', function (): void {
+    /** @var TestResponse */
+    $response = $this->postJson('prism/openai/v1/chat/completions', ['messages' => 'nope']);
+
+    $response->assertUnprocessable();
 });
 
 it('handles multimodal messages with image URL', function (): void {
