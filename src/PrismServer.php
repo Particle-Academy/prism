@@ -32,7 +32,7 @@ readonly class PrismServer
      */
     public function renderErrorsUsing(?Closure $renderer): self
     {
-        $renderer === null ? $this->settings->forget('errorRenderer') : $this->settings->put('errorRenderer', $renderer);
+        $renderer instanceof Closure ? $this->settings->put('errorRenderer', $renderer) : $this->settings->forget('errorRenderer');
 
         return $this;
     }
