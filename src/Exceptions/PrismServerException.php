@@ -38,6 +38,21 @@ class PrismServerException extends Exception
         return $exception;
     }
 
+    /**
+     * A registered prism that returns tool calls to its caller cannot stream: the stream carries text
+     * only, so a returned call would either be dropped or have to be run. Refused before any provider call.
+     */
+    public static function streamingReturnedTools(string $model): self
+    {
+        $exception = new self(sprintf('Prism "%s" returns tool calls to the caller and cannot be streamed', $model));
+        $exception->status = 400;
+        $exception->type = 'invalid_request_error';
+        $exception->errorCode = 'stream_not_supported';
+        $exception->publicMessage = 'This model does not support streaming. Send the request with "stream": false.';
+
+        return $exception;
+    }
+
     public static function invalidMessages(string $reason): self
     {
         $exception = new self($reason);
