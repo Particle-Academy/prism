@@ -397,14 +397,17 @@ it('does not return a call the model made to a tool the client named but the app
         ->and((string) $response->getContent())->not->toContain('exfiltrate');
 });
 
-it('refuses tool messages and assistant tool calls in the history with 422 invalid_messages', function (array $message): void {
+it('refuses a tool message with the generic 422 invalid_messages', function (): void {
     Http::fake();
 
     registerInterview();
 
     $response = $this->postJson('prism/openai/v1/chat/completions', [
         'model' => 'interview',
-        'messages' => [['role' => 'user', 'content' => 'Hi'], $message],
+        'messages' => [
+            ['role' => 'user', 'content' => 'Hi'],
+            ['role' => 'tool', 'tool_call_id' => 'call_1', 'content' => '{"ok":true}'],
+        ],
     ]);
 
     $response->assertStatus(422);
@@ -416,8 +419,28 @@ it('refuses tool messages and assistant tool calls in the history with 422 inval
         ->and(RecordingReturnedTool::$calls)->toBe(0);
 
     Http::assertNothingSent();
+});
+
+it('refuses assistant tool calls in the history with 422 invalid_messages naming the message', function (array $message): void {
+    Http::fake();
+
+    registerInterview();
+
+    $response = $this->postJson('prism/openai/v1/chat/completions', [
+        'model' => 'interview',
+        'messages' => [['role' => 'user', 'content' => 'Hi'], $message],
+    ]);
+
+    $response->assertStatus(422);
+    expect($response->json('error'))->toBe([
+        'message' => 'messages[1]: an assistant message carrying tool calls cannot be replayed; a returned tool call ends the conversation.',
+        'type' => 'invalid_request_error',
+        'code' => 'invalid_messages',
+    ])
+        ->and(RecordingReturnedTool::$calls)->toBe(0);
+
+    Http::assertNothingSent();
 })->with([
-    'tool result' => [['role' => 'tool', 'tool_call_id' => 'call_1', 'content' => '{"ok":true}']],
     'assistant tool call' => [['role' => 'assistant', 'content' => null, 'tool_calls' => [[
         'id' => 'call_1', 'type' => 'function', 'function' => ['name' => 'business_case_report', 'arguments' => '{}'],
     ]]]],
@@ -539,4 +562,105 @@ it('only withholds a step for a client-executed tool', function (): void {
     expect((new Tool)->as('a')->for('a')->using(fn (): string => '')->withholdOtherCalls()->withholdsOtherCalls())->toBeFalse()
         ->and((new Tool)->as('b')->for('b')->clientExecuted()->withholdsOtherCalls())->toBeFalse()
         ->and((new Tool)->as('c')->for('c')->clientExecuted()->withholdOtherCalls()->withholdsOtherCalls())->toBeTrue();
+});
+
+it('names the position of a replayed tool call in the client\'s own messages array', function (): void {
+    Http::fake();
+
+    registerInterview();
+
+    $response = $this->postJson('prism/openai/v1/chat/completions', [
+        'model' => 'interview',
+        'messages' => [
+            ['role' => 'system', 'content' => 'Be brief.'],
+            ['role' => 'user', 'content' => 'Hi'],
+            ['role' => 'assistant', 'content' => 'First question?'],
+            ['role' => 'assistant', 'content' => null, 'tool_calls' => [[
+                'id' => 'call_1', 'type' => 'function', 'function' => ['name' => 'business_case_report', 'arguments' => '{}'],
+            ]]],
+            ['role' => 'user', 'content' => 'Again'],
+        ],
+    ]);
+
+    $response->assertStatus(422);
+    expect($response->json())->toBe(['error' => [
+        'message' => 'messages[3]: an assistant message carrying tool calls cannot be replayed; a returned tool call ends the conversation.',
+        'type' => 'invalid_request_error',
+        'code' => 'invalid_messages',
+    ]]);
+
+    Http::assertNothingSent();
+});
+
+it('keeps the generic message for every other unreadable message', function (array $messages): void {
+    Http::fake();
+
+    registerInterview();
+
+    $response = $this->postJson('prism/openai/v1/chat/completions', [
+        'model' => 'interview',
+        'messages' => $messages,
+    ]);
+
+    $response->assertStatus(422);
+    expect($response->json('error.message'))->toBe('The messages could not be read.')
+        ->and($response->json('error.code'))->toBe('invalid_messages');
+})->with([
+    'unknown role' => [[['role' => 'user', 'content' => 'Hi'], ['role' => 'developer', 'content' => 'x']]],
+    'function role' => [[['role' => 'function', 'name' => 'lookup', 'content' => 'x']]],
+]);
+
+it('carries both the text and the tool call when the final step has both', function (): void {
+    Http::fake(['api.openai.com/v1/responses' => Http::response(openAiResponse('resp_both', [
+        openAiText('Here is your report.'),
+        openAiFunctionCall('call_both', 'business_case_report', '{"problem":"p","report":"r"}'),
+    ]))]);
+
+    registerInterview();
+
+    $response = $this->postJson('prism/openai/v1/chat/completions', [
+        'model' => 'interview',
+        'messages' => [['role' => 'user', 'content' => 'Done.']],
+    ]);
+
+    $response->assertOk();
+    expect($response->json('choices.0'))->toBe([
+        'index' => 0,
+        'message' => [
+            'content' => 'Here is your report.',
+            'role' => 'assistant',
+            'tool_calls' => [[
+                'id' => 'call_both',
+                'type' => 'function',
+                'function' => ['name' => 'business_case_report', 'arguments' => '{"problem":"p","report":"r"}'],
+            ]],
+        ],
+        'finish_reason' => 'tool_calls',
+    ])
+        ->and(RecordingReturnedTool::$calls)->toBe(0);
+});
+
+it('ignores unknown top-level request fields rather than refusing them', function (): void {
+    Http::fake(['api.openai.com/v1/responses' => Http::response(openAiResponse('resp_1', [openAiText('Next question?')]))]);
+
+    registerInterview();
+
+    $response = $this->postJson('prism/openai/v1/chat/completions', [
+        'model' => 'interview',
+        'messages' => [['role' => 'user', 'content' => 'Hi']],
+        'skill' => 'x',
+        'temperature' => 2,
+        'metadata' => ['anything' => true],
+    ]);
+
+    $response->assertOk();
+    expect($response->json('choices.0.message.content'))->toBe('Next question?')
+        ->and($response->json('choices.0.finish_reason'))->toBe('stop');
+
+    Http::assertSent(function (Request $request): bool {
+        expect((string) $request->body())->not->toContain('skill')
+            ->and($request->data())->not->toHaveKey('metadata');
+
+        return true;
+    });
 });

@@ -53,6 +53,21 @@ class PrismServerException extends Exception
         return $exception;
     }
 
+    /**
+     * An assistant message in the history carries tool calls. The public message names the position and
+     * the reason because both are the caller's own input: the index is an integer and the text is fixed.
+     */
+    public static function replayedToolCalls(int $index): self
+    {
+        $exception = self::invalidMessages(sprintf('Assistant message %d carries tool calls', $index));
+        $exception->publicMessage = sprintf(
+            'messages[%d]: an assistant message carrying tool calls cannot be replayed; a returned tool call ends the conversation.',
+            $index,
+        );
+
+        return $exception;
+    }
+
     public static function invalidMessages(string $reason): self
     {
         $exception = new self($reason);

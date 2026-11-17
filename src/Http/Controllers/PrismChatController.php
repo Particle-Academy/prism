@@ -344,10 +344,11 @@ class PrismChatController
      */
     protected function mapMessages(array $messages): array
     {
-        return collect($messages)
-            ->map(fn (array $message): UserMessage|AssistantMessage|SystemMessage => match ($message['role']) {
+        // array_values: the index reported to the caller is the position in its own `messages` array.
+        return collect(array_values($messages))
+            ->map(fn (array $message, int $index): UserMessage|AssistantMessage|SystemMessage => match ($message['role']) {
                 'user' => $this->mapUserMessage($message),
-                'assistant' => $this->mapAssistantMessage($message),
+                'assistant' => $this->mapAssistantMessage($message, $index),
                 'system' => new SystemMessage($this->extractTextContent($message['content'])),
                 default => throw PrismServerException::invalidMessages("Couldn't map messages to Prism messages")
             })
@@ -359,11 +360,12 @@ class PrismChatController
      * back, and a caller must not be able to claim a call the server never returned.
      *
      * @param  array{role: string, content: mixed, tool_calls?: mixed, function_call?: mixed}  $message
+     * @param  int  $index  the message's position in the caller's `messages` array
      */
-    protected function mapAssistantMessage(array $message): AssistantMessage
+    protected function mapAssistantMessage(array $message, int $index = 0): AssistantMessage
     {
         if (! empty($message['tool_calls']) || ! empty($message['function_call'])) {
-            throw PrismServerException::invalidMessages('Assistant messages carrying tool calls are not accepted');
+            throw PrismServerException::replayedToolCalls($index);
         }
 
         /** @var string|array<int, mixed> $content */
