@@ -6,6 +6,7 @@ use GuzzleHttp\Client;
 use GuzzleHttp\Exception\ConnectException;
 use Illuminate\Http\Client\StrayRequestException;
 use Illuminate\Support\Facades\Http;
+use Psr\Http\Message\ResponseInterface;
 
 /*
  * The suite-wide network guard set in Tests\TestCase and phpunit.xml.dist.
@@ -29,6 +30,6 @@ it('sends a request that bypasses the HTTP client to the closed local proxy', fu
 })->with(['http://example.com/', 'https://api.openai.com/v1/models']);
 
 it('sends a Guzzle request made outside the HTTP client to the closed local proxy', function (): void {
-    expect(fn () => (new Client(['timeout' => 5]))->get('https://api.anthropic.com/v1/models'))
+    expect(fn (): ResponseInterface => (new Client(['timeout' => 5]))->get('https://api.anthropic.com/v1/models'))
         ->toThrow(ConnectException::class, '127.0.0.1');
 });
